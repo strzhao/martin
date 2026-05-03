@@ -1,0 +1,159 @@
+#!/Users/stringzhao/workspace/martin/.venv/bin/python3
+"""whisper 语音转写 CLI — 支持 mlx-whisper / faster-whisper / openai-whisper 三引擎"""
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+
+def transcribe_mlx(audio_path: str, model_name: str, language: str, output_dir: str):
+    """使用 mlx-whisper 引擎转写（Apple MLX GPU/ANE 加速）"""
+    import mlx_whisper
+
+    print(f"[mlx-whisper] 加载模型 '{model_name}' ...")
+    lang = None if language == "auto" else language
+    result = mlx_whisper.transcribe(
+        audio_path,
+        path_or_hf_repo=f"mlx-community/whisper-{model_name}",
+        language=lang,
+    )
+    return result["text"], result.get("segments", [])
+
+
+def transcribe_faster(audio_path: str, model_name: str, language: str, output_dir: str):
+    """使用 faster-whisper 引擎转写（CTranslate2 后端）"""
+    from faster_whisper import WhisperModel
+
+    model_size_map = {"large": "large-v3"}
+    size = model_size_map.get(model_name, model_name)
+    lang = None if language == "auto" else language
+
+    print(f"[faster-whisper] 加载模型 '{size}' (device=auto, compute_type=int8) ...")
+    model = WhisperModel(size, device="auto", compute_type="int8")
+    segments, info = model.transcribe(audio_path, language=lang)
+    print(f"[faster-whisper] 检测语言: {info.language} (概率: {info.language_probability:.2f})")
+
+    text_parts = []
+    segs = []
+    for seg in segments:
+        text_parts.append(seg.text)
+        segs.append({"start": seg.start, "end": seg.end, "text": seg.text})
+    return "".join(text_parts), segs
+
+
+def transcribe_whisper(audio_path: str, model_name: str, language: str, output_dir: str):
+    """使用 openai-whisper 引擎转写（PyTorch 后端）"""
+    import whisper
+
+    print(f"[openai-whisper] 加载模型 '{model_name}' ...")
+    lang = None if language == "auto" else language
+    model = whisper.load_model(model_name)
+    result = model.transcribe(audio_path, language=lang)
+    return result["text"], result.get("segments", [])
+
+
+ENGINES = {"mlx": transcribe_mlx, "faster": transcribe_faster, "whisper": transcribe_whisper}
+
+
+def _ts(seconds: float, dot: bool = False) -> str:
+    h, r = divmod(int(seconds), 3600)
+    m, s = divmod(r, 60)
+    ms = int((seconds % 1) * 1000)
+    sep = "." if dot else ","
+    return f"{h:02d}:{m:02d}:{s:02d}{sep}{ms:03d}"
+
+
+def format_txt(text: str, segments: list) -> str:
+    return text
+
+
+def format_srt(text: str, segments: list) -> str:
+    lines = []
+    for i, seg in enumerate(segments, 1):
+        lines.append(f"{i}\n{_ts(seg['start'])} --> {_ts(seg['end'])}\n{seg['text'].strip()}\n")
+    return "\n".join(lines)
+
+
+def format_vtt(text: str, segments: list) -> str:
+    lines = ["WEBVTT", ""]
+    for i, seg in enumerate(segments, 1):
+        lines.append(f"{i}\n{_ts(seg['start'], dot=True)} --> {_ts(seg['end'], dot=True)}\n{seg['text'].strip()}\n")
+    return "\n".join(lines)
+
+
+def format_json_obj(text: str, segments: list) -> str:
+    return json.dumps({
+        "text": text,
+        "segments": [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in segments],
+    }, ensure_ascii=False, indent=2)
+
+
+FORMATTERS = {"txt": format_txt, "srt": format_srt, "vtt": format_vtt, "json": format_json_obj}
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="whisper 语音转写 CLI — M4 Max / Metal GPU 高性能模式",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  %(prog)s audio.wav                                    # 默认 mlx + tiny + zh
+  %(prog)s audio.wav --engine mlx --model base          # mlx-whisper base 模型
+  %(prog)s audio.wav --engine faster --model large-v3   # faster-whisper large-v3
+  %(prog)s audio.wav --output-format srt                # SRT 字幕输出
+  %(prog)s audio.wav --language en --output-format vtt  # 英语 VTT 字幕
+        """,
+    )
+    parser.add_argument("audio", help="输入音频文件路径")
+    parser.add_argument("--engine", choices=["mlx", "faster", "whisper"], default="mlx",
+                        help="推理引擎（默认: mlx）")
+    parser.add_argument("--model", default="tiny",
+                        choices=["tiny", "tiny.en", "base", "base.en", "small", "small.en",
+                                 "medium", "medium.en", "large-v3", "large"],
+                        help="模型尺寸（默认: tiny）")
+    parser.add_argument("--language", choices=["zh", "en", "auto"], default="zh",
+                        help="语言（默认: zh）")
+    parser.add_argument("--output-format", choices=["txt", "srt", "vtt", "json"], default="txt",
+                        dest="output_format", help="输出格式（默认: txt）")
+    parser.add_argument("--output-dir", default=".", dest="output_dir",
+                        help="输出目录（默认: 当前目录）")
+
+    args = parser.parse_args()
+    if not os.path.isfile(args.audio):
+        print(f"错误: 音频文件不存在: {args.audio}", file=sys.stderr)
+        sys.exit(1)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    print(f"引擎: {args.engine} | 模型: {args.model} | 语言: {args.language}")
+    print(f"输入: {args.audio}")
+
+    start = time.time()
+    try:
+        text, segments = ENGINES[args.engine](
+            audio_path=args.audio, model_name=args.model,
+            language=args.language, output_dir=args.output_dir,
+        )
+    except ImportError as e:
+        print(f"错误: 引擎 '{args.engine}' 未安装: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    elapsed = time.time() - start
+
+    stem = Path(args.audio).stem
+    fmt = args.output_format
+    out_path = os.path.join(args.output_dir, f"{stem}.{fmt}")
+
+    content = FORMATTERS[fmt](text, segments)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"输出: {out_path}")
+    print(f"耗时: {elapsed:.1f}s | 文本长度: {len(text)} 字")
+
+
+if __name__ == "__main__":
+    main()
