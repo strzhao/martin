@@ -9,50 +9,89 @@ import time
 from pathlib import Path
 
 
-def transcribe_mlx(audio_path: str, model_name: str, language: str, output_dir: str):
+MLX_REPO_MAP = {
+    "tiny": "mlx-community/whisper-tiny", "tiny.en": "mlx-community/whisper-tiny.en",
+    "base": "mlx-community/whisper-base", "base.en": "mlx-community/whisper-base.en",
+    "small": "mlx-community/whisper-small", "small.en": "mlx-community/whisper-small.en",
+    "medium": "mlx-community/whisper-medium", "medium.en": "mlx-community/whisper-medium.en",
+    "large": "mlx-community/whisper-large-mlx",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
+    "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+}
+
+
+def transcribe_mlx(audio_path: str, model_name: str, language: str, output_dir: str, word_timestamps: bool = False, initial_prompt: str = None):
     """使用 mlx-whisper 引擎转写（Apple MLX GPU/ANE 加速）"""
     import mlx_whisper
 
-    print(f"[mlx-whisper] 加载模型 '{model_name}' ...")
+    repo = MLX_REPO_MAP.get(model_name, f"mlx-community/whisper-{model_name}")
+    print(f"[mlx-whisper] 加载模型 '{model_name}' (repo: {repo}, word_ts={word_timestamps}, prompt={bool(initial_prompt)}) ...")
     lang = None if language == "auto" else language
-    result = mlx_whisper.transcribe(
-        audio_path,
-        path_or_hf_repo=f"mlx-community/whisper-{model_name}",
-        language=lang,
-    )
-    return result["text"], result.get("segments", [])
+    kwargs = dict(path_or_hf_repo=repo, language=lang, word_timestamps=word_timestamps)
+    if initial_prompt:
+        kwargs["initial_prompt"] = initial_prompt
+    result = mlx_whisper.transcribe(audio_path, **kwargs)
+    detected_lang = result.get("language") or lang or "auto"
+    return result["text"], result.get("segments", []), detected_lang
 
 
-def transcribe_faster(audio_path: str, model_name: str, language: str, output_dir: str):
+def transcribe_faster(audio_path: str, model_name: str, language: str, output_dir: str, word_timestamps: bool = False, initial_prompt: str = None):
     """使用 faster-whisper 引擎转写（CTranslate2 后端）"""
+    import os as _os
     from faster_whisper import WhisperModel
 
     model_size_map = {"large": "large-v3"}
     size = model_size_map.get(model_name, model_name)
     lang = None if language == "auto" else language
+    # int8_float32 = int8 weights + float32 accumulator: better precision than
+    # pure int8 on Apple Silicon (float16 is unsupported by CTranslate2 on macOS).
+    compute_type = _os.environ.get("FASTER_WHISPER_COMPUTE", "int8_float32" if size.startswith("large") else "int8")
 
-    print(f"[faster-whisper] 加载模型 '{size}' (device=auto, compute_type=int8) ...")
-    model = WhisperModel(size, device="auto", compute_type="int8")
-    segments, info = model.transcribe(audio_path, language=lang)
+    print(f"[faster-whisper] 加载模型 '{size}' (device=auto, compute_type={compute_type}, word_ts={word_timestamps}, prompt={bool(initial_prompt)}) ...")
+    model = WhisperModel(size, device="auto", compute_type=compute_type)
+    # Use VAD filter to skip silent/non-speech segments — drastically reduces hallucinations
+    kw = dict(
+        language=lang,
+        word_timestamps=word_timestamps,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+    )
+    if initial_prompt:
+        kw["initial_prompt"] = initial_prompt
+    segments, info = model.transcribe(audio_path, **kw)
     print(f"[faster-whisper] 检测语言: {info.language} (概率: {info.language_probability:.2f})")
 
     text_parts = []
     segs = []
     for seg in segments:
         text_parts.append(seg.text)
-        segs.append({"start": seg.start, "end": seg.end, "text": seg.text})
-    return "".join(text_parts), segs
+        item = {"start": seg.start, "end": seg.end, "text": seg.text}
+        if word_timestamps and getattr(seg, "words", None):
+            item["words"] = [
+                {
+                    "start": w.start,
+                    "end": w.end,
+                    "word": w.word,
+                    "probability": getattr(w, "probability", None),
+                }
+                for w in seg.words
+            ]
+        segs.append(item)
+    return "".join(text_parts), segs, info.language
 
 
-def transcribe_whisper(audio_path: str, model_name: str, language: str, output_dir: str):
+def transcribe_whisper(audio_path: str, model_name: str, language: str, output_dir: str, word_timestamps: bool = False, initial_prompt: str = None):
     """使用 openai-whisper 引擎转写（PyTorch 后端）"""
     import whisper
 
-    print(f"[openai-whisper] 加载模型 '{model_name}' ...")
+    print(f"[openai-whisper] 加载模型 '{model_name}' (word_ts={word_timestamps}, prompt={bool(initial_prompt)}) ...")
     lang = None if language == "auto" else language
     model = whisper.load_model(model_name)
-    result = model.transcribe(audio_path, language=lang)
-    return result["text"], result.get("segments", [])
+    kw = dict(language=lang, word_timestamps=word_timestamps)
+    if initial_prompt:
+        kw["initial_prompt"] = initial_prompt
+    result = model.transcribe(audio_path, **kw)
+    return result["text"], result.get("segments", []), result.get("language") or lang or "auto"
 
 
 ENGINES = {"mlx": transcribe_mlx, "faster": transcribe_faster, "whisper": transcribe_whisper}
@@ -84,10 +123,17 @@ def format_vtt(text: str, segments: list) -> str:
     return "\n".join(lines)
 
 
-def format_json_obj(text: str, segments: list) -> str:
+def format_json_obj(text: str, segments: list, language: str = "auto") -> str:
+    out_segs = []
+    for s in segments:
+        seg = {"start": s["start"], "end": s["end"], "text": s["text"]}
+        if "words" in s and s["words"]:
+            seg["words"] = s["words"]
+        out_segs.append(seg)
     return json.dumps({
         "text": text,
-        "segments": [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in segments],
+        "language": language,
+        "segments": out_segs,
     }, ensure_ascii=False, indent=2)
 
 
@@ -112,7 +158,7 @@ def main():
                         help="推理引擎（默认: mlx）")
     parser.add_argument("--model", default="tiny",
                         choices=["tiny", "tiny.en", "base", "base.en", "small", "small.en",
-                                 "medium", "medium.en", "large-v3", "large"],
+                                 "medium", "medium.en", "large-v3", "large-v3-turbo", "large"],
                         help="模型尺寸（默认: tiny）")
     parser.add_argument("--language", choices=["zh", "en", "auto"], default="zh",
                         help="语言（默认: zh）")
@@ -120,6 +166,10 @@ def main():
                         dest="output_format", help="输出格式（默认: txt）")
     parser.add_argument("--output-dir", default=".", dest="output_dir",
                         help="输出目录（默认: 当前目录）")
+    parser.add_argument("--word-timestamps", action="store_true", dest="word_timestamps",
+                        help="启用词级时间戳（仅 JSON 输出有意义；mlx/faster/openai 三引擎均支持）")
+    parser.add_argument("--initial-prompt", default=None, dest="initial_prompt",
+                        help="initial_prompt：领域上下文 / 专有名词列表，可提升识别精度")
 
     args = parser.parse_args()
     if not os.path.isfile(args.audio):
@@ -133,9 +183,11 @@ def main():
 
     start = time.time()
     try:
-        text, segments = ENGINES[args.engine](
+        text, segments, detected_lang = ENGINES[args.engine](
             audio_path=args.audio, model_name=args.model,
             language=args.language, output_dir=args.output_dir,
+            word_timestamps=args.word_timestamps,
+            initial_prompt=args.initial_prompt,
         )
     except ImportError as e:
         print(f"错误: 引擎 '{args.engine}' 未安装: {e}", file=sys.stderr)
@@ -147,7 +199,10 @@ def main():
     fmt = args.output_format
     out_path = os.path.join(args.output_dir, f"{stem}.{fmt}")
 
-    content = FORMATTERS[fmt](text, segments)
+    if fmt == "json":
+        content = format_json_obj(text, segments, detected_lang)
+    else:
+        content = FORMATTERS[fmt](text, segments)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(content)
 

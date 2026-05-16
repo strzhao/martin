@@ -1,6 +1,6 @@
 ---
 active: true
-phase: "merge"
+phase: "done"
 gate: ""
 iteration: 1
 max_iterations: 30
@@ -11,7 +11,7 @@ plan_mode: ""
 brief_file: ""
 next_task: ""
 auto_approve: false
-knowledge_extracted: ""
+knowledge_extracted: "true"
 task_dir: "/Users/stringzhao/workspace/martin/.autopilot/requirements/20260503-帮我安装好-whisper-环境"
 session_id: fbf7771d-1dfe-4b2a-94e5-a7754e5828df
 started_at: "2026-05-03T14:10:41Z"

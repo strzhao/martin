@@ -1,0 +1,22 @@
+使用 dianping skill 生成大众点评评价 /Users/stringzhao/Downloads/dazhongdianping/带生成点评的图片
+Initializing agent...
+
+────────────────────────────────────────
+  ┊ 📚 preparing skill_view…
+  ┊ 🔎 preparing search_files…
+  ┊ 📚 skill     dianping-review  0.0s
+  ┊ 🔎 find      *  1.3s
+⚠️  API call failed (attempt 1/3): BadRequestError [HTTP 400]
+   🔌 Provider: deepseek  Model: deepseek-v4-pro
+   🌐 Endpoint: https://api.deepseek.com/anthropic
+   📝 Error: HTTP 400: The `content[].thinking` in the thinking mode must be passed back to the API.
+   📋 Details: {'error': {'message': 'The `content[].thinking` in the thinking mode must be passed back to the API.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+⚠️ Non-retryable error (HTTP 400) — trying fallback...
+❌ Non-retryable error (HTTP 400): HTTP 400: The `content[].thinking` in the thinking mode must be passed back to the API.
+❌ Non-retryable client error (HTTP 400). Aborting.
+   🔌 Provider: deepseek  Model: deepseek-v4-pro
+   🌐 Endpoint: https://api.deepseek.com/anthropic
+   💡 This type of error won't be fixed by retrying.
+ ─  ⚕ Hermes  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+     Error: Error code: 400 - {'error': {'message': 'The content[].thinking in the thinking mode must be passed back to the API.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
