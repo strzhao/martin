@@ -30,3 +30,25 @@
 - opencli external register：增加一层间接调用，不如独立命令直接
 
 **权衡**：TypeScript 工程需要编译步骤（tsup），但换来类型安全、跨平台一致的 base64 编码、commander 自动生成 `--help`。
+
+## 2026-06-11 — travel-planner skill 多源信息采集 + HTML 输出架构
+
+<!-- tags: skill, travel, api, opencli, multi-source, html -->
+
+**决策**：6 路并行搜索（高德 API + opencli dianping/xhs/bilibili/weixin + WebSearch）→ 交叉验证 → HTML 模板注入 → 零依赖 HTTP 服务器 → tunnel 公网暴露。
+
+**原因**：
+- 纯 WebSearch 只能获取第三方转载，无法获取原文评分/字幕/互动数据
+- opencli dianping shop 返回结构化评分（口味/环境/服务），信息密度最高
+- opencli bilibili subtitle 逐句字幕含真实探店评价+价格，文字攻略无法提供
+- 高德 API 提供天气/POI 评分/路线，结构化数据 LLM 无法自编
+- 交叉验证（≥2 源确认）有效过滤营销内容
+
+**关键 dry-run 发现**：
+- 高德 QPS 并发 4 请求触发限流，需串行 + 0.3s 间隔
+- 高德关键词精准度决定命中率：「绍兴菜」>>「餐厅」
+- 小红书 note 被 `SECURITY_BLOCK` 拦截，仅 search 可用
+- B站字幕是意外的高价值源
+- Qwen3.6-35B thinking 模型视觉识别需 max_tokens ≥ 2000
+
+**HTML 输出模式**：单文件 HTML 模板（`__TRIP_DATA__` 占位符）→ Python inject.py 注入 → Node.js 零依赖 http 服务器 → tunnel CLI（frpc）暴露公网 URL 供微信访问。
