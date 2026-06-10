@@ -378,9 +378,9 @@ function render() {
   document.getElementById('trip-weather').innerHTML =
     (t.weather.condition || '') + ' ' + t.weather.temp_high + '&deg; / ' + t.weather.temp_low + '&deg;';
   document.getElementById('trip-transport').innerHTML =
-    t.transport.origin + ' &rarr; ' + t.transport.destination + ' &middot; ' + t.transport.distance_km + 'km / ' + t.transport.duration_min + 'min';
+    (t.transport.origin || '') + ' &rarr; ' + (t.transport.destination || '') + ' &middot; ' + (t.transport.distance_km || '') + 'km / ' + (t.transport.duration_min || '') + 'min';
   document.getElementById('trip-budget-summary').innerHTML =
-    '&yen;' + t.budget.food_per_person + '/person' + (t.budget.note ? '' : '');
+    '&yen;' + (t.budget.food_per_person || t.budget.food_per_person_tight || t.budget.food_per_person_comfort || t.budget.food_per_person_premium || '') + '/person' + (t.budget.note ? '' : '');
 
   // Weather card
   var wc = document.getElementById('weather-card');
@@ -399,12 +399,16 @@ function render() {
 
   // Budget switcher
   var bg = t.budget;
-  var levels = ['经济版', '标准版', '品质版'];
-  var icons = ['', '', ''];
+  var budgetLabels = [
+    '经济版 ¥' + (bg.food_per_person_tight || bg.economy || ''),
+    '标准版 ¥' + (bg.food_per_person_comfort || bg.standard || ''),
+    '品质版 ¥' + (bg.food_per_person_premium || bg.premium || '')
+  ];
+  var keys = ['economy', 'standard', 'premium'];
   var btns = '';
-  for (var i = 0; i < levels.length; i++) {
-    btns += '<button class="' + (i === 0 ? 'active-budget' : '') + '" onclick="switchBudget(\'' + levels[i] + '\')">' +
-      levels[i] + '</button>';
+  for (var i = 0; i < keys.length; i++) {
+    btns += '<button class="' + (i === 0 ? 'active-budget' : '') + '" onclick="switchBudget(\'' + keys[i] + '\')">' +
+      budgetLabels[i] + '</button>';
   }
   document.getElementById('budget-bar').innerHTML = btns;
 
@@ -442,7 +446,7 @@ function render() {
     }
 
     var linksHtml = '';
-    if (item.links) {
+    if (item.links && Object.keys(item.links).length > 0) {
       linksHtml = '<div class="link-row">';
       if (item.links.amap_navi || item.navi_url) linksHtml += '<a class="link-navi" href="' + (item.links.amap_navi || item.navi_url) + '" target="_blank">导航</a>';
       if (item.links.dianping) linksHtml += '<a class="link-dianping" href="' + item.links.dianping + '" target="_blank">点评</a>';
@@ -459,7 +463,7 @@ function render() {
     var priceStr = item.price_per_person ? ' &middot; <span style="font-weight:500">&yen;' + item.price_per_person + '/person</span>' : '';
 
     html += '<div class="timeline-item ' + (item.type || '') + '">' +
-      '<div class="dot">' + (item.icon || '') + '</div>' +
+      '<div class="dot">' + (item.icon || '●') + '</div>' +
       '<div class="time-label">' + item.time + '</div>' +
       '<div class="item-title">' + item.title + '<span style="font-size:14px;color:var(--muted);font-weight:400">' + ratingStr + priceStr + '</span></div>' +
       (item.description ? '<div class="item-meta">' + item.description + '</div>' : '') +
@@ -510,7 +514,7 @@ function getWeatherIcon(condition) {
 
 function switchBudget(level) {
   var btns = document.querySelectorAll('#budget-bar button');
-  var levels = ['经济版', '标准版', '品质版'];
+  var levels = ['economy', 'standard', 'premium'];
   for (var i = 0; i < btns.length; i++) {
     btns[i].classList.toggle('active-budget', levels[i] === level);
   }

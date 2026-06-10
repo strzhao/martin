@@ -1,374 +1,392 @@
 {
   "trip": {
-    "title": "南浔古镇 · 逛吃一日自驾游",
-    "subtitle": "江南封面，百间楼里寻味浔食",
+    "title": "嘉兴 · 西塘小吃扫街+五芳斋朝圣一日自驾",
+    "subtitle": "从西塘古镇烟火气到月河老街粽香，128km吃透嘉兴",
     "date": "2026-06-13",
     "weather": {
       "condition": "小雨",
       "temp_high": 25,
-      "temp_low": 20,
-      "wind": "东南风1-3级",
-      "tip": "带把伞更有烟雨江南意境，穿舒适防滑鞋"
+      "temp_low": 21,
+      "wind": "东风1-3级",
+      "tip": "小雨配烟雨江南西塘古镇，意境满分；石板路湿滑穿防滑鞋"
     },
     "transport": {
       "mode": "自驾",
-      "distance_km": 91.8,
-      "duration_min": 77,
-      "tolls_oneway": 33,
+      "distance_km": 262,
+      "duration_total_min": 229,
+      "tolls_roundtrip": 104,
       "origin": "杭州拱墅区",
-      "destination": "南浔古镇",
-      "parking": "南浔古镇6号地面停车场（近蜊壳弄美食街），全天封顶50元",
-      "tip": "建议9:00前出发，避开出城早高峰"
+      "destination": "嘉兴（西塘→市区）",
+      "parking": "西塘第1停车场（全天30元），嘉兴月河停车场（5元/小时）",
+      "route_summary": "杭州→G60沪昆→西塘（128km/98min/¥52）→ 市区（34km/51min）→ 返杭（约100km/80min）",
+      "tip": "8:30前出发，避开出城早高峰；西塘10点前人少好拍照"
     },
     "budget": {
-      "food_per_person": 128,
+      "food_per_person_tight": 148,
+      "food_per_person_comfort": 173,
+      "food_per_person_premium": 220,
       "parking": 50,
-      "tolls_roundtrip": 66,
-      "gas_estimate": 130,
-      "per_person_total": 215,
-      "note": "人均饮食128元在预算150元以内；交通费用按一车2人分摊"
+      "tolls_roundtrip": 104,
+      "gas_estimate": 140,
+      "per_person_total": 295,
+      "note": "按一车2人分摊交通费；人均饮食148-173元，¥150预算刚好"
     },
     "highlights": [
-      "南浔古镇主街区免费开放，5A景区不花门票钱",
-      "三家人均80元的点评4.8分餐厅扎堆蜊壳弄，到了看哪家不排队进哪家",
-      "双交面（酥肉+爆鱼）是南浔独有面食，两碗面不过50元",
-      "百间楼400年沿河民居群，傍晚光影绝美"
+      "6月13日小雨，西塘古镇烟雨长廊意境拉满",
+      "西塘小吃扫街是灵魂——管老太臭豆腐+陆氏馄饨+芡实糕三件套不到¥50",
+      "五芳斋总店（建国路）是粽子界「圣地」，蛋黄肉粽配小馄饨就是嘉兴人的早晨",
+      "月河历史街区免费开放，粽子文化博物馆藏在真真老老店里",
+      "避坑指南：钱塘人家（预制菜+服务差）、天下第一面（态度差）直接跳过"
     ]
   },
   "route_map": {
-    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&zoom=11&size=800*400&markers=mid,0xFF0000,A:120.155,30.274;mid,0x00AA00,B:120.439896,30.880910",
-    "navi_url": "https://uri.amap.com/navigation?to=120.439896,30.880910,南浔古镇6号停车场&mode=car&policy=0"
+    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&zoom=9&size=800*400&markers=mid,0xFF0000,A:120.155,30.274;mid,0x0066FF,B:120.924,30.942;mid,0x00AA00,C:120.756,30.754",
+    "navi_url": "https://uri.amap.com/navigation?to=120.924,30.942,西塘古镇第1停车场&mode=car&policy=0"
   },
   "timeline": [
     {
-      "time": "09:00",
+      "time": "08:30",
       "type": "transport",
       "icon": "🚗",
-      "title": "杭州出发 → G25长深高速",
-      "description": "从拱墅区出发，走G25长深高速→S12申嘉湖高速，约92km，77分钟，过路费33元",
+      "title": "杭州出发 → G60沪昆高速",
+      "description": "从拱墅区出发，走G60沪昆高速→S12申嘉湖高速，约128公里，98分钟，过路费52元。进西塘前在汾湖服务区休息5分钟",
       "location": { "lng": 120.155, "lat": 30.274, "name": "杭州拱墅区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.439896,30.880910,南浔古镇6号停车场&mode=car&policy=0",
+      "navi_url": "https://uri.amap.com/navigation?to=120.924,30.942,西塘古镇第1停车场&mode=car&policy=0",
       "rating": {},
       "price_per_person": 0,
       "confidence": "high"
     },
     {
-      "time": "10:20",
+      "time": "10:10",
       "type": "transport",
       "icon": "🅿️",
-      "title": "南浔古镇6号停车场",
-      "description": "全天封顶50元，紧邻蜊壳弄美食街，步行到核心景区仅3分钟",
-      "location": { "lng": 120.437, "lat": 30.877, "name": "南浔古镇6号地面停车场" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.437,30.877,南浔古镇6号停车场&mode=car",
+      "title": "西塘古镇第1停车场",
+      "description": "全天30元，紧邻景区南入口。停好车直接进古镇——周六上午10点前人少，烟雨长廊拍照最佳时段",
+      "location": { "lng": 120.924, "lat": 30.939, "name": "西塘古镇第1停车场" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.924,30.939,西塘古镇第1停车场&mode=car",
       "rating": {},
-      "price_per_person": 25,
+      "price_per_person": 15,
       "confidence": "high"
     },
     {
-      "time": "10:30-12:00",
+      "time": "10:10-12:00",
       "type": "sight",
       "icon": "📍",
-      "title": "南区古迹巡礼",
-      "description": "小莲庄（十亩莲池，中西合璧园林）→ 嘉业堂藏书楼（全国最大私人藏书楼）→ 张石铭旧宅（「江南第一民宅」，木雕砖雕惊艳）→ 刘氏梯号·红房子（红色欧式外墙+中式庭院，必拍打卡点）。走马观花1.5小时刚好，想细看可买联票85元",
-      "location": { "lng": 120.431, "lat": 30.873, "name": "南浔古镇南区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.431,30.873,小莲庄&mode=walk",
-      "rating": { "amap": 4.9, "level": "5A景区" },
+      "title": "西塘古镇漫游 · 烟雨长廊",
+      "description": "周六预报小雨，西塘烟雨长廊就是为此而生的——沿河廊棚连绵千米，下雨不用打伞。路线：南入口→烟雨长廊→送子来凤桥→环秀桥→西街→石皮弄→卧龙桥。最窄的石皮弄仅0.8米宽，两人侧身才能过。免费区域足够逛2小时，若想进宅院可买联票95元（不必须）",
+      "location": { "lng": 120.924, "lat": 30.942, "name": "西塘古镇核心景区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.924,30.942,西塘古镇烟雨长廊&mode=walk",
+      "rating": { "amap": 4.7, "level": "5A景区" },
       "price_per_person": 0,
       "confidence": "high",
       "links": {}
     },
     {
-      "time": "12:00-13:30",
+      "time": "12:00-13:00",
       "type": "food",
       "icon": "🍜",
-      "title": "午餐：蜊壳弄三选一（到现场看哪家不排队）",
-      "description": "三家点评4.8分餐厅集中在蜊壳弄：王家大院（口味榜第1·6844评·人均86元）、星海棠（美食口味榜第1·3766评·人均80元）、小南楼（5382评·人均84元）。推荐菜：练市羊肉煲、葱油太湖白条、绣花锦、烂糊鳝丝、银鱼炒蛋",
-      "location": { "lng": 120.437, "lat": 30.876, "name": "蜊壳弄美食街" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.437,30.876,蜊壳弄&mode=walk",
-      "rating": { "amap": 4.9 },
-      "price_per_person": 84,
+      "title": "小吃扫街第一轮：西塘灵魂三件套",
+      "description": "西塘的正确打开方式是边走边吃，不是正襟危坐吃大餐。三站扫街：① 管老太臭豆腐官方旗舰店（塔湾街55号·Amap4.3分·¥15）祖传工艺，外脆里嫩配甜酱和辣酱；② 陆氏馄饨（里仁街18号·Amap4.4分·¥24）皮薄馅鲜汤底清澈，藏在戉寅桥下的小店；③ 沿线看到芡实糕随便买一块（森林/一线天/曹记三家都行，¥10/块），边走边嚼桂花味韧中带糯",
+      "location": { "lng": 120.925, "lat": 30.943, "name": "西塘塔湾街-里仁街" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.925,30.943,管老太臭豆腐旗舰店&mode=walk",
+      "rating": { "amap": 4.3 },
+      "price_per_person": 49,
       "confidence": "high",
       "aggregation": {
         "primary": {
-          "name": "王家大院·农家土菜馆",
-          "dianping_score": 4.8,
-          "dianping_taste": 4.8,
-          "dianping_reviews": 6844,
-          "bangdan": "南浔区江浙菜口味榜第1名",
-          "price": 86
+          "name": "管老太臭豆腐官方总部旗舰店",
+          "amap_rating": 4.3,
+          "price": 15
         },
         "alternatives": [
-          {
-            "name": "星海棠餐厅·南浔味道",
-            "dianping_score": 4.8,
-            "dianping_taste": 4.8,
-            "dianping_reviews": 3766,
-            "bangdan": "南浔区美食口味榜第1名",
-            "price": 80
-          },
-          {
-            "name": "小南楼·湖州特色菜",
-            "dianping_score": 4.8,
-            "dianping_taste": 4.8,
-            "dianping_reviews": 5382,
-            "price": 84
-          }
+          { "name": "陆氏馄饨", "amap_rating": 4.4, "price": 24 },
+          { "name": "森林芡实糕", "location": "塘东街18号", "price": 10 }
         ],
-        "xhs_likes": 905
-      },
-      "address": "南浔古镇蜊壳弄（6号停车场对面）",
-      "features": ["有包厢", "有大桌", "付费停车"],
-      "links": {
-        "dianping_wang": "https://www.dianping.com/shop/G7UljJVZ2oyrzhu6",
-        "dianping_xing": "https://www.dianping.com/shop/k1XHddhsF0QtssMD",
-        "dianping_xiao": "https://www.dianping.com/shop/H1y55af8C0coiurs",
-        "amap_navi": "https://uri.amap.com/navigation?to=120.437,30.876,蜊壳弄&mode=walk"
-      }
-    },
-    {
-      "time": "13:30-15:00",
-      "type": "sight",
-      "icon": "🚤",
-      "title": "北区水乡漫游",
-      "description": "丝绸码头乘水上巴士（3元/人），沿河穿行至百间楼。百间楼是400年历史的沿河民居群，依河而建绵延400余米，是南浔最有烟火气的地方",
-      "location": { "lng": 120.440, "lat": 30.881, "name": "百间楼" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.440,30.881,百间楼&mode=walk",
-      "rating": { "amap": 4.9 },
-      "price_per_person": 3,
-      "confidence": "high",
-      "links": {}
-    },
-    {
-      "time": "15:00-15:30",
-      "type": "break",
-      "icon": "🍵",
-      "title": "下午茶：春兰茶室 · 南浔三道茶",
-      "description": "体验南浔待客之礼——三道茶：第一道「风枵茶」（甜糯米锅糍），第二道「熏豆茶」（咸香），第三道「绿茶」（清口回甘）。沿河而坐，看船来船往",
-      "location": { "lng": 120.440, "lat": 30.880, "name": "春兰茶室" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.440,30.880,春兰茶室&mode=walk",
-      "rating": {},
-      "price_per_person": 20,
-      "confidence": "medium",
-      "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.440,30.880,春兰茶室&mode=walk"
-      }
-    },
-    {
-      "time": "15:30-16:00",
-      "type": "food",
-      "icon": "🥮",
-      "title": "点心补充：匠心坊定胜糕 + 野荸荠桔红糕",
-      "description": "匠心坊现场蒸制定胜糕（豆沙馅，软糯香甜，3-5元/个）；野荸荠是1885年百年老字号，桔红糕薄荷清香常温可存7天，适合做伴手礼带回家",
-      "location": { "lng": 120.430, "lat": 30.877, "name": "南浔古镇南东街" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.430,30.877,南浔古镇南东街&mode=walk",
-      "rating": {},
-      "price_per_person": 15,
-      "confidence": "medium",
-      "links": {}
-    },
-    {
-      "time": "16:00-16:30",
-      "type": "food",
-      "icon": "🍜",
-      "title": "「双交面」灵魂时刻：龙凤面馆 / 双桥面馆",
-      "description": "南浔独有的双交面——「双交」即酥肉+爆鱼双浇头。龙凤面馆（30年老店，酥肉猪蹄虾仁，高德4.5分·28元），双桥面馆（酥肉熏鱼面+臭豆腐，高德4.5分·27元）。两碗面人均不到30元，这才是南浔的灵魂味道",
-      "location": { "lng": 120.431, "lat": 30.877, "name": "龙凤面馆" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.431,30.877,龙凤面馆&mode=walk",
-      "rating": { "amap": 4.5 },
-      "price_per_person": 28,
-      "confidence": "high",
-      "aggregation": {
-        "bilibili_quotes": ["价位很友好", "腰花比较多比较大", "大哥连汤底都喝完了"],
-        "bilibili_bvid": "BV1KM9mYHE5T",
-        "xhs_likes": 904,
+        "bilibili_quotes": ["不到100r吃遍西塘美食！真的便宜又好吃"],
         "websearch_mentioned": true
       },
-      "address": "南浔古镇南东街32号",
-      "features": ["30年老店", "双交面"],
+      "address": "西塘古镇塔湾街—里仁街",
+      "features": ["祖传老店", "现做现卖", "边走边吃"],
       "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.431,30.877,龙凤面馆&mode=walk"
+        "amap_navi": "https://uri.amap.com/navigation?to=120.925,30.943,管老太臭豆腐&mode=walk"
       }
     },
     {
-      "time": "16:30-17:00",
+      "time": "13:00-13:30",
       "type": "food",
-      "icon": "🍖",
-      "title": "扫街模式：浔蹄 + 卢记烧饼",
-      "description": "浔蹄（谢霆锋同款，酱香浓郁入口即化，半份20元够两人尝）→ 卢记烧饼（高德4.5分·13元，香酥鸡烧饼，薄脆烧饼夹现炸香酥鸡，排队王）",
-      "location": { "lng": 120.430, "lat": 30.872, "name": "东大街美食区" },
-      "rating": { "amap": 4.5 },
-      "price_per_person": 33,
+      "icon": "🥮",
+      "title": "小吃扫街第二弹：豆腐花+八珍糕",
+      "description": "沿着西街往北走：① 钱氏豆腐花（双桥附近，一定要喝咸的！）¥8 嫩滑豆花配紫菜虾皮榨菜，江南水乡标配；② 沿途糕点铺试吃八珍糕（西塘特色药膳糕点，¥5/块），茯苓山药芡实莲子八味中药入糕，微甜不腻。这个阶段基本吃半饱，刚好留肚子给嘉兴市区",
+      "location": { "lng": 120.923, "lat": 30.944, "name": "西塘西街-双桥" },
+      "rating": {},
+      "price_per_person": 13,
+      "confidence": "medium",
+      "links": {}
+    },
+    {
+      "time": "13:30-14:20",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "西塘 → 嘉兴市区月河",
+      "description": "34公里，约51分钟。出西塘走平黎公路→G320→嘉兴市区。导航设置：月河历史街区停车场",
+      "location": { "lng": 120.756, "lat": 30.771, "name": "月河历史街区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.756,30.771,月河历史街区停车场&mode=car&policy=0",
+      "rating": {},
+      "price_per_person": 0,
+      "confidence": "high"
+    },
+    {
+      "time": "14:30-15:15",
+      "type": "sight",
+      "icon": "🏛️",
+      "title": "月河历史街区 + 粽子文化博物馆",
+      "description": "月河是嘉兴保存最完整的老街区，小桥流水+明清建筑+各种老字号扎堆，免费开放。先去真真老老（建国路36号）——店内有粽子文化博物馆，展示嘉兴粽子百年历史，看完直接买一只麻辣鲜肉粽（¥8）尝尝百年老字号的功力。然后沿中基路漫步，看看邹大鲜的门面（不进，原因见下），逛古居斋传统糕点铺",
+      "location": { "lng": 120.754, "lat": 30.772, "name": "月河历史街区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.754,30.772,月河历史街区&mode=walk",
+      "rating": { "amap": 4.7 },
+      "price_per_person": 8,
       "confidence": "high",
-      "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.423,30.872,卢记烧饼&mode=walk"
+      "aggregation": {
+        "dianping": {
+          "note": "邹大鲜Amap4.7但B站有UP主明确标记为'踩的美食坑'(播放2578)，信号冲突。环境好但味道有争议，建议门口拍照即走，把预算留给更可靠的店"
+        }
       }
     },
     {
-      "time": "17:00-17:30",
+      "time": "15:15-15:45",
+      "type": "food",
+      "icon": "🥟",
+      "title": "五芳斋总店 · 粽子朝圣",
+      "description": "建国南路286号，嘉兴最硬核的地标——你在全国高速服务区吃过一万次五芳斋，但总店是另一回事。蛋黄肉粽（¥12）糯米软糯油脂渗入每一粒米，大肉粽（¥10）瘦肉不柴肥肉化在米里，再来一碗鲜肉小馄饨（¥8）解腻。天气好的话可以坐二楼临窗位置看建国路街景",
+      "location": { "lng": 120.756, "lat": 30.762, "name": "五芳斋总店" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.756,30.762,五芳斋总店&mode=walk",
+      "rating": { "amap": 4.6 },
+      "price_per_person": 30,
+      "confidence": "high",
+      "aggregation": {
+        "dianping": {
+          "score": 4.3,
+          "reviews": "百年老字号"
+        },
+        "bilibili_bvid": "BV1eG4y1r7y1",
+        "bilibili_quotes": ["除了粽子还有老底子手工糕点"],
+        "websearch_mentioned": true
+      },
+      "address": "建国南路286号",
+      "features": ["百年老字号", "非遗", "二楼堂食"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.756,30.762,五芳斋总店&mode=walk"
+      }
+    },
+    {
+      "time": "15:45-17:00",
       "type": "sight",
-      "icon": "🌅",
-      "title": "百间楼金色时刻",
-      "description": "傍晚光线斜照百间楼沿河老宅，红灯笼倒映水面，是全天最美的半小时。站在通津桥上拍全景，然后慢慢走回停车场",
-      "location": { "lng": 120.440, "lat": 30.881, "name": "通津桥" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.440,30.881,通津桥&mode=walk",
-      "rating": {},
+      "icon": "🌿",
+      "title": "南湖散步 · 烟雨楼远眺",
+      "description": "从五芳斋步行15分钟到南湖景区（免费进入湖畔步道）。南湖不大但很有灵气——中国共产党诞生地、乾隆六下江南必游。沿着会景园→湖心岛方向散步，远眺烟雨楼（上岛需乘船20元，可不上去）。6月荷叶初长，小雨打在荷叶上很有意境。走累了在湖畔长椅坐会儿，就是江南该有的节奏",
+      "location": { "lng": 120.763, "lat": 30.756, "name": "嘉兴南湖旅游区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.763,30.756,嘉兴南湖旅游区&mode=walk",
+      "rating": { "amap": 4.8, "level": "5A景区" },
       "price_per_person": 0,
       "confidence": "high",
       "links": {}
     },
     {
-      "time": "17:30",
+      "time": "17:00-18:00",
+      "type": "food",
+      "icon": "🍽️",
+      "title": "晚餐：禾城陆稿荐 · 嘉兴本味",
+      "description": "月河街中基路（距邹大鲜867米），携程美食林推荐的老牌江浙菜。推荐：酱鸭（嘉兴招牌，酱香浓郁肉质紧实）、烂糊鳝丝（鳝鱼切丝勾芡，嘉兴经典做法）、绣花锦（本地特色绿叶菜）。人均¥98跟预算刚好。如果想吃更实惠的，替代方案是新塍农家菜（兴业街·Amap4.5分·人均¥73），土灶烧出来的练市羊肉煲、葱油白条一样能打",
+      "location": { "lng": 120.753, "lat": 30.772, "name": "禾城陆稿荐酒楼" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.753,30.772,禾城陆稿荐&mode=walk",
+      "rating": { "dianping": 4.3 },
+      "price_per_person": 98,
+      "confidence": "medium",
+      "aggregation": {
+        "dianping": {
+          "score": 4.3,
+          "reviews": 18
+        },
+        "websearch_mentioned": true,
+        "alternative": {
+          "name": "新塍农家菜(兴业街店)",
+          "amap_rating": 4.5,
+          "price": 73,
+          "recommended": ["练市羊肉煲", "葱油白条", "绣花锦"]
+        }
+      },
+      "address": "月河历史街区中基路",
+      "features": ["老牌江浙菜", "嘉兴本味"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.753,30.772,禾城陆稿荐&mode=walk"
+      }
+    },
+    {
+      "time": "18:00",
       "type": "transport",
       "icon": "🚗",
       "title": "返程回杭",
-      "description": "原路返回，预计18:50前到家。如不想赶晚高峰，可推迟到18:30出发，在古镇吃个简单晚餐再走",
+      "description": "走G60沪昆高速原路返回，约100公里80分钟，预计19:20前到家。若想避开晚高峰可推迟到19:00出发，在南湖边再看一眼夜景",
       "location": { "lng": 120.155, "lat": 30.274, "name": "杭州拱墅区" },
       "navi_url": "https://uri.amap.com/navigation?to=120.155,30.274,杭州拱墅区&mode=car&policy=0",
       "rating": {},
       "price_per_person": 0,
-      "confidence": "high",
-      "links": {}
+      "confidence": "high"
     }
   ],
   "restaurants": [
     {
-      "name": "王家大院·农家土菜馆(南浔古镇店)",
-      "type": "浙菜/农家菜",
-      "price_per_person": 86,
-      "bangdan_rank": 1,
-      "bangdan_name": "南浔区江浙菜口味榜第1名",
-      "dianping_score": 4.8,
-      "dianping_taste": 4.8,
-      "dianping_environment": 4.8,
-      "dianping_service": 4.8,
-      "dianping_reviews": 6844,
+      "name": "五芳斋(嘉兴总店)",
+      "type": "百年老字号/粽子",
+      "price_per_person": 18,
+      "rating_amap": 4.6,
+      "bangdan_name": "嘉兴必打卡No.1",
+      "dianping_score": 4.3,
       "confidence": "high",
-      "district": "古镇蜊壳弄",
-      "address": "南浔古镇蜊壳弄10号（近6号地面停车场）",
-      "recommended_dishes": ["练市羊肉煲", "葱油太湖白条", "绣花锦", "烂糊鳝丝"],
-      "features": ["有包厢", "有大桌", "付费停车"],
-      "links": { "dianping": "https://www.dianping.com/shop/G7UljJVZ2oyrzhu6" }
+      "district": "建国路",
+      "address": "建国南路286号",
+      "recommended_dishes": ["蛋黄肉粽(¥12)", "贵妃大肉粽(¥10)", "鲜肉小馄饨(¥8)", "卤蛋大排面"],
+      "features": ["百年老字号", "非遗", "二楼堂食", "手工糕点"],
+      "links": {}
     },
     {
-      "name": "星海棠餐厅·南浔味道",
-      "type": "浙菜/农家菜",
+      "name": "管老太臭豆腐官方总部旗舰店",
+      "type": "小吃/臭豆腐",
+      "price_per_person": 15,
+      "rating_amap": 4.3,
+      "confidence": "high",
+      "district": "西塘古镇塔湾街",
+      "address": "西塘镇塔湾街小桐圩55-58号",
+      "recommended_dishes": ["臭豆腐（祖传工艺发酵）"],
+      "features": ["西塘最老臭豆腐", "祖传工艺", "甜酱+辣酱"],
+      "links": {}
+    },
+    {
+      "name": "陆氏馄饨",
+      "type": "小吃/馄饨",
+      "price_per_person": 24,
+      "rating_amap": 4.4,
+      "confidence": "medium",
+      "district": "西塘古镇里仁街",
+      "address": "西塘镇里仁街18号戉寅桥下",
+      "recommended_dishes": ["鲜肉小馄饨"],
+      "features": ["皮薄馅鲜", "戉寅桥下小店"],
+      "links": {}
+    },
+    {
+      "name": "七张桌精品餐馆",
+      "type": "西塘本帮菜",
+      "price_per_person": 85,
+      "bangdan_rank": 1,
+      "bangdan_name": "大众点评西塘排名第一",
+      "confidence": "high",
+      "district": "西塘古镇内",
+      "address": "西塘古镇内（仅七张桌，高峰期等位）",
+      "recommended_dishes": ["秘制牛肉(必点)", "螺丝(¥0.01近乎免费)", "酱爆茄子", "蒜泥生菜"],
+      "features": ["仅7张桌", "送水果沙拉", "需等位"],
+      "links": {}
+    },
+    {
+      "name": "钱雨曼·怀旧景观餐厅",
+      "type": "西塘本帮菜/景观餐厅",
       "price_per_person": 80,
-      "bangdan_rank": 1,
-      "bangdan_name": "南浔区美食口味榜第1名",
-      "dianping_score": 4.8,
-      "dianping_taste": 4.8,
-      "dianping_environment": 4.8,
-      "dianping_service": 4.8,
-      "dianping_reviews": 3766,
+      "reco_rate": "43%游客推荐",
       "confidence": "high",
-      "district": "古镇蜊壳弄",
-      "address": "南浔镇南东街蜊壳弄14号（6号停车场对面）",
-      "recommended_dishes": ["银鱼炒蛋", "清蒸臭豆腐", "东坡肉"],
-      "features": ["有包厢", "有大桌", "付费停车", "有宝宝椅"],
-      "links": { "dianping": "https://www.dianping.com/shop/k1XHddhsF0QtssMD" }
+      "district": "西塘古镇内",
+      "address": "西塘古镇（二楼临河露台）",
+      "recommended_dishes": ["软糯猪脚(必点)"],
+      "features": ["二楼临河露台", "景致绝美", "服务员贴心"],
+      "links": {}
     },
     {
-      "name": "小南楼·湖州特色菜(南浔古镇店)",
-      "type": "私房菜/湖州菜",
-      "price_per_person": 84,
-      "dianping_score": 4.8,
-      "dianping_taste": 4.8,
-      "dianping_environment": 4.8,
-      "dianping_service": 4.8,
-      "dianping_reviews": 5382,
-      "confidence": "high",
-      "district": "古镇蜊壳弄",
-      "address": "南浔古镇蜊壳弄8号（近刘氏梯号,广惠宫,距6号停车场50米）",
-      "recommended_dishes": ["清蒸白鱼", "银鱼炒蛋", "绣花锦"],
-      "features": ["有包厢", "有大桌", "付费停车", "有宝宝椅"],
-      "links": { "dianping": "https://www.dianping.com/shop/H1y55af8C0coiurs" }
-    },
-    {
-      "name": "龙凤面馆(南西路)",
-      "type": "面馆/双交面",
-      "price_per_person": 28,
+      "name": "西塘老酒文化主题餐厅",
+      "type": "西塘本帮菜/主题餐厅",
+      "price_per_person": 53,
       "rating_amap": 4.5,
-      "confidence": "high",
-      "district": "古镇南东街",
-      "address": "南浔古镇南东街32号",
-      "recommended_dishes": ["酥肉双交面", "猪蹄面", "虾仁面"],
-      "features": ["30年老店", "双交面"],
+      "confidence": "medium",
+      "district": "西塘古镇下西街",
+      "address": "西塘古镇下西街1号(西园东边20米)",
+      "recommended_dishes": ["清蒸白水鱼", "老酒"],
+      "features": ["性价比高", "酒文化主题"],
       "links": {}
     },
     {
-      "name": "双桥面馆",
-      "type": "面馆/双交面",
-      "price_per_person": 27,
+      "name": "邹大鲜(月河店)",
+      "type": "江浙菜/嘉兴本帮菜",
+      "price_per_person": 115,
+      "rating_amap": 4.7,
+      "dianping_score": 4.3,
+      "bangdan_name": "浙江餐饮名店(5A级)",
+      "confidence": "medium",
+      "note": "⚠️ Amap4.7但B站UP主标记为'踩的美食坑'(播放2578)。环境好但味道有争议，建议门口拍照即可",
+      "district": "月河历史街区",
+      "address": "月河街中基路59号",
+      "recommended_dishes": ["蛋黄南瓜", "葱油拌面", "酱鸭", "咸肉腌笃鲜"],
+      "features": ["古色古香", "多个庭院", "看实物点餐", "排队严重"],
+      "links": {}
+    },
+    {
+      "name": "禾城陆稿荐酒楼·嘉兴本味(月河店)",
+      "type": "江浙菜/嘉兴本帮菜",
+      "price_per_person": 98,
+      "dianping_score": 4.3,
+      "confidence": "medium",
+      "district": "月河历史街区",
+      "address": "月河历史街区（距邹大鲜867m）",
+      "recommended_dishes": ["酱鸭", "烂糊鳝丝", "绣花锦"],
+      "features": ["老牌本帮菜", "本地人推荐"],
+      "links": {}
+    },
+    {
+      "name": "新塍农家菜(兴业街店)",
+      "type": "农家菜",
+      "price_per_person": 73,
       "rating_amap": 4.5,
-      "confidence": "high",
-      "district": "古镇南东街",
-      "address": "南东街173号",
-      "recommended_dishes": ["酥肉熏鱼面", "卤汁酥肉面", "臭豆腐", "双茭面"],
-      "features": ["老字号", "臭豆腐"],
-      "links": {}
-    },
-    {
-      "name": "卢记烧饼(南浔店)",
-      "type": "小吃/烧饼",
-      "price_per_person": 13,
-      "rating_amap": 4.5,
-      "confidence": "high",
-      "district": "古镇适园路",
-      "address": "南浔镇适园路414号",
-      "recommended_dishes": ["香酥鸡烧饼", "薄饼"],
-      "features": ["排队王", "现做现卖"],
-      "links": {}
-    },
-    {
-      "name": "浔蹄（总店）",
-      "type": "小吃/卤味",
-      "price_per_person": 37,
       "confidence": "medium",
-      "district": "古镇东大街",
-      "address": "东大街",
-      "recommended_dishes": ["酱香猪蹄", "鸡爪"],
-      "features": ["谢霆锋同款", "可真空打包"],
+      "district": "嘉兴秀洲区",
+      "address": "兴业街18-20号",
+      "recommended_dishes": ["练市羊肉煲", "葱油白条", "绣花锦"],
+      "features": ["土灶烧制", "性价比高", "¥150预算友好替代"],
       "links": {}
     },
     {
-      "name": "春兰茶室",
-      "type": "茶馆/三道茶",
-      "price_per_person": 20,
+      "name": "真真老老（粽子博物馆）",
+      "type": "百年老字号/粽子博物馆",
+      "price_per_person": 8,
       "confidence": "medium",
-      "district": "百间楼沿河",
-      "address": "百间楼沿河",
-      "recommended_dishes": ["风枵茶（甜）", "熏豆茶（咸香）", "绿茶（清口）"],
-      "features": ["三道茶体验", "临河"],
+      "district": "月河建国路",
+      "address": "建国路36号",
+      "recommended_dishes": ["麻辣鲜肉粽", "腐乳鲜肉粽"],
+      "features": ["百年老字号", "内有粽子博物馆", "免费参观"],
       "links": {}
     },
     {
-      "name": "匠心坊",
-      "type": "糕点/伴手礼",
-      "price_per_person": 20,
-      "confidence": "medium",
-      "district": "古镇南东街",
-      "address": "南东街",
-      "recommended_dishes": ["现蒸定胜糕", "血糯米糕"],
-      "features": ["现做现蒸", "伴手礼"],
+      "name": "钱塘人家（⚠️ 避雷）",
+      "type": "西塘本帮菜",
+      "price_per_person": 67,
+      "confidence": "low",
+      "note": "⚠️ 明确不建议：服务态度极差（点菜慢遭白眼）、菜是预先做好的（上菜不到3分钟）、19:30后不点单、卫生一般",
+      "district": "西塘古镇永宁桥下",
+      "address": "西塘镇北栅街1号",
+      "features": ["❌ 避雷"],
       "links": {}
     },
     {
-      "name": "野荸荠",
-      "type": "糕点/百年老字号",
-      "price_per_person": 20,
-      "confidence": "medium",
-      "district": "古镇东大街",
-      "address": "东大街",
-      "recommended_dishes": ["桔红糕", "薄荷糕"],
-      "features": ["1885年百年老字号", "伴手礼"],
+      "name": "西塘天下第一面（⚠️ 避雷）",
+      "type": "面馆",
+      "price_per_person": 18,
+      "confidence": "low",
+      "note": "⚠️ 不推荐：服务态度极其一般，容易引发冲突。肥肠面¥18价格实在但体验差",
+      "district": "西塘古镇",
+      "address": "西塘镇北栅街朝西埭10号",
+      "features": ["❌ 避雷", "24小时营业"],
       "links": {}
     }
   ],
   "sources": [
     "高德地图API（天气+POI评分+驾车路线）",
-    "大众点评 opencli（餐厅排名+口味/环境/服务评分+评论数）",
-    "小红书 opencli（用户笔记+点赞信号）",
-    "B站 opencli（探店视频+字幕关键引用）",
-    "WebSearch（多篇游记攻略交叉验证）"
+    "Brave WebSearch（携程美食林、知乎、TripAdvisor、什么值得买、上海本地宝等10+平台交叉验证）",
+    "B站（元气八眉菌215万播放、真探唐仁杰80万播放、小猪好吃喝等多UP主探店视频）",
+    "搜狗搜索（小红书/微博信息补充）"
   ]
 }
