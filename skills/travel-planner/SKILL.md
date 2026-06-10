@@ -134,7 +134,7 @@ curl -s http://127.0.0.1:8001/v1/chat/completions \
 - 小红书点赞数 + B站播放量（信号强度）
 - B站字幕中的诚实负面评价（如「服务差但菜品好」）
 
-## 步骤 5：输出 trip_data.json
+## 步骤 5：输出 trip_data.json + 质量校验
 
 将聚合结果写入 `output/trip_data.json`，Schema 参考 `references/trip-data-schema.md`。
 
@@ -144,9 +144,35 @@ curl -s http://127.0.0.1:8001/v1/chat/completions \
 - `timeline`：按时间排列的行程项（每项含 type/icon/title/rating/price/aggregation/links）
 - `restaurants`：餐厅矩阵表
 
+### 输出质量铁律（必须遵守）
+
+写出 trip_data.json 后，**必须逐项自检**，否则页面会出现 undefined 和缺失按钮：
+
+| # | 检查项 | 说明 |
+|---|--------|------|
+| 1 | **budget 字段** | 必须含 `food_per_person` 或 `food_per_person_tight/comfort/premium` 之一 |
+| 2 | **每个 timeline item** | 有坐标的必须带 `navi_url` 或 `links.amap_navi` |
+| 3 | **聚合链接** | aggregation 有 `bilibili_bvid` 的，links 必须含 `bilibili` |
+| 4 | **聚合链接** | aggregation 有 `dianping` 的，links 必须含 `dianping` 或 `dianping_*` |
+| 5 | **weather** | 必须含 `temp_high`、`temp_low` |
+| 6 | **transport** | 必须含 `distance_km`、`duration_min` |
+
+### 自动校验
+
+写出 JSON 后立即运行 lint，有错误必须修复：
+
+```bash
+python3 scripts/lint.py output/trip_data.json
+```
+
+**lint 报错 → 必须修复才能继续**，lint 警告 → 检查后修复或说明原因。
+
 ## 步骤 6：生成 HTML + 启动服务
 
 ```bash
+# 0. 先校验
+python3 scripts/lint.py output/trip_data.json
+
 # 1. JSON → HTML
 python3 scripts/inject.py output/trip_data.json
 
