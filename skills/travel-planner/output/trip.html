@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>周边游攻略</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F7F6F1;
+  --card-bg: #ffffff;
+  --card-hover: #f3f2ef;
+  --text: #1A1A18;
+  --text-secondary: #595957;
+  --muted: #8F8F8D;
+  --accent: #3A7D68;
+  --accent-hover: #52A688;
+  --accent-soft: #E8F2EE;
+  --amber: #D4920A;
+  --red: #D94F3D;
+  --sky: #3B87CC;
+  --sky-soft: #eaf3fb;
+  --border: #EBEBEA;
+  --hairline: #f0efec;
+  --shadow-sm: 0 1px 3px rgba(58,125,104,.06);
+  --shadow-md: 0 4px 16px rgba(58,125,104,.08);
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body {
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+/* === 头部 === */
+header {
+  background: var(--accent);
+  color: #fff;
+  padding: 28px 20px 32px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+header h1 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+  text-wrap: balance;
+}
+header .meta {
+  font-size: 14px;
+  opacity: .8;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+header .meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* === 天气卡片 === */
+.weather-card {
+  margin: -16px 14px 18px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+  z-index: 1;
+  border: 1px solid var(--hairline);
+  transition: box-shadow .2s;
+}
+.weather-card .icon { font-size: 44px; line-height: 1; }
+.weather-card .info { flex: 1; }
+.weather-card .temp {
+  font-family: 'Outfit', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.weather-card .desc { font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+/* === 地图 === */
+.map-section {
+  margin: 0 14px 18px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-sm);
+}
+.map-section img { width: 100%; display: block; }
+.map-section a {
+  display: block;
+  text-align: center;
+  padding: 12px;
+  background: var(--sky);
+  color: #fff;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 600;
+  transition: background .2s;
+}
+.map-section a:hover { background: #2d73b0; }
+
+/* === 预算切换 === */
+.budget-bar {
+  margin: 0 14px 18px;
+  display: flex;
+  gap: 6px;
+}
+.budget-bar button {
+  flex: 1;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .2s;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.budget-bar button:hover {
+  background: var(--card-hover);
+  border-color: var(--accent);
+}
+.budget-bar button.active-budget {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* === 时间线 === */
+.timeline {
+  margin: 0 14px 18px;
+  position: relative;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 4px;
+  bottom: 4px;
+  width: 1.5px;
+  background: var(--border);
+  border-radius: 1px;
+}
+.timeline-item {
+  position: relative;
+  padding-left: 56px;
+  margin-bottom: 20px;
+}
+.timeline-item:last-child { margin-bottom: 0; }
+.timeline-item .dot {
+  position: absolute;
+  left: 13px;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  z-index: 1;
+  box-shadow: 0 0 0 4px var(--bg);
+}
+.timeline-item.transport .dot { border-color: var(--sky); }
+.timeline-item.sight .dot { border-color: var(--accent); }
+.timeline-item.break .dot { border-color: var(--amber); }
+.timeline-item .time-label {
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+.timeline-item .item-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-wrap: balance;
+}
+.timeline-item .item-meta {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+/* === 聚合卡片 === */
+.agg-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+.agg-card .source-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.agg-card .source-row:last-child { border-bottom: none; }
+.agg-card .source-icon {
+  font-size: 15px;
+  min-width: 20px;
+  text-align: center;
+  opacity: .8;
+}
+.agg-card .source-content { flex: 1; }
+.agg-card .source-stats {
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* === 链接行 === */
+.link-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.link-row a {
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all .2s;
+  letter-spacing: 0.02em;
+}
+.link-row a:hover { transform: translateY(-1px); }
+.link-row a:active { transform: scale(0.97); }
+.link-dianping { background: var(--accent-soft); color: var(--accent); }
+.link-dianping:hover { background: #d6ede4; }
+.link-bilibili { background: #fde8ee; color: #d44a6e; }
+.link-bilibili:hover { background: #fddae4; }
+.link-xhs { background: #ffe8e8; color: #d43939; }
+.link-xhs:hover { background: #ffdbdb; }
+.link-navi { background: var(--sky-soft); color: var(--sky); }
+.link-navi:hover { background: #d7e9f7; }
+
+/* === 餐厅表格 === */
+.table-wrap {
+  margin: 0 14px 18px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-sm);
+}
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 400px;
+}
+.table-wrap th {
+  background: #f3f2ef;
+  padding: 10px 10px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table-wrap td { padding: 10px 10px; border-bottom: 1px solid var(--hairline); }
+.table-wrap tr:hover td { background: var(--card-hover); }
+.table-wrap tr:last-child td { border-bottom: none; }
+.table-wrap .conf-high { color: var(--green); font-weight: 700; }
+.table-wrap .conf-medium { color: var(--accent); }
+
+/* === 页脚 === */
+footer {
+  margin: 24px 14px 32px;
+  padding: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--hairline);
+}
+footer div + div { margin-top: 4px; }
+
+/* === 响应式 === */
+@media (min-width: 640px) {
+  body { padding: 0 0 40px; }
+  header { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+}
+
+/* === 预算切换动画 === */
+[data-budget-level] { transition: opacity .3s; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="trip-title">周边游攻略</h1>
+  <div class="meta">
+    <span id="trip-date"></span>
+    <span id="trip-weather"></span>
+    <span id="trip-transport"></span>
+    <span id="trip-budget-summary"></span>
+  </div>
+</header>
+
+<div id="weather-card" class="weather-card"></div>
+
+<div id="map-section" class="map-section"></div>
+
+<div id="budget-bar" class="budget-bar"></div>
+
+<div id="timeline" class="timeline"></div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>餐厅</th><th>评分</th><th>人均</th><th>置信度</th><th>链接</th>
+    </tr></thead>
+    <tbody id="restaurant-table"></tbody>
+  </table>
+</div>
+
+<footer>
+  <div>Sources &middot; <span id="source-list"></span></div>
+  <div>Generated by travel-planner &middot; <span id="gen-time"></span></div>
+</footer>
+
+<script>
+var TRIP_DATA = {"trip": {"title": "南浔古镇 · 逛吃一日自驾游", "subtitle": "江南封面，百间楼里寻味浔食", "date": "2026-06-13", "weather": {"condition": "小雨", "temp_high": 25, "temp_low": 20, "wind": "东南风1-3级", "tip": "带把伞更有烟雨江南意境，穿舒适防滑鞋"}, "transport": {"mode": "自驾", "distance_km": 91.8, "duration_min": 77, "tolls_oneway": 33, "origin": "杭州拱墅区", "destination": "南浔古镇", "parking": "南浔古镇6号地面停车场（近蜊壳弄美食街），全天封顶50元", "tip": "建议9:00前出发，避开出城早高峰"}, "budget": {"food_per_person": 128, "parking": 50, "tolls_roundtrip": 66, "gas_estimate": 130, "per_person_total": 215, "note": "人均饮食128元在预算150元以内；交通费用按一车2人分摊"}, "highlights": ["南浔古镇主街区免费开放，5A景区不花门票钱", "三家人均80元的点评4.8分餐厅扎堆蜊壳弄，到了看哪家不排队进哪家", "双交面（酥肉+爆鱼）是南浔独有面食，两碗面不过50元", "百间楼400年沿河民居群，傍晚光影绝美"]}, "route_map": {"static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&zoom=11&size=800*400&markers=mid,0xFF0000,A:120.155,30.274;mid,0x00AA00,B:120.439896,30.880910", "navi_url": "https://uri.amap.com/navigation?to=120.439896,30.880910,南浔古镇6号停车场&mode=car&policy=0"}, "timeline": [{"time": "09:00", "type": "transport", "icon": "🚗", "title": "杭州出发 → G25长深高速", "description": "从拱墅区出发，走G25长深高速→S12申嘉湖高速，约92km，77分钟，过路费33元", "location": {"lng": 120.155, "lat": 30.274, "name": "杭州拱墅区"}, "navi_url": "https://uri.amap.com/navigation?to=120.439896,30.880910,南浔古镇6号停车场&mode=car&policy=0", "rating": {}, "price_per_person": 0, "confidence": "high"}, {"time": "10:20", "type": "transport", "icon": "🅿️", "title": "南浔古镇6号停车场", "description": "全天封顶50元，紧邻蜊壳弄美食街，步行到核心景区仅3分钟", "location": {"lng": 120.437, "lat": 30.877, "name": "南浔古镇6号地面停车场"}, "navi_url": "https://uri.amap.com/navigation?to=120.437,30.877,南浔古镇6号停车场&mode=car", "rating": {}, "price_per_person": 25, "confidence": "high"}, {"time": "10:30-12:00", "type": "sight", "icon": "📍", "title": "南区古迹巡礼", "description": "小莲庄（十亩莲池，中西合璧园林）→ 嘉业堂藏书楼（全国最大私人藏书楼）→ 张石铭旧宅（「江南第一民宅」，木雕砖雕惊艳）→ 刘氏梯号·红房子（红色欧式外墙+中式庭院，必拍打卡点）。走马观花1.5小时刚好，想细看可买联票85元", "location": {"lng": 120.431, "lat": 30.873, "name": "南浔古镇南区"}, "navi_url": "https://uri.amap.com/navigation?to=120.431,30.873,小莲庄&mode=walk", "rating": {"amap": 4.9, "level": "5A景区"}, "price_per_person": 0, "confidence": "high", "links": {}}, {"time": "12:00-13:30", "type": "food", "icon": "🍜", "title": "午餐：蜊壳弄三选一（到现场看哪家不排队）", "description": "三家点评4.8分餐厅集中在蜊壳弄：王家大院（口味榜第1·6844评·人均86元）、星海棠（美食口味榜第1·3766评·人均80元）、小南楼（5382评·人均84元）。推荐菜：练市羊肉煲、葱油太湖白条、绣花锦、烂糊鳝丝、银鱼炒蛋", "location": {"lng": 120.437, "lat": 30.876, "name": "蜊壳弄美食街"}, "navi_url": "https://uri.amap.com/navigation?to=120.437,30.876,蜊壳弄&mode=walk", "rating": {"amap": 4.9}, "price_per_person": 84, "confidence": "high", "aggregation": {"primary": {"name": "王家大院·农家土菜馆", "dianping_score": 4.8, "dianping_taste": 4.8, "dianping_reviews": 6844, "bangdan": "南浔区江浙菜口味榜第1名", "price": 86}, "alternatives": [{"name": "星海棠餐厅·南浔味道", "dianping_score": 4.8, "dianping_taste": 4.8, "dianping_reviews": 3766, "bangdan": "南浔区美食口味榜第1名", "price": 80}, {"name": "小南楼·湖州特色菜", "dianping_score": 4.8, "dianping_taste": 4.8, "dianping_reviews": 5382, "price": 84}], "xhs_likes": 905}, "address": "南浔古镇蜊壳弄（6号停车场对面）", "features": ["有包厢", "有大桌", "付费停车"], "links": {"dianping_wang": "https://www.dianping.com/shop/G7UljJVZ2oyrzhu6", "dianping_xing": "https://www.dianping.com/shop/k1XHddhsF0QtssMD", "dianping_xiao": "https://www.dianping.com/shop/H1y55af8C0coiurs", "amap_navi": "https://uri.amap.com/navigation?to=120.437,30.876,蜊壳弄&mode=walk"}}, {"time": "13:30-15:00", "type": "sight", "icon": "🚤", "title": "北区水乡漫游", "description": "丝绸码头乘水上巴士（3元/人），沿河穿行至百间楼。百间楼是400年历史的沿河民居群，依河而建绵延400余米，是南浔最有烟火气的地方", "location": {"lng": 120.44, "lat": 30.881, "name": "百间楼"}, "navi_url": "https://uri.amap.com/navigation?to=120.440,30.881,百间楼&mode=walk", "rating": {"amap": 4.9}, "price_per_person": 3, "confidence": "high", "links": {}}, {"time": "15:00-15:30", "type": "break", "icon": "🍵", "title": "下午茶：春兰茶室 · 南浔三道茶", "description": "体验南浔待客之礼——三道茶：第一道「风枵茶」（甜糯米锅糍），第二道「熏豆茶」（咸香），第三道「绿茶」（清口回甘）。沿河而坐，看船来船往", "location": {"lng": 120.44, "lat": 30.88, "name": "春兰茶室"}, "navi_url": "https://uri.amap.com/navigation?to=120.440,30.880,春兰茶室&mode=walk", "rating": {}, "price_per_person": 20, "confidence": "medium", "links": {"amap_navi": "https://uri.amap.com/navigation?to=120.440,30.880,春兰茶室&mode=walk"}}, {"time": "15:30-16:00", "type": "food", "icon": "🥮", "title": "点心补充：匠心坊定胜糕 + 野荸荠桔红糕", "description": "匠心坊现场蒸制定胜糕（豆沙馅，软糯香甜，3-5元/个）；野荸荠是1885年百年老字号，桔红糕薄荷清香常温可存7天，适合做伴手礼带回家", "location": {"lng": 120.43, "lat": 30.877, "name": "南浔古镇南东街"}, "navi_url": "https://uri.amap.com/navigation?to=120.430,30.877,南浔古镇南东街&mode=walk", "rating": {}, "price_per_person": 15, "confidence": "medium", "links": {}}, {"time": "16:00-16:30", "type": "food", "icon": "🍜", "title": "「双交面」灵魂时刻：龙凤面馆 / 双桥面馆", "description": "南浔独有的双交面——「双交」即酥肉+爆鱼双浇头。龙凤面馆（30年老店，酥肉猪蹄虾仁，高德4.5分·28元），双桥面馆（酥肉熏鱼面+臭豆腐，高德4.5分·27元）。两碗面人均不到30元，这才是南浔的灵魂味道", "location": {"lng": 120.431, "lat": 30.877, "name": "龙凤面馆"}, "navi_url": "https://uri.amap.com/navigation?to=120.431,30.877,龙凤面馆&mode=walk", "rating": {"amap": 4.5}, "price_per_person": 28, "confidence": "high", "aggregation": {"bilibili_quotes": ["价位很友好", "腰花比较多比较大", "大哥连汤底都喝完了"], "bilibili_bvid": "BV1KM9mYHE5T", "xhs_likes": 904, "websearch_mentioned": true}, "address": "南浔古镇南东街32号", "features": ["30年老店", "双交面"], "links": {"amap_navi": "https://uri.amap.com/navigation?to=120.431,30.877,龙凤面馆&mode=walk"}}, {"time": "16:30-17:00", "type": "food", "icon": "🍖", "title": "扫街模式：浔蹄 + 卢记烧饼", "description": "浔蹄（谢霆锋同款，酱香浓郁入口即化，半份20元够两人尝）→ 卢记烧饼（高德4.5分·13元，香酥鸡烧饼，薄脆烧饼夹现炸香酥鸡，排队王）", "location": {"lng": 120.43, "lat": 30.872, "name": "东大街美食区"}, "rating": {"amap": 4.5}, "price_per_person": 33, "confidence": "high", "links": {"amap_navi": "https://uri.amap.com/navigation?to=120.423,30.872,卢记烧饼&mode=walk"}}, {"time": "17:00-17:30", "type": "sight", "icon": "🌅", "title": "百间楼金色时刻", "description": "傍晚光线斜照百间楼沿河老宅，红灯笼倒映水面，是全天最美的半小时。站在通津桥上拍全景，然后慢慢走回停车场", "location": {"lng": 120.44, "lat": 30.881, "name": "通津桥"}, "navi_url": "https://uri.amap.com/navigation?to=120.440,30.881,通津桥&mode=walk", "rating": {}, "price_per_person": 0, "confidence": "high", "links": {}}, {"time": "17:30", "type": "transport", "icon": "🚗", "title": "返程回杭", "description": "原路返回，预计18:50前到家。如不想赶晚高峰，可推迟到18:30出发，在古镇吃个简单晚餐再走", "location": {"lng": 120.155, "lat": 30.274, "name": "杭州拱墅区"}, "navi_url": "https://uri.amap.com/navigation?to=120.155,30.274,杭州拱墅区&mode=car&policy=0", "rating": {}, "price_per_person": 0, "confidence": "high", "links": {}}], "restaurants": [{"name": "王家大院·农家土菜馆(南浔古镇店)", "type": "浙菜/农家菜", "price_per_person": 86, "bangdan_rank": 1, "bangdan_name": "南浔区江浙菜口味榜第1名", "dianping_score": 4.8, "dianping_taste": 4.8, "dianping_environment": 4.8, "dianping_service": 4.8, "dianping_reviews": 6844, "confidence": "high", "district": "古镇蜊壳弄", "address": "南浔古镇蜊壳弄10号（近6号地面停车场）", "recommended_dishes": ["练市羊肉煲", "葱油太湖白条", "绣花锦", "烂糊鳝丝"], "features": ["有包厢", "有大桌", "付费停车"], "links": {"dianping": "https://www.dianping.com/shop/G7UljJVZ2oyrzhu6"}}, {"name": "星海棠餐厅·南浔味道", "type": "浙菜/农家菜", "price_per_person": 80, "bangdan_rank": 1, "bangdan_name": "南浔区美食口味榜第1名", "dianping_score": 4.8, "dianping_taste": 4.8, "dianping_environment": 4.8, "dianping_service": 4.8, "dianping_reviews": 3766, "confidence": "high", "district": "古镇蜊壳弄", "address": "南浔镇南东街蜊壳弄14号（6号停车场对面）", "recommended_dishes": ["银鱼炒蛋", "清蒸臭豆腐", "东坡肉"], "features": ["有包厢", "有大桌", "付费停车", "有宝宝椅"], "links": {"dianping": "https://www.dianping.com/shop/k1XHddhsF0QtssMD"}}, {"name": "小南楼·湖州特色菜(南浔古镇店)", "type": "私房菜/湖州菜", "price_per_person": 84, "dianping_score": 4.8, "dianping_taste": 4.8, "dianping_environment": 4.8, "dianping_service": 4.8, "dianping_reviews": 5382, "confidence": "high", "district": "古镇蜊壳弄", "address": "南浔古镇蜊壳弄8号（近刘氏梯号,广惠宫,距6号停车场50米）", "recommended_dishes": ["清蒸白鱼", "银鱼炒蛋", "绣花锦"], "features": ["有包厢", "有大桌", "付费停车", "有宝宝椅"], "links": {"dianping": "https://www.dianping.com/shop/H1y55af8C0coiurs"}}, {"name": "龙凤面馆(南西路)", "type": "面馆/双交面", "price_per_person": 28, "rating_amap": 4.5, "confidence": "high", "district": "古镇南东街", "address": "南浔古镇南东街32号", "recommended_dishes": ["酥肉双交面", "猪蹄面", "虾仁面"], "features": ["30年老店", "双交面"], "links": {}}, {"name": "双桥面馆", "type": "面馆/双交面", "price_per_person": 27, "rating_amap": 4.5, "confidence": "high", "district": "古镇南东街", "address": "南东街173号", "recommended_dishes": ["酥肉熏鱼面", "卤汁酥肉面", "臭豆腐", "双茭面"], "features": ["老字号", "臭豆腐"], "links": {}}, {"name": "卢记烧饼(南浔店)", "type": "小吃/烧饼", "price_per_person": 13, "rating_amap": 4.5, "confidence": "high", "district": "古镇适园路", "address": "南浔镇适园路414号", "recommended_dishes": ["香酥鸡烧饼", "薄饼"], "features": ["排队王", "现做现卖"], "links": {}}, {"name": "浔蹄（总店）", "type": "小吃/卤味", "price_per_person": 37, "confidence": "medium", "district": "古镇东大街", "address": "东大街", "recommended_dishes": ["酱香猪蹄", "鸡爪"], "features": ["谢霆锋同款", "可真空打包"], "links": {}}, {"name": "春兰茶室", "type": "茶馆/三道茶", "price_per_person": 20, "confidence": "medium", "district": "百间楼沿河", "address": "百间楼沿河", "recommended_dishes": ["风枵茶（甜）", "熏豆茶（咸香）", "绿茶（清口）"], "features": ["三道茶体验", "临河"], "links": {}}, {"name": "匠心坊", "type": "糕点/伴手礼", "price_per_person": 20, "confidence": "medium", "district": "古镇南东街", "address": "南东街", "recommended_dishes": ["现蒸定胜糕", "血糯米糕"], "features": ["现做现蒸", "伴手礼"], "links": {}}, {"name": "野荸荠", "type": "糕点/百年老字号", "price_per_person": 20, "confidence": "medium", "district": "古镇东大街", "address": "东大街", "recommended_dishes": ["桔红糕", "薄荷糕"], "features": ["1885年百年老字号", "伴手礼"], "links": {}}], "sources": ["高德地图API（天气+POI评分+驾车路线）", "大众点评 opencli（餐厅排名+口味/环境/服务评分+评论数）", "小红书 opencli（用户笔记+点赞信号）", "B站 opencli（探店视频+字幕关键引用）", "WebSearch（多篇游记攻略交叉验证）"]};
+
+function render() {
+  var d = TRIP_DATA;
+  var t = d.trip;
+
+  document.getElementById('trip-title').textContent = t.title;
+  document.getElementById('trip-date').innerHTML = t.date;
+  document.getElementById('trip-weather').innerHTML =
+    (t.weather.condition || '') + ' ' + t.weather.temp_high + '&deg; / ' + t.weather.temp_low + '&deg;';
+  document.getElementById('trip-transport').innerHTML =
+    t.transport.origin + ' &rarr; ' + t.transport.destination + ' &middot; ' + t.transport.distance_km + 'km / ' + t.transport.duration_min + 'min';
+  document.getElementById('trip-budget-summary').innerHTML =
+    '&yen;' + t.budget.food_per_person + '/person' + (t.budget.note ? '' : '');
+
+  // Weather card
+  var wc = document.getElementById('weather-card');
+  wc.innerHTML =
+    '<div class="icon">' + getWeatherIcon(t.weather.condition) + '</div>' +
+    '<div class="info">' +
+      '<div class="temp">' + t.weather.condition + ' &middot; ' + t.weather.temp_high + '&deg;C / ' + t.weather.temp_low + '&deg;C</div>' +
+      '<div class="desc">' + (t.weather.wind || '') + (t.weather.tip ? ' &middot; ' + t.weather.tip : '') + '</div>' +
+    '</div>';
+
+  // Map
+  var rm = d.route_map || {};
+  document.getElementById('map-section').innerHTML =
+    (rm.static_url ? '<img src="' + rm.static_url + '" alt="Route Map" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+    (rm.navi_url ? '<a href="' + rm.navi_url + '" target="_blank">打开高德地图导航 ↗</a>' : '');
+
+  // Budget switcher
+  var bg = t.budget;
+  var levels = ['经济版', '标准版', '品质版'];
+  var icons = ['', '', ''];
+  var btns = '';
+  for (var i = 0; i < levels.length; i++) {
+    btns += '<button class="' + (i === 0 ? 'active-budget' : '') + '" onclick="switchBudget(\'' + levels[i] + '\')">' +
+      levels[i] + '</button>';
+  }
+  document.getElementById('budget-bar').innerHTML = btns;
+
+  // Timeline
+  var tl = d.timeline || [];
+  var html = '';
+  for (var i = 0; i < tl.length; i++) {
+    var item = tl[i];
+    var aggHtml = '';
+    if (item.aggregation) {
+      aggHtml = '<div class="agg-card">';
+      var ag = item.aggregation;
+      if (ag.primary && ag.primary.dianping_score) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&starf;</span><span class="source-content">' +
+          ag.primary.name + ' &middot; Score ' + ag.primary.dianping_score + ' &middot; ' + ag.primary.dianping_reviews + ' reviews</span></div>';
+      }
+      if (ag.dianping && ag.dianping.score) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&starf;</span><span class="source-content">点评：' +
+          ag.dianping.score + ' (' + ag.dianping.taste + ' taste / ' + ag.dianping.environment + ' vibe / ' + ag.dianping.service + ' service) &middot; ' +
+          (ag.dianping.reviews || '') + ' reviews</span></div>';
+      }
+      if (ag.bilibili_quotes && ag.bilibili_quotes.length) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&#9654;</span><span class="source-content">' +
+          ag.bilibili_quotes.map(function(q) { return '&ldquo;' + q + '&rdquo;'; }).join(' ') + '</span>' +
+          '<span class="source-stats">' + (ag.bilibili_views ? (ag.bilibili_views/10000).toFixed(0) + 'k views' : '') + '</span></div>';
+      }
+      if (ag.alternatives && ag.alternatives.length) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&diams;</span><span class="source-content">Also: ' +
+          ag.alternatives.map(function(a) { return a.name + ' (' + a.dianping_score + ')'; }).join(', ') + '</span></div>';
+      }
+      if (ag.xhs_likes) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&sect;</span><span class="source-content">小红书：' + ag.xhs_likes + ' 推荐</span></div>';
+      }
+      aggHtml += '</div>';
+    }
+
+    var linksHtml = '';
+    if (item.links) {
+      linksHtml = '<div class="link-row">';
+      if (item.links.amap_navi || item.navi_url) linksHtml += '<a class="link-navi" href="' + (item.links.amap_navi || item.navi_url) + '" target="_blank">导航</a>';
+      if (item.links.dianping) linksHtml += '<a class="link-dianping" href="' + item.links.dianping + '" target="_blank">点评</a>';
+      if (item.links.dianping_wang) linksHtml += '<a class="link-dianping" href="' + item.links.dianping_wang + '" target="_blank">点评</a>';
+      if (item.links.bilibili) linksHtml += '<a class="link-bilibili" href="' + item.links.bilibili + '" target="_blank">B站</a>';
+      if (item.links.xhs) linksHtml += '<a class="link-xhs" href="' + item.links.xhs + '" target="_blank">小红书</a>';
+      linksHtml += '</div>';
+    }
+
+    var ratingStr = '';
+    if (item.rating && item.rating.amap) {
+      ratingStr = ' &middot; <span style="color:var(--green)">&starf; ' + item.rating.amap + '</span>';
+    }
+    var priceStr = item.price_per_person ? ' &middot; <span style="font-weight:500">&yen;' + item.price_per_person + '/person</span>' : '';
+
+    html += '<div class="timeline-item ' + (item.type || '') + '">' +
+      '<div class="dot">' + (item.icon || '') + '</div>' +
+      '<div class="time-label">' + item.time + '</div>' +
+      '<div class="item-title">' + item.title + '<span style="font-size:14px;color:var(--muted);font-weight:400">' + ratingStr + priceStr + '</span></div>' +
+      (item.description ? '<div class="item-meta">' + item.description + '</div>' : '') +
+      (item.address ? '<div class="item-meta" style="font-size:11px">' + item.address + '</div>' : '') +
+      aggHtml + linksHtml +
+      '</div>';
+  }
+  document.getElementById('timeline').innerHTML = html;
+
+  // Restaurant table
+  var restaurants = d.restaurants || [];
+  var tbody = '';
+  for (var i = 0; i < restaurants.length; i++) {
+    var r = restaurants[i];
+    var links = '';
+    if (r.links) {
+      if (r.links.dianping) links += '<a href="' + r.links.dianping + '" target="_blank" style="color:var(--accent);text-decoration:none;margin-right:6px;font-weight:600">点评</a>';
+      if (r.links.bilibili) links += '<a href="' + r.links.bilibili + '" target="_blank" style="color:#d44a6e;text-decoration:none;margin-right:6px;font-weight:600">B</a>';
+      if (r.links.xhs) links += '<a href="' + r.links.xhs + '" target="_blank" style="color:#d43939;text-decoration:none;font-weight:600">小红书</a>';
+    }
+    var confClass = r.confidence === 'high' ? 'conf-high' : (r.confidence === 'medium' ? 'conf-medium' : '');
+    var confLabel = r.confidence === 'high' ? '高' : (r.confidence === 'medium' ? '中' : '低');
+    var ratingStr2 = r.rating_amap ? '&starf;' + r.rating_amap : (r.dianping_score ? '&starf;' + r.dianping_score : '-');
+    tbody += '<tr>' +
+      '<td><strong>' + r.name + '</strong><br><span style="font-size:13px;color:var(--muted)">' + (r.district || r.type || '') + '</span></td>' +
+      '<td>' + ratingStr2 + '</td>' +
+      '<td>&yen;' + (r.price_per_person || '-') + '</td>' +
+      '<td class="' + confClass + '">' + confLabel + '</td>' +
+      '<td>' + links + '</td>' +
+      '</tr>';
+  }
+  document.getElementById('restaurant-table').innerHTML = tbody;
+
+  // Footer
+  document.getElementById('source-list').textContent = (d.sources || []).join(' &middot; ');
+  document.getElementById('gen-time').textContent = new Date().toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function getWeatherIcon(condition) {
+  var c = condition || '';
+  if (c.indexOf('晴') >= 0) return '☀';
+  if (c.indexOf('多云') >= 0) return '⛅';
+  if (c.indexOf('阴') >= 0) return '☁';
+  if (c.indexOf('雨') >= 0) return '🌧';
+  if (c.indexOf('雪') >= 0) return '❄';
+  return '🌤';
+}
+
+function switchBudget(level) {
+  var btns = document.querySelectorAll('#budget-bar button');
+  var levels = ['经济版', '标准版', '品质版'];
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active-budget', levels[i] === level);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', render);
+</script>
+</body>
+</html>

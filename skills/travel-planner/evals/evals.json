@@ -1,0 +1,23 @@
+{
+  "skill_name": "travel-planner",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "这周末想从杭州开车出去玩一天，有什么推荐吗？我对吃比较感兴趣",
+      "expected_output": "skill 触发后应执行多源搜索、生成 HTML 攻略页面、返回公网 URL",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "帮我规划一个上海周边周末短途游，预算人均200以内",
+      "expected_output": "skill 触发后应从上海出发搜索周边目的地，生成含预算路线的攻略",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "周末好无聊，附近有什么好吃的？我在杭州",
+      "expected_output": "skill 应被触发，因为提到了杭州+周末+吃",
+      "files": []
+    }
+  ]
+}

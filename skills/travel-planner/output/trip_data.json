@@ -1,0 +1,374 @@
+{
+  "trip": {
+    "title": "南浔古镇 · 逛吃一日自驾游",
+    "subtitle": "江南封面，百间楼里寻味浔食",
+    "date": "2026-06-13",
+    "weather": {
+      "condition": "小雨",
+      "temp_high": 25,
+      "temp_low": 20,
+      "wind": "东南风1-3级",
+      "tip": "带把伞更有烟雨江南意境，穿舒适防滑鞋"
+    },
+    "transport": {
+      "mode": "自驾",
+      "distance_km": 91.8,
+      "duration_min": 77,
+      "tolls_oneway": 33,
+      "origin": "杭州拱墅区",
+      "destination": "南浔古镇",
+      "parking": "南浔古镇6号地面停车场（近蜊壳弄美食街），全天封顶50元",
+      "tip": "建议9:00前出发，避开出城早高峰"
+    },
+    "budget": {
+      "food_per_person": 128,
+      "parking": 50,
+      "tolls_roundtrip": 66,
+      "gas_estimate": 130,
+      "per_person_total": 215,
+      "note": "人均饮食128元在预算150元以内；交通费用按一车2人分摊"
+    },
+    "highlights": [
+      "南浔古镇主街区免费开放，5A景区不花门票钱",
+      "三家人均80元的点评4.8分餐厅扎堆蜊壳弄，到了看哪家不排队进哪家",
+      "双交面（酥肉+爆鱼）是南浔独有面食，两碗面不过50元",
+      "百间楼400年沿河民居群，傍晚光影绝美"
+    ]
+  },
+  "route_map": {
+    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&zoom=11&size=800*400&markers=mid,0xFF0000,A:120.155,30.274;mid,0x00AA00,B:120.439896,30.880910",
+    "navi_url": "https://uri.amap.com/navigation?to=120.439896,30.880910,南浔古镇6号停车场&mode=car&policy=0"
+  },
+  "timeline": [
+    {
+      "time": "09:00",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "杭州出发 → G25长深高速",
+      "description": "从拱墅区出发，走G25长深高速→S12申嘉湖高速，约92km，77分钟，过路费33元",
+      "location": { "lng": 120.155, "lat": 30.274, "name": "杭州拱墅区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.439896,30.880910,南浔古镇6号停车场&mode=car&policy=0",
+      "rating": {},
+      "price_per_person": 0,
+      "confidence": "high"
+    },
+    {
+      "time": "10:20",
+      "type": "transport",
+      "icon": "🅿️",
+      "title": "南浔古镇6号停车场",
+      "description": "全天封顶50元，紧邻蜊壳弄美食街，步行到核心景区仅3分钟",
+      "location": { "lng": 120.437, "lat": 30.877, "name": "南浔古镇6号地面停车场" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.437,30.877,南浔古镇6号停车场&mode=car",
+      "rating": {},
+      "price_per_person": 25,
+      "confidence": "high"
+    },
+    {
+      "time": "10:30-12:00",
+      "type": "sight",
+      "icon": "📍",
+      "title": "南区古迹巡礼",
+      "description": "小莲庄（十亩莲池，中西合璧园林）→ 嘉业堂藏书楼（全国最大私人藏书楼）→ 张石铭旧宅（「江南第一民宅」，木雕砖雕惊艳）→ 刘氏梯号·红房子（红色欧式外墙+中式庭院，必拍打卡点）。走马观花1.5小时刚好，想细看可买联票85元",
+      "location": { "lng": 120.431, "lat": 30.873, "name": "南浔古镇南区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.431,30.873,小莲庄&mode=walk",
+      "rating": { "amap": 4.9, "level": "5A景区" },
+      "price_per_person": 0,
+      "confidence": "high",
+      "links": {}
+    },
+    {
+      "time": "12:00-13:30",
+      "type": "food",
+      "icon": "🍜",
+      "title": "午餐：蜊壳弄三选一（到现场看哪家不排队）",
+      "description": "三家点评4.8分餐厅集中在蜊壳弄：王家大院（口味榜第1·6844评·人均86元）、星海棠（美食口味榜第1·3766评·人均80元）、小南楼（5382评·人均84元）。推荐菜：练市羊肉煲、葱油太湖白条、绣花锦、烂糊鳝丝、银鱼炒蛋",
+      "location": { "lng": 120.437, "lat": 30.876, "name": "蜊壳弄美食街" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.437,30.876,蜊壳弄&mode=walk",
+      "rating": { "amap": 4.9 },
+      "price_per_person": 84,
+      "confidence": "high",
+      "aggregation": {
+        "primary": {
+          "name": "王家大院·农家土菜馆",
+          "dianping_score": 4.8,
+          "dianping_taste": 4.8,
+          "dianping_reviews": 6844,
+          "bangdan": "南浔区江浙菜口味榜第1名",
+          "price": 86
+        },
+        "alternatives": [
+          {
+            "name": "星海棠餐厅·南浔味道",
+            "dianping_score": 4.8,
+            "dianping_taste": 4.8,
+            "dianping_reviews": 3766,
+            "bangdan": "南浔区美食口味榜第1名",
+            "price": 80
+          },
+          {
+            "name": "小南楼·湖州特色菜",
+            "dianping_score": 4.8,
+            "dianping_taste": 4.8,
+            "dianping_reviews": 5382,
+            "price": 84
+          }
+        ],
+        "xhs_likes": 905
+      },
+      "address": "南浔古镇蜊壳弄（6号停车场对面）",
+      "features": ["有包厢", "有大桌", "付费停车"],
+      "links": {
+        "dianping_wang": "https://www.dianping.com/shop/G7UljJVZ2oyrzhu6",
+        "dianping_xing": "https://www.dianping.com/shop/k1XHddhsF0QtssMD",
+        "dianping_xiao": "https://www.dianping.com/shop/H1y55af8C0coiurs",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.437,30.876,蜊壳弄&mode=walk"
+      }
+    },
+    {
+      "time": "13:30-15:00",
+      "type": "sight",
+      "icon": "🚤",
+      "title": "北区水乡漫游",
+      "description": "丝绸码头乘水上巴士（3元/人），沿河穿行至百间楼。百间楼是400年历史的沿河民居群，依河而建绵延400余米，是南浔最有烟火气的地方",
+      "location": { "lng": 120.440, "lat": 30.881, "name": "百间楼" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.440,30.881,百间楼&mode=walk",
+      "rating": { "amap": 4.9 },
+      "price_per_person": 3,
+      "confidence": "high",
+      "links": {}
+    },
+    {
+      "time": "15:00-15:30",
+      "type": "break",
+      "icon": "🍵",
+      "title": "下午茶：春兰茶室 · 南浔三道茶",
+      "description": "体验南浔待客之礼——三道茶：第一道「风枵茶」（甜糯米锅糍），第二道「熏豆茶」（咸香），第三道「绿茶」（清口回甘）。沿河而坐，看船来船往",
+      "location": { "lng": 120.440, "lat": 30.880, "name": "春兰茶室" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.440,30.880,春兰茶室&mode=walk",
+      "rating": {},
+      "price_per_person": 20,
+      "confidence": "medium",
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.440,30.880,春兰茶室&mode=walk"
+      }
+    },
+    {
+      "time": "15:30-16:00",
+      "type": "food",
+      "icon": "🥮",
+      "title": "点心补充：匠心坊定胜糕 + 野荸荠桔红糕",
+      "description": "匠心坊现场蒸制定胜糕（豆沙馅，软糯香甜，3-5元/个）；野荸荠是1885年百年老字号，桔红糕薄荷清香常温可存7天，适合做伴手礼带回家",
+      "location": { "lng": 120.430, "lat": 30.877, "name": "南浔古镇南东街" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.430,30.877,南浔古镇南东街&mode=walk",
+      "rating": {},
+      "price_per_person": 15,
+      "confidence": "medium",
+      "links": {}
+    },
+    {
+      "time": "16:00-16:30",
+      "type": "food",
+      "icon": "🍜",
+      "title": "「双交面」灵魂时刻：龙凤面馆 / 双桥面馆",
+      "description": "南浔独有的双交面——「双交」即酥肉+爆鱼双浇头。龙凤面馆（30年老店，酥肉猪蹄虾仁，高德4.5分·28元），双桥面馆（酥肉熏鱼面+臭豆腐，高德4.5分·27元）。两碗面人均不到30元，这才是南浔的灵魂味道",
+      "location": { "lng": 120.431, "lat": 30.877, "name": "龙凤面馆" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.431,30.877,龙凤面馆&mode=walk",
+      "rating": { "amap": 4.5 },
+      "price_per_person": 28,
+      "confidence": "high",
+      "aggregation": {
+        "bilibili_quotes": ["价位很友好", "腰花比较多比较大", "大哥连汤底都喝完了"],
+        "bilibili_bvid": "BV1KM9mYHE5T",
+        "xhs_likes": 904,
+        "websearch_mentioned": true
+      },
+      "address": "南浔古镇南东街32号",
+      "features": ["30年老店", "双交面"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.431,30.877,龙凤面馆&mode=walk"
+      }
+    },
+    {
+      "time": "16:30-17:00",
+      "type": "food",
+      "icon": "🍖",
+      "title": "扫街模式：浔蹄 + 卢记烧饼",
+      "description": "浔蹄（谢霆锋同款，酱香浓郁入口即化，半份20元够两人尝）→ 卢记烧饼（高德4.5分·13元，香酥鸡烧饼，薄脆烧饼夹现炸香酥鸡，排队王）",
+      "location": { "lng": 120.430, "lat": 30.872, "name": "东大街美食区" },
+      "rating": { "amap": 4.5 },
+      "price_per_person": 33,
+      "confidence": "high",
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.423,30.872,卢记烧饼&mode=walk"
+      }
+    },
+    {
+      "time": "17:00-17:30",
+      "type": "sight",
+      "icon": "🌅",
+      "title": "百间楼金色时刻",
+      "description": "傍晚光线斜照百间楼沿河老宅，红灯笼倒映水面，是全天最美的半小时。站在通津桥上拍全景，然后慢慢走回停车场",
+      "location": { "lng": 120.440, "lat": 30.881, "name": "通津桥" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.440,30.881,通津桥&mode=walk",
+      "rating": {},
+      "price_per_person": 0,
+      "confidence": "high",
+      "links": {}
+    },
+    {
+      "time": "17:30",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "返程回杭",
+      "description": "原路返回，预计18:50前到家。如不想赶晚高峰，可推迟到18:30出发，在古镇吃个简单晚餐再走",
+      "location": { "lng": 120.155, "lat": 30.274, "name": "杭州拱墅区" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.155,30.274,杭州拱墅区&mode=car&policy=0",
+      "rating": {},
+      "price_per_person": 0,
+      "confidence": "high",
+      "links": {}
+    }
+  ],
+  "restaurants": [
+    {
+      "name": "王家大院·农家土菜馆(南浔古镇店)",
+      "type": "浙菜/农家菜",
+      "price_per_person": 86,
+      "bangdan_rank": 1,
+      "bangdan_name": "南浔区江浙菜口味榜第1名",
+      "dianping_score": 4.8,
+      "dianping_taste": 4.8,
+      "dianping_environment": 4.8,
+      "dianping_service": 4.8,
+      "dianping_reviews": 6844,
+      "confidence": "high",
+      "district": "古镇蜊壳弄",
+      "address": "南浔古镇蜊壳弄10号（近6号地面停车场）",
+      "recommended_dishes": ["练市羊肉煲", "葱油太湖白条", "绣花锦", "烂糊鳝丝"],
+      "features": ["有包厢", "有大桌", "付费停车"],
+      "links": { "dianping": "https://www.dianping.com/shop/G7UljJVZ2oyrzhu6" }
+    },
+    {
+      "name": "星海棠餐厅·南浔味道",
+      "type": "浙菜/农家菜",
+      "price_per_person": 80,
+      "bangdan_rank": 1,
+      "bangdan_name": "南浔区美食口味榜第1名",
+      "dianping_score": 4.8,
+      "dianping_taste": 4.8,
+      "dianping_environment": 4.8,
+      "dianping_service": 4.8,
+      "dianping_reviews": 3766,
+      "confidence": "high",
+      "district": "古镇蜊壳弄",
+      "address": "南浔镇南东街蜊壳弄14号（6号停车场对面）",
+      "recommended_dishes": ["银鱼炒蛋", "清蒸臭豆腐", "东坡肉"],
+      "features": ["有包厢", "有大桌", "付费停车", "有宝宝椅"],
+      "links": { "dianping": "https://www.dianping.com/shop/k1XHddhsF0QtssMD" }
+    },
+    {
+      "name": "小南楼·湖州特色菜(南浔古镇店)",
+      "type": "私房菜/湖州菜",
+      "price_per_person": 84,
+      "dianping_score": 4.8,
+      "dianping_taste": 4.8,
+      "dianping_environment": 4.8,
+      "dianping_service": 4.8,
+      "dianping_reviews": 5382,
+      "confidence": "high",
+      "district": "古镇蜊壳弄",
+      "address": "南浔古镇蜊壳弄8号（近刘氏梯号,广惠宫,距6号停车场50米）",
+      "recommended_dishes": ["清蒸白鱼", "银鱼炒蛋", "绣花锦"],
+      "features": ["有包厢", "有大桌", "付费停车", "有宝宝椅"],
+      "links": { "dianping": "https://www.dianping.com/shop/H1y55af8C0coiurs" }
+    },
+    {
+      "name": "龙凤面馆(南西路)",
+      "type": "面馆/双交面",
+      "price_per_person": 28,
+      "rating_amap": 4.5,
+      "confidence": "high",
+      "district": "古镇南东街",
+      "address": "南浔古镇南东街32号",
+      "recommended_dishes": ["酥肉双交面", "猪蹄面", "虾仁面"],
+      "features": ["30年老店", "双交面"],
+      "links": {}
+    },
+    {
+      "name": "双桥面馆",
+      "type": "面馆/双交面",
+      "price_per_person": 27,
+      "rating_amap": 4.5,
+      "confidence": "high",
+      "district": "古镇南东街",
+      "address": "南东街173号",
+      "recommended_dishes": ["酥肉熏鱼面", "卤汁酥肉面", "臭豆腐", "双茭面"],
+      "features": ["老字号", "臭豆腐"],
+      "links": {}
+    },
+    {
+      "name": "卢记烧饼(南浔店)",
+      "type": "小吃/烧饼",
+      "price_per_person": 13,
+      "rating_amap": 4.5,
+      "confidence": "high",
+      "district": "古镇适园路",
+      "address": "南浔镇适园路414号",
+      "recommended_dishes": ["香酥鸡烧饼", "薄饼"],
+      "features": ["排队王", "现做现卖"],
+      "links": {}
+    },
+    {
+      "name": "浔蹄（总店）",
+      "type": "小吃/卤味",
+      "price_per_person": 37,
+      "confidence": "medium",
+      "district": "古镇东大街",
+      "address": "东大街",
+      "recommended_dishes": ["酱香猪蹄", "鸡爪"],
+      "features": ["谢霆锋同款", "可真空打包"],
+      "links": {}
+    },
+    {
+      "name": "春兰茶室",
+      "type": "茶馆/三道茶",
+      "price_per_person": 20,
+      "confidence": "medium",
+      "district": "百间楼沿河",
+      "address": "百间楼沿河",
+      "recommended_dishes": ["风枵茶（甜）", "熏豆茶（咸香）", "绿茶（清口）"],
+      "features": ["三道茶体验", "临河"],
+      "links": {}
+    },
+    {
+      "name": "匠心坊",
+      "type": "糕点/伴手礼",
+      "price_per_person": 20,
+      "confidence": "medium",
+      "district": "古镇南东街",
+      "address": "南东街",
+      "recommended_dishes": ["现蒸定胜糕", "血糯米糕"],
+      "features": ["现做现蒸", "伴手礼"],
+      "links": {}
+    },
+    {
+      "name": "野荸荠",
+      "type": "糕点/百年老字号",
+      "price_per_person": 20,
+      "confidence": "medium",
+      "district": "古镇东大街",
+      "address": "东大街",
+      "recommended_dishes": ["桔红糕", "薄荷糕"],
+      "features": ["1885年百年老字号", "伴手礼"],
+      "links": {}
+    }
+  ],
+  "sources": [
+    "高德地图API（天气+POI评分+驾车路线）",
+    "大众点评 opencli（餐厅排名+口味/环境/服务评分+评论数）",
+    "小红书 opencli（用户笔记+点赞信号）",
+    "B站 opencli（探店视频+字幕关键引用）",
+    "WebSearch（多篇游记攻略交叉验证）"
+  ]
+}
