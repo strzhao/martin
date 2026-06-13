@@ -1,0 +1,280 @@
+{
+  "recommendation": {
+    "title": "杭州 · 本帮菜必吃榜 Top 10",
+    "city": "杭州",
+    "date": "2026-06-13",
+    "cuisine_focus": "本帮菜/杭帮菜",
+    "budget": {
+      "economy": 30,
+      "standard": 80,
+      "premium": 200
+    }
+  },
+  "restaurants": [
+    {
+      "name": "寻宝记绍兴菜",
+      "rank": 1,
+      "cuisine": "绍兴菜",
+      "district": "拱墅区",
+      "address": "拱宸桥西直街32号",
+      "price_per_person": 77,
+      "must_try": ["醉蟹", "臭豆腐", "绍兴三鲜"],
+      "confidence": "high",
+      "scoring": {
+        "dianping": {
+          "score": 4.4,
+          "taste": 4.4,
+          "environment": 4.6,
+          "service": 4.5,
+          "reviews": 39465
+        },
+        "amap": {
+          "score": 4.7,
+          "bangdan_rank": 1
+        },
+        "bilibili_quotes": ["样样都好吃", "杭州必打卡绍兴菜"],
+        "bilibili_bvid": "BV1PG411c7K5",
+        "bilibili_views": 3200727,
+        "xhs_likes": 485
+      },
+      "features": ["有大桌", "付费停车", "可预订"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5abc123def",
+        "bilibili": "https://www.bilibili.com/video/BV1PG411c7K5",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.130,30.320,寻宝记绍兴菜"
+      },
+      "tiers": {
+        "economy": {
+          "dishes": "招牌面+小吃",
+          "price": 30
+        },
+        "standard": {
+          "dishes": "2热菜+1凉菜+主食",
+          "price": 77
+        },
+        "premium": {
+          "dishes": "4热菜+2凉菜+甜品",
+          "price": 150
+        }
+      }
+    },
+    {
+      "name": "杭州酒家",
+      "rank": 2,
+      "cuisine": "杭帮菜",
+      "district": "上城区",
+      "address": "延安路205号",
+      "price_per_person": 95,
+      "must_try": ["西湖醋鱼", "东坡肉", "龙井虾仁"],
+      "confidence": "high",
+      "scoring": {
+        "dianping": {
+          "score": 4.6,
+          "taste": 4.5,
+          "environment": 4.4,
+          "service": 4.3,
+          "reviews": 52100
+        },
+        "amap": {
+          "score": 4.8,
+          "bangdan_rank": 2
+        },
+        "xhs_likes": 712
+      },
+      "features": ["老字号", "包厢", "有停车位"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5def456ghi",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.168,30.260,杭州酒家"
+      },
+      "tiers": {
+        "economy": {
+          "dishes": "片儿川+小笼包",
+          "price": 35
+        },
+        "standard": {
+          "dishes": "2热菜+1汤+主食",
+          "price": 95
+        },
+        "premium": {
+          "dishes": "4热菜+1汤+2凉菜+甜品",
+          "price": 180
+        }
+      }
+    },
+    {
+      "name": "新白鹿餐厅",
+      "rank": 3,
+      "cuisine": "杭帮菜",
+      "district": "西湖区",
+      "address": "湖滨路18号银泰in77 C区3楼",
+      "price_per_person": 68,
+      "must_try": ["蛋黄鸡翅", "糖醋里脊", "西湖莼菜羹"],
+      "confidence": "high",
+      "scoring": {
+        "dianping": {
+          "score": 4.3,
+          "taste": 4.2,
+          "environment": 4.1,
+          "service": 4.0,
+          "reviews": 28700
+        },
+        "amap": {
+          "score": 4.5,
+          "bangdan_rank": 5
+        },
+        "bilibili_quotes": ["性价比之王", "排队两小时也值"],
+        "bilibili_bvid": "BV1fG4y1h7aL",
+        "bilibili_views": 1850000
+      },
+      "features": ["性价比高", "排队较长", "有宝宝椅"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5ghi789jkl",
+        "bilibili": "https://www.bilibili.com/video/BV1fG4y1h7aL",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.162,30.251,新白鹿餐厅"
+      },
+      "tiers": {
+        "economy": {
+          "dishes": "1热菜+1凉菜+米饭",
+          "price": 30
+        },
+        "standard": {
+          "dishes": "2热菜+1凉菜+米饭",
+          "price": 68
+        },
+        "premium": {
+          "dishes": "4热菜+2凉菜+甜品",
+          "price": 130
+        }
+      }
+    },
+    {
+      "name": "绿茶餐厅",
+      "rank": 4,
+      "cuisine": "融合菜",
+      "district": "西湖区",
+      "address": "龙井路83号",
+      "price_per_person": 60,
+      "must_try": ["绿茶烤鸡", "面包诱惑", "石锅蛙"],
+      "confidence": "medium",
+      "scoring": {
+        "dianping": {
+          "score": 4.2,
+          "taste": 4.1,
+          "environment": 4.5,
+          "service": 3.9,
+          "reviews": 19500
+        },
+        "amap": {
+          "score": 4.3,
+          "bangdan_rank": 8
+        }
+      },
+      "features": ["环境好", "有露天位", "适合拍照"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5jkl012mno",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.123,30.234,绿茶餐厅"
+      },
+      "tiers": {
+        "economy": {
+          "dishes": "1热菜+米饭",
+          "price": 28
+        },
+        "standard": {
+          "dishes": "2热菜+1凉菜+米饭",
+          "price": 60
+        },
+        "premium": {
+          "dishes": "4热菜+2凉菜+甜品",
+          "price": 120
+        }
+      }
+    },
+    {
+      "name": "外婆家",
+      "rank": 5,
+      "cuisine": "杭帮菜",
+      "district": "拱墅区",
+      "address": "莫干山路969号城西银泰城4F",
+      "price_per_person": 55,
+      "must_try": ["外婆红烧肉", "茶香鸡", "蒜蓉粉丝虾"],
+      "confidence": "medium",
+      "scoring": {
+        "amap": {
+          "score": 4.2,
+          "bangdan_rank": 12
+        },
+        "xhs_likes": 320,
+        "bilibili_quotes": ["杭州人的食堂"],
+        "bilibili_bvid": "BV1oK4y1S7pN",
+        "bilibili_views": 950000
+      },
+      "features": ["连锁品牌", "上菜快", "有包厢"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5mno345pqr",
+        "bilibili": "https://www.bilibili.com/video/BV1oK4y1S7pN",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.117,30.298,外婆家"
+      },
+      "tiers": {
+        "economy": {
+          "dishes": "1热菜+米饭",
+          "price": 25
+        },
+        "standard": {
+          "dishes": "2热菜+1凉菜+米饭",
+          "price": 55
+        },
+        "premium": {
+          "dishes": "4热菜+2凉菜+甜品",
+          "price": 100
+        }
+      }
+    },
+    {
+      "name": "知味观",
+      "rank": 6,
+      "cuisine": "杭帮菜/小吃",
+      "district": "上城区",
+      "address": "仁和路83号",
+      "price_per_person": 42,
+      "must_try": ["猫耳朵", "幸福双", "片儿川"],
+      "confidence": "low",
+      "scoring": {
+        "dianping": {
+          "score": 4.1,
+          "taste": 4.1,
+          "environment": 3.8,
+          "service": 3.7,
+          "reviews": 12300
+        },
+        "amap": {
+          "score": 4.0
+        }
+      },
+      "features": ["老字号小吃", "价格亲民"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5pqr678stu",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.169,30.252,知味观"
+      },
+      "tiers": {
+        "economy": {
+          "dishes": "1份主食+1份小食",
+          "price": 22
+        },
+        "standard": {
+          "dishes": "1热菜+2份小吃+主食",
+          "price": 42
+        },
+        "premium": {
+          "dishes": "2热菜+1凉菜+3份小吃+主食",
+          "price": 80
+        }
+      }
+    }
+  ],
+  "sources": [
+    "高德API",
+    "大众点评(opencli)",
+    "小红书(opencli)",
+    "B站(opencli)"
+  ]
+}

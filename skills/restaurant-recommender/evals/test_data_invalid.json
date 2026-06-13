@@ -1,0 +1,108 @@
+{
+  "recommendation": {
+    "city": "杭州",
+    "date": "2026-06-13",
+    "cuisine_focus": "本帮菜/杭帮菜"
+  },
+  "restaurants": [
+    {
+      "name": "寻宝记绍兴菜",
+      "rank": 1,
+      "cuisine": "绍兴菜",
+      "district": "拱墅区",
+      "address": "拱宸桥西直街32号",
+      "price_per_person": 77,
+      "must_try": ["醉蟹", "臭豆腐"],
+      "confidence": "high",
+      "scoring": {
+        "dianping": {
+          "score": 4.4,
+          "taste": 4.4,
+          "environment": 4.6,
+          "service": 4.5,
+          "reviews": 39465
+        },
+        "amap": {
+          "score": 4.7,
+          "bangdan_rank": 1
+        }
+      },
+      "features": ["有大桌"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5abc123def",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.130,30.320"
+      },
+      "tiers": {
+        "economy": { "dishes": "招牌面+小吃", "price": 30 },
+        "standard": { "dishes": "2热菜+1凉菜+主食", "price": 77 },
+        "premium": { "dishes": "4热菜+2凉菜+甜品", "price": 150 }
+      }
+    },
+    {
+      "name": "杭州酒家",
+      "rank": 2,
+      "cuisine": "杭帮菜",
+      "district": "上城区",
+      "address": "延安路205号",
+      "price_per_person": 95,
+      "must_try": ["西湖醋鱼", "东坡肉"],
+      "confidence": "very_high",
+      "scoring": {
+        "dianping": {
+          "score": 4.6,
+          "taste": 4.5,
+          "environment": 4.4,
+          "service": 4.3,
+          "reviews": 52100
+        },
+        "amap": {
+          "score": 4.8,
+          "bangdan_rank": 2
+        }
+      },
+      "features": ["老字号"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5def456ghi",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.168,30.260"
+      },
+      "tiers": {
+        "economy": { "dishes": "片儿川+小笼包", "price": 35 },
+        "standard": { "dishes": "2热菜+1汤+主食", "price": 95 },
+        "premium": { "dishes": "4热菜+1汤+2凉菜+甜品", "price": 180 }
+      }
+    },
+    {
+      "name": "绿茶餐厅",
+      "rank": 3,
+      "cuisine": "融合菜",
+      "district": "西湖区",
+      "address": "龙井路83号",
+      "price_per_person": 60,
+      "must_try": ["绿茶烤鸡", "面包诱惑"],
+      "scoring": {
+        "dianping": {
+          "score": 4.2,
+          "taste": 4.1,
+          "environment": 4.5,
+          "service": 3.9,
+          "reviews": 19500
+        },
+        "amap": {
+          "score": 4.3,
+          "bangdan_rank": 8
+        }
+      },
+      "features": ["环境好"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G5jkl012mno",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.123,30.234"
+      },
+      "tiers": {
+        "economy": { "dishes": "1热菜+米饭", "price": 28 },
+        "standard": { "dishes": "2热菜+1凉菜+米饭", "price": 60 },
+        "premium": { "dishes": "4热菜+2凉菜+甜品", "price": 120 }
+      }
+    }
+  ],
+  "sources": ["高德API", "大众点评(opencli)"]
+}

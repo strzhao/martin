@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>餐厅排名推荐</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F7F6F1;
+  --card-bg: #ffffff;
+  --card-hover: #f3f2ef;
+  --text: #1A1A18;
+  --text-secondary: #595957;
+  --muted: #8F8F8D;
+  --accent: #3A7D68;
+  --accent-hover: #52A688;
+  --accent-soft: #E8F2EE;
+  --amber: #D4920A;
+  --red: #D94F3D;
+  --sky: #3B87CC;
+  --sky-soft: #eaf3fb;
+  --border: #EBEBEA;
+  --hairline: #f0efec;
+  --gold: #C8922B;
+  --gold-soft: #fdf3e0;
+  --silver: #8A8D91;
+  --silver-soft: #f2f3f4;
+  --bronze: #B87D4B;
+  --bronze-soft: #faf2eb;
+  --shadow-sm: 0 1px 3px rgba(58,125,104,.06);
+  --shadow-md: 0 4px 16px rgba(58,125,104,.08);
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body {
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+/* === 头部 === */
+header {
+  background: var(--accent);
+  color: #fff;
+  padding: 28px 20px 32px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+header h1 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+  text-wrap: balance;
+}
+header .meta {
+  font-size: 14px;
+  opacity: .8;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+header .meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* === 预算切换 === */
+.budget-bar {
+  margin: 18px 14px 18px;
+  display: flex;
+  gap: 6px;
+}
+.budget-bar button {
+  flex: 1;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .2s;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.budget-bar button:hover {
+  background: var(--card-hover);
+  border-color: var(--accent);
+}
+.budget-bar button.active-budget {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* === 排名区域标题 === */
+.ranking-header {
+  margin: 0 14px 14px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ranking-header .count {
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-left: auto;
+}
+
+/* === 餐厅排名卡片 === */
+.ranking-list {
+  margin: 0 14px 18px;
+}
+.restaurant-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  transition: box-shadow .2s, transform .2s;
+  position: relative;
+}
+.restaurant-card:hover { box-shadow: var(--shadow-md); }
+.restaurant-card:last-child { margin-bottom: 0; }
+
+/* 排名徽章 */
+.rank-badge {
+  position: absolute;
+  top: -8px;
+  left: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Outfit', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.rank-1 { background: linear-gradient(135deg, #f5cd6d, #c8922b); }
+.rank-2 { background: linear-gradient(135deg, #c0c4c9, #8a8d91); }
+.rank-3 { background: linear-gradient(135deg, #d4a87c, #b87d4b); }
+.rank-rest { background: var(--accent); }
+
+/* 卡片头部 */
+.card-header {
+  padding-left: 24px;
+  margin-bottom: 10px;
+}
+.card-header .name {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.card-header .subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 评分多维展示 */
+.score-grid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.score-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--hairline);
+  color: var(--text-secondary);
+}
+.score-chip.star { background: var(--gold-soft); color: var(--gold); }
+.score-chip.hot { background: var(--red); color: #fff; }
+.score-chip.hot-mild { background: #fde8ee; color: #d44a6e; }
+.score-chip.rank { background: var(--accent-soft); color: var(--accent); }
+
+/* 必点菜 */
+.must-try {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.must-try .label {
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  font-size: 13px;
+}
+.must-try .dishes { color: var(--text-secondary); }
+
+/* 置信度标签 */
+.conf-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.conf-high { background: var(--accent-soft); color: var(--accent); }
+.conf-medium { background: #fef3c7; color: var(--amber); }
+.conf-low { background: #fde8ee; color: var(--red); }
+
+/* 聚合卡片 */
+.agg-card {
+  background: #fafaf9;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.agg-card .source-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.agg-card .source-row:last-child { border-bottom: none; }
+.agg-card .source-icon {
+  font-size: 15px;
+  min-width: 20px;
+  text-align: center;
+  opacity: .8;
+}
+.agg-card .source-content { flex: 1; }
+.agg-card .source-stats {
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 特色标签 */
+.features {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.features span {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--hairline);
+  color: var(--muted);
+}
+
+/* 链接行 */
+.link-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.link-row a {
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all .2s;
+  letter-spacing: 0.02em;
+}
+.link-row a:hover { transform: translateY(-1px); }
+.link-row a:active { transform: scale(0.97); }
+.link-dianping { background: var(--accent-soft); color: var(--accent); }
+.link-dianping:hover { background: #d6ede4; }
+.link-bilibili { background: #fde8ee; color: #d44a6e; }
+.link-bilibili:hover { background: #fddae4; }
+.link-xhs { background: #ffe8e8; color: #d43939; }
+.link-xhs:hover { background: #ffdbdb; }
+.link-weixin { background: #eaf3e8; color: #3d7a43; }
+.link-weixin:hover { background: #d8ebd6; }
+
+/* === 餐厅表格 === */
+.table-wrap {
+  margin: 0 14px 18px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-sm);
+}
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 420px;
+}
+.table-wrap th {
+  background: #f3f2ef;
+  padding: 10px 10px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table-wrap td { padding: 10px 10px; border-bottom: 1px solid var(--hairline); }
+.table-wrap tr:hover td { background: var(--card-hover); }
+.table-wrap tr:last-child td { border-bottom: none; }
+.conf-high { color: var(--accent); font-weight: 700; }
+.conf-medium { color: var(--amber); }
+
+/* === 页脚 === */
+footer {
+  margin: 24px 14px 32px;
+  padding: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--hairline);
+}
+footer div + div { margin-top: 4px; }
+
+/* === 响应式 === */
+@media (min-width: 640px) {
+  body { padding: 0 0 40px; }
+  header { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+}
+
+/* === 数据占位（无数据时的优雅降级） === */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+  font-size: 15px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="rec-title">餐厅排名推荐</h1>
+  <div class="meta">
+    <span id="rec-city"></span>
+    <span id="rec-date"></span>
+    <span id="rec-cuisine"></span>
+    <span id="rec-budget-summary"></span>
+  </div>
+</header>
+
+<div id="budget-bar" class="budget-bar"></div>
+
+<div class="ranking-header">
+  🏆 餐厅排名
+  <span class="count" id="restaurant-count"></span>
+</div>
+
+<div id="ranking-list" class="ranking-list"></div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>餐厅</th><th>评分</th><th>人均</th><th>置信度</th><th>链接</th>
+    </tr></thead>
+    <tbody id="restaurant-table"></tbody>
+  </table>
+</div>
+
+<footer>
+  <div>数据来源 &middot; <span id="source-list"></span></div>
+  <div>Generated by restaurant-recommender &middot; <span id="gen-time"></span></div>
+</footer>
+
+<script>
+var RESTAURANT_DATA = {"recommendation": {"title": "杭州 · 本帮菜必吃榜 Top 10", "city": "杭州", "date": "2026-06-13", "cuisine_focus": "本帮菜/杭帮菜", "budget": {"economy": 30, "standard": 80, "premium": 200}}, "restaurants": [{"name": "寻宝记绍兴菜", "rank": 1, "cuisine": "绍兴菜", "district": "拱墅区", "address": "拱宸桥西直街32号", "price_per_person": 77, "must_try": ["醉蟹", "臭豆腐", "绍兴三鲜"], "confidence": "high", "scoring": {"dianping": {"score": 4.4, "taste": 4.4, "environment": 4.6, "service": 4.5, "reviews": 39465}, "amap": {"score": 4.7, "bangdan_rank": 1}, "bilibili_quotes": ["样样都好吃", "杭州必打卡绍兴菜"], "bilibili_bvid": "BV1PG411c7K5", "bilibili_views": 3200727, "xhs_likes": 485}, "features": ["有大桌", "付费停车", "可预订"], "links": {"dianping": "https://www.dianping.com/shop/G5abc123def", "bilibili": "https://www.bilibili.com/video/BV1PG411c7K5", "amap_navi": "https://uri.amap.com/navigation?to=120.130,30.320,寻宝记绍兴菜"}, "tiers": {"economy": {"dishes": "招牌面+小吃", "price": 30}, "standard": {"dishes": "2热菜+1凉菜+主食", "price": 77}, "premium": {"dishes": "4热菜+2凉菜+甜品", "price": 150}}}, {"name": "杭州酒家", "rank": 2, "cuisine": "杭帮菜", "district": "上城区", "address": "延安路205号", "price_per_person": 95, "must_try": ["西湖醋鱼", "东坡肉", "龙井虾仁"], "confidence": "high", "scoring": {"dianping": {"score": 4.6, "taste": 4.5, "environment": 4.4, "service": 4.3, "reviews": 52100}, "amap": {"score": 4.8, "bangdan_rank": 2}, "xhs_likes": 712}, "features": ["老字号", "包厢", "有停车位"], "links": {"dianping": "https://www.dianping.com/shop/G5def456ghi", "amap_navi": "https://uri.amap.com/navigation?to=120.168,30.260,杭州酒家"}, "tiers": {"economy": {"dishes": "片儿川+小笼包", "price": 35}, "standard": {"dishes": "2热菜+1汤+主食", "price": 95}, "premium": {"dishes": "4热菜+1汤+2凉菜+甜品", "price": 180}}}, {"name": "新白鹿餐厅", "rank": 3, "cuisine": "杭帮菜", "district": "西湖区", "address": "湖滨路18号银泰in77 C区3楼", "price_per_person": 68, "must_try": ["蛋黄鸡翅", "糖醋里脊", "西湖莼菜羹"], "confidence": "high", "scoring": {"dianping": {"score": 4.3, "taste": 4.2, "environment": 4.1, "service": 4.0, "reviews": 28700}, "amap": {"score": 4.5, "bangdan_rank": 5}, "bilibili_quotes": ["性价比之王", "排队两小时也值"], "bilibili_bvid": "BV1fG4y1h7aL", "bilibili_views": 1850000}, "features": ["性价比高", "排队较长", "有宝宝椅"], "links": {"dianping": "https://www.dianping.com/shop/G5ghi789jkl", "bilibili": "https://www.bilibili.com/video/BV1fG4y1h7aL", "amap_navi": "https://uri.amap.com/navigation?to=120.162,30.251,新白鹿餐厅"}, "tiers": {"economy": {"dishes": "1热菜+1凉菜+米饭", "price": 30}, "standard": {"dishes": "2热菜+1凉菜+米饭", "price": 68}, "premium": {"dishes": "4热菜+2凉菜+甜品", "price": 130}}}, {"name": "绿茶餐厅", "rank": 4, "cuisine": "融合菜", "district": "西湖区", "address": "龙井路83号", "price_per_person": 60, "must_try": ["绿茶烤鸡", "面包诱惑", "石锅蛙"], "confidence": "medium", "scoring": {"dianping": {"score": 4.2, "taste": 4.1, "environment": 4.5, "service": 3.9, "reviews": 19500}, "amap": {"score": 4.3, "bangdan_rank": 8}}, "features": ["环境好", "有露天位", "适合拍照"], "links": {"dianping": "https://www.dianping.com/shop/G5jkl012mno", "amap_navi": "https://uri.amap.com/navigation?to=120.123,30.234,绿茶餐厅"}, "tiers": {"economy": {"dishes": "1热菜+米饭", "price": 28}, "standard": {"dishes": "2热菜+1凉菜+米饭", "price": 60}, "premium": {"dishes": "4热菜+2凉菜+甜品", "price": 120}}}, {"name": "外婆家", "rank": 5, "cuisine": "杭帮菜", "district": "拱墅区", "address": "莫干山路969号城西银泰城4F", "price_per_person": 55, "must_try": ["外婆红烧肉", "茶香鸡", "蒜蓉粉丝虾"], "confidence": "medium", "scoring": {"amap": {"score": 4.2, "bangdan_rank": 12}, "xhs_likes": 320, "bilibili_quotes": ["杭州人的食堂"], "bilibili_bvid": "BV1oK4y1S7pN", "bilibili_views": 950000}, "features": ["连锁品牌", "上菜快", "有包厢"], "links": {"dianping": "https://www.dianping.com/shop/G5mno345pqr", "bilibili": "https://www.bilibili.com/video/BV1oK4y1S7pN", "amap_navi": "https://uri.amap.com/navigation?to=120.117,30.298,外婆家"}, "tiers": {"economy": {"dishes": "1热菜+米饭", "price": 25}, "standard": {"dishes": "2热菜+1凉菜+米饭", "price": 55}, "premium": {"dishes": "4热菜+2凉菜+甜品", "price": 100}}}, {"name": "知味观", "rank": 6, "cuisine": "杭帮菜/小吃", "district": "上城区", "address": "仁和路83号", "price_per_person": 42, "must_try": ["猫耳朵", "幸福双", "片儿川"], "confidence": "low", "scoring": {"dianping": {"score": 4.1, "taste": 4.1, "environment": 3.8, "service": 3.7, "reviews": 12300}, "amap": {"score": 4.0}}, "features": ["老字号小吃", "价格亲民"], "links": {"dianping": "https://www.dianping.com/shop/G5pqr678stu", "amap_navi": "https://uri.amap.com/navigation?to=120.169,30.252,知味观"}, "tiers": {"economy": {"dishes": "1份主食+1份小食", "price": 22}, "standard": {"dishes": "1热菜+2份小吃+主食", "price": 42}, "premium": {"dishes": "2热菜+1凉菜+3份小吃+主食", "price": 80}}}], "sources": ["高德API", "大众点评(opencli)", "小红书(opencli)", "B站(opencli)"]};
+var currentBudget = 'standard';
+
+function render() {
+  var d = RESTAURANT_DATA;
+  var rec = d.recommendation || {};
+  var budgetKey = currentBudget;
+
+  // Header
+  document.getElementById('rec-title').textContent = rec.title || '餐厅排名推荐';
+  document.getElementById('rec-city').innerHTML = (rec.city || '') ? '&#128205; ' + rec.city : '';
+  document.getElementById('rec-date').innerHTML = (rec.date || '') ? '&#128197; ' + rec.date : '';
+  document.getElementById('rec-cuisine').innerHTML = (rec.cuisine || '') ? '&#127860; ' + rec.cuisine : '';
+  document.getElementById('rec-budget-summary').innerHTML =
+    (rec.budget && rec.budget[budgetKey]) ? '&yen;' + rec.budget[budgetKey] + '/人' : '';
+
+  // Budget switcher
+  var bg = rec.budget || {};
+  var budgetLabels = [
+    '经济版 &yen;' + (bg.economy || '-'),
+    '标准版 &yen;' + (bg.standard || '-'),
+    '品质版 &yen;' + (bg.premium || '-')
+  ];
+  var keys = ['economy', 'standard', 'premium'];
+  var btns = '';
+  for (var i = 0; i < keys.length; i++) {
+    btns += '<button class="' + (keys[i] === budgetKey ? 'active-budget' : '') + '" onclick="switchBudget(\'' + keys[i] + '\')">' +
+      budgetLabels[i] + '</button>';
+  }
+  document.getElementById('budget-bar').innerHTML = btns;
+
+  // Restaurant count
+  var restaurants = d.restaurants || [];
+  document.getElementById('restaurant-count').textContent = '共 ' + restaurants.length + ' 家';
+
+  // Ranking cards
+  var cardsHtml = '';
+  if (restaurants.length === 0) {
+    cardsHtml = '<div class="empty-state">暂无餐厅数据</div>';
+  }
+  for (var i = 0; i < restaurants.length; i++) {
+    var r = restaurants[i];
+    var name = r.name || '';
+    var rank = r.rank || (i + 1);
+    var cuisine = r.cuisine || '';
+    var district = r.district || '';
+    var address = r.address || '';
+    var conf = r.confidence || '';
+    var scoring = r.scoring || {};
+    var mustTry = r.must_try || [];
+    var features = r.features || [];
+    var tiers = r.tiers || {};
+    var links = r.links || {};
+
+    // Rank badge class
+    var rankClass = 'rank-rest';
+    if (rank === 1) rankClass = 'rank-1';
+    else if (rank === 2) rankClass = 'rank-2';
+    else if (rank === 3) rankClass = 'rank-3';
+
+    // Confidence tag
+    var confLabel = conf === 'high' ? '高' : (conf === 'medium' ? '中' : '低');
+    var confClass = conf === 'high' ? 'conf-high' : (conf === 'medium' ? 'conf-medium' : 'conf-low');
+
+    // Price (from tiers or direct)
+    var pricePerPerson = getTierPrice(tiers, budgetKey) || r.price_per_person || '';
+
+    // Score chips
+    var scoreHtml = '';
+    if (scoring.dianping) {
+      scoreHtml += '<div class="score-chip star">&starf; 点评 ' + scoring.dianping + '</div>';
+    }
+    if (scoring.amap) {
+      scoreHtml += '<div class="score-chip star">&starf; 高德 ' + scoring.amap + '</div>';
+    }
+    if (scoring.bangdan_rank) {
+      scoreHtml += '<div class="score-chip rank">🏆 状元榜 #' + scoring.bangdan_rank + '</div>';
+    }
+    if (scoring.bangdan_score) {
+      scoreHtml += '<div class="score-chip">🏆 状元榜 ' + scoring.bangdan_score + '</div>';
+    }
+    if (scoring.xhs_likes) {
+      var xhsLabel = scoring.xhs_likes > 500 ? 'hot' : 'hot-mild';
+      scoreHtml += '<div class="score-chip ' + xhsLabel + '">&#9829; 小红书 ' + formatNumber(scoring.xhs_likes) + '</div>';
+    }
+    if (scoring.bilibili && scoring.bilibili.views) {
+      scoreHtml += '<div class="score-chip hot-mild">&#9654; B站 ' + formatViews(scoring.bilibili.views) + '</div>';
+    }
+    if (scoring.weixin) {
+      scoreHtml += '<div class="score-chip">&#9998; 公众号</div>';
+    }
+    var scoreGridHtml = scoreHtml ? '<div class="score-grid">' + scoreHtml + '</div>' : '';
+
+    // Must try
+    var mustTryHtml = '';
+    if (mustTry.length > 0) {
+      mustTryHtml = '<div class="must-try"><span class="label">必点菜</span><span class="dishes">' + mustTry.join('、') + '</span></div>';
+    }
+
+    // Features
+    var featuresHtml = '';
+    if (features.length > 0) {
+      featuresHtml = '<div class="features">' +
+        features.map(function(f) { return '<span>' + f + '</span>'; }).join('') +
+        '</div>';
+    }
+
+    // Aggregation card (multi-source details)
+    var aggHtml = '';
+    if (scoring.dianping || scoring.amap || (scoring.bilibili && scoring.bilibili.quotes && scoring.bilibili.quotes.length)) {
+      aggHtml = '<div class="agg-card">';
+      if (scoring.dianping) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&starf;</span>' +
+          '<span class="source-content">大众点评：' + scoring.dianping + ' 分</span></div>';
+      }
+      if (scoring.amap) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&#128506;</span>' +
+          '<span class="source-content">高德地图：' + scoring.amap + ' 分</span></div>';
+      }
+      if (scoring.bangdan_rank || scoring.bangdan_score) {
+        aggHtml += '<div class="source-row"><span class="source-icon">🏆</span>' +
+          '<span class="source-content">状元榜：' +
+          (scoring.bangdan_rank ? '排名 #' + scoring.bangdan_rank : '') +
+          (scoring.bangdan_score ? ' 评分 ' + scoring.bangdan_score : '') +
+          '</span></div>';
+      }
+      if (scoring.bilibili && scoring.bilibili.quotes && scoring.bilibili.quotes.length) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&#9654;</span>' +
+          '<span class="source-content">' + scoring.bilibili.quotes.map(function(q) { return '&ldquo;' + q + '&rdquo;'; }).join(' ') + '</span>' +
+          '<span class="source-stats">' + (scoring.bilibili.views ? formatViews(scoring.bilibili.views) : '') + '</span></div>';
+      }
+      if (scoring.xhs_likes) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&#9829;</span>' +
+          '<span class="source-content">小红书：' + formatNumber(scoring.xhs_likes) + ' 赞</span></div>';
+      }
+      if (scoring.weixin) {
+        aggHtml += '<div class="source-row"><span class="source-icon">&#9998;</span>' +
+          '<span class="source-content">公众号：' + scoring.weixin + '</span></div>';
+      }
+      aggHtml += '</div>';
+    }
+
+    // Links
+    var linksHtml = '';
+    if (Object.keys(links).length > 0) {
+      linksHtml = '<div class="link-row">';
+      if (links.dianping) linksHtml += '<a class="link-dianping" href="' + links.dianping + '" target="_blank">点评</a>';
+      if (links.bilibili) linksHtml += '<a class="link-bilibili" href="' + links.bilibili + '" target="_blank">B站</a>';
+      if (links.xhs) linksHtml += '<a class="link-xhs" href="' + links.xhs + '" target="_blank">小红书</a>';
+      if (links.weixin) linksHtml += '<a class="link-weixin" href="' + links.weixin + '" target="_blank">公众号</a>';
+      linksHtml += '</div>';
+    }
+
+    // Tier name for display
+    var tierName = getTierName(tiers, budgetKey);
+
+    cardsHtml += '<div class="restaurant-card">' +
+      '<div class="rank-badge ' + rankClass + '">' + rank + '</div>' +
+      '<div class="card-header">' +
+        '<div class="name">' + name +
+          (tierName ? ' &rarr; <span style="color:var(--accent)">' + tierName + '</span>' : '') +
+        '</div>' +
+        '<div class="subtitle">' +
+          (cuisine ? '<span>' + cuisine + '</span>' : '') +
+          (district ? '<span>' + district + '</span>' : '') +
+          (address ? '<span>' + address + '</span>' : '') +
+          '<span class="conf-tag ' + confClass + '">' + confLabel + '置信度</span>' +
+          (pricePerPerson ? ' <span style="font-weight:600">&yen;' + pricePerPerson + '/人</span>' : '') +
+        '</div>' +
+      '</div>' +
+      scoreGridHtml +
+      mustTryHtml +
+      aggHtml +
+      featuresHtml +
+      linksHtml +
+      '</div>';
+  }
+  document.getElementById('ranking-list').innerHTML = cardsHtml;
+
+  // Restaurant table
+  var tbody = '';
+  for (var j = 0; j < restaurants.length; j++) {
+    var rt = restaurants[j];
+    var rtLinks = rt.links || {};
+    var rtLinksStr = '';
+    if (rtLinks.dianping) rtLinksStr += '<a href="' + rtLinks.dianping + '" target="_blank" style="color:var(--accent);text-decoration:none;margin-right:6px;font-weight:600">点评</a>';
+    if (rtLinks.bilibili) rtLinksStr += '<a href="' + rtLinks.bilibili + '" target="_blank" style="color:#d44a6e;text-decoration:none;margin-right:6px;font-weight:600">B站</a>';
+    if (rtLinks.xhs) rtLinksStr += '<a href="' + rtLinks.xhs + '" target="_blank" style="color:#d43939;text-decoration:none;font-weight:600">小红书</a>';
+    var rtConf = rt.confidence || '';
+    var rtConfClass = rtConf === 'high' ? 'conf-high' : (rtConf === 'medium' ? 'conf-medium' : '');
+    var rtConfLabel = rtConf === 'high' ? '高' : (rtConf === 'medium' ? '中' : '低');
+    var rtScoring = rt.scoring || {};
+    var rtRating = rtScoring.dianping ? '&starf;' + rtScoring.dianping : (rtScoring.amap ? '&starf;' + rtScoring.amap : '-');
+    var rtPrice = rt.price_per_person || '-';
+    tbody += '<tr>' +
+      '<td><strong>' + (rt.name || '') + '</strong><br><span style="font-size:13px;color:var(--muted)">' + (rt.district || rt.cuisine || '') + '</span></td>' +
+      '<td>' + rtRating + '</td>' +
+      '<td>&yen;' + rtPrice + '</td>' +
+      '<td class="' + rtConfClass + '">' + rtConfLabel + '</td>' +
+      '<td>' + rtLinksStr + '</td>' +
+      '</tr>';
+  }
+  document.getElementById('restaurant-table').innerHTML = tbody;
+
+  // Footer
+  document.getElementById('source-list').textContent = (d.sources || []).join(' &middot; ');
+  document.getElementById('gen-time').textContent = new Date().toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function switchBudget(level) {
+  var btns = document.querySelectorAll('#budget-bar button');
+  var levels = ['economy', 'standard', 'premium'];
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active-budget', levels[i] === level);
+  }
+  currentBudget = level;
+  render();
+}
+
+function getTierPrice(tiers, level) {
+  if (!tiers || !tiers[level]) return null;
+  return tiers[level].price || null;
+}
+
+function getTierName(tiers, level) {
+  if (!tiers || !tiers[level]) return null;
+  return tiers[level].name || null;
+}
+
+function formatNumber(n) {
+  if (typeof n !== 'number') return n;
+  if (n >= 10000) return (n / 10000).toFixed(1) + '万';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return n.toString();
+}
+
+function formatViews(n) {
+  if (typeof n !== 'number') return '';
+  if (n >= 10000) return (n / 10000).toFixed(1) + '万 播放';
+  return n + ' 播放';
+}
+
+document.addEventListener('DOMContentLoaded', render);
+</script>
+</body>
+</html>

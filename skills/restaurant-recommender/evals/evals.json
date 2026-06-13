@@ -1,0 +1,44 @@
+{
+  "skill_name": "restaurant-recommender",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "杭州有什么好吃的本帮菜？人均100左右",
+      "expected_output": "skill 触发后应执行多源搜索、返回餐厅排名，生成 HTML 排名页面、返回公网 URL",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "周末想吃火锅，附近有什么推荐的？我在杭州",
+      "expected_output": "skill 触发后应搜索杭州火锅餐厅，生成排名推荐",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "推荐几家杭州评分最高的餐厅",
+      "expected_output": "skill 触发后应返回高评分餐厅排名列表",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "lint.py 行为验收",
+      "test_script": "evals/test_lint.py",
+      "description": "验证 lint.py 对有效数据通过、对无效数据报错（含 title/budget/confidence 缺失、非法值、数量不足等）",
+      "files": ["evals/test_data_valid.json", "evals/test_data_invalid.json"]
+    },
+    {
+      "id": 5,
+      "name": "inject.py 行为验收",
+      "test_script": "evals/test_inject.py",
+      "description": "验证 inject.py 将 JSON 注入 HTML 模板（占位符替换、DOCTYPE 完整性、无效输入提示）",
+      "files": ["evals/test_data_valid.json"]
+    },
+    {
+      "id": 6,
+      "name": "server.js 行为验收",
+      "test_script": "evals/test_server.py",
+      "description": "验证 server.js 健康检查端点、根路由返回 HTML、优雅退出",
+      "files": []
+    }
+  ]
+}
