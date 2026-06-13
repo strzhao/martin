@@ -26,26 +26,36 @@ const server = http.createServer((req, res) => {
 
   // 路由: / → restaurant.html (餐厅排名推荐)
   if (url.pathname === '/' || url.pathname === '/index.html') {
+    const stream = fs.createReadStream(RESTAURANT_HTML);
+    stream.on('error', () => {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Internal Server Error');
+    });
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-cache',
     });
-    fs.createReadStream(RESTAURANT_HTML).pipe(res);
+    stream.pipe(res);
     return;
   }
 
   // 路由: /health → 健康检查
   if (url.pathname === '/health') {
-    const stat = fs.statSync(RESTAURANT_HTML);
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(
-      JSON.stringify({
-        status: 'ok',
-        file: RESTAURANT_HTML,
-        size: stat.size,
-        updated: stat.mtime.toISOString(),
-      })
-    );
+    try {
+      const stat = fs.statSync(RESTAURANT_HTML);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(
+        JSON.stringify({
+          status: 'ok',
+          file: RESTAURANT_HTML,
+          size: stat.size,
+          updated: stat.mtime.toISOString(),
+        })
+      );
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ status: 'error', message: e.message }));
+    }
     return;
   }
 

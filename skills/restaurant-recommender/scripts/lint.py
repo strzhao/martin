@@ -50,7 +50,7 @@ def lint(data_path):
     if not restaurants:
         errors.append('restaurants 为空')
     elif len(restaurants) < 5:
-        warnings.append(f'restaurants 仅 {len(restaurants)} 家，建议 ≥ 5（推荐 8-10 家）')
+        errors.append(f'restaurants 仅 {len(restaurants)} 家，要求 ≥ 5（推荐 8-10 家）')
 
     high_confidence_count = 0
     source_fields = ('dianping', 'amap', 'bangdan_rank', 'bangdan_score', 'bilibili', 'xhs_likes', 'weixin')
@@ -116,8 +116,36 @@ def lint(data_path):
             warnings.append(f'{prefix} must_try 缺失或为空')
 
     # 高置信度数量检查
-    if high_confidence_count < 3:
-        errors.append(f'高置信度餐厅仅 {high_confidence_count} 家，要求 ≥ 3')
+    if high_confidence_count < 2:
+        errors.append(f'高置信度餐厅仅 {high_confidence_count} 家，要求 ≥ 2（ASR 转写验证后高置信度更难达到，阈值降低）')
+
+    # 高置信度必须有 ASR 转写引用（数据完整性检查，非定性判断）
+    for i, r in enumerate(restaurants):
+        if r.get('confidence') == 'high':
+            scoring = r.get('scoring') or {}
+            bilibili_data = scoring.get('bilibili')
+            has_bilibili_quotes = bool(scoring.get('bilibili_quotes'))
+            has_bilibili_bvid = isinstance(bilibili_data, dict) and bool(bilibili_data.get('bvid'))
+            if not has_bilibili_quotes and not has_bilibili_bvid:
+                prefix = f'restaurants[{i}]'
+                rname = r.get('name', '')
+                if rname:
+                    prefix += f' ({rname})'
+                errors.append(f'{prefix} 置信度为 high 但 scoring 无 ASR 转写引用（bilibili_quotes 或 bilibili.bvid）')
+
+    # === tiers 检查 ===
+    required_tier_keys = {'economy', 'standard', 'premium'}
+    for i, r in enumerate(restaurants):
+        tiers = r.get('tiers')
+        if tiers is not None:
+            tier_keys = set(tiers.keys())
+            if not required_tier_keys.issubset(tier_keys):
+                missing = required_tier_keys - tier_keys
+                prefix = f'restaurants[{i}]'
+                rname = r.get('name', '')
+                if rname:
+                    prefix += f' ({rname})'
+                warnings.append(f'{prefix} tiers 缺少档位: {sorted(missing)}')
 
     # === sources ===
     if not data.get('sources'):

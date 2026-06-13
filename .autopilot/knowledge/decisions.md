@@ -52,3 +52,18 @@
 - Qwen3.6-35B thinking 模型视觉识别需 max_tokens ≥ 2000
 
 **HTML 输出模式**：单文件 HTML 模板（`__TRIP_DATA__` 占位符）→ Python inject.py 注入 → Node.js 零依赖 http 服务器 → tunnel CLI（frpc）暴露公网 URL 供微信访问。
+
+## 2026-06-13 — restaurant-recommender skill：复用 travel-planner 架构创建第二个领域 skill
+
+<!-- tags: skill, restaurant, food, architecture-reuse, multi-source -->
+
+**决策**：复制 travel-planner 的已验证架构（多源搜索 → 交叉验证 → JSON → lint → HTML 注入 → HTTP 服务 → tunnel），仅替换领域模型（trip/timeline → recommendation/restaurants）和 UI（时间线 → 排名卡片）。
+
+**验证**：红队验收测试 37/37 通过，QA 审查通过，auto-fix 完成 3 项修复（inject.py 错误处理、lint.py tiers 校验、server.js pipe error 监听）。
+
+**复用率**：inject.py 100%、template.html CSS 体系 70%、lint.py 框架 50%、SKILL.md 多源搜索模式 60%、references 80%。
+
+**新增模式**：
+- `test_data_valid.json` + `test_data_invalid.json` 作为 lint.py 的 fixture 数据
+- `test_lint.py` / `test_inject.py` / `test_server.py` 作为红队验收测试的标准三板斧
+- 新 skill 使用独立端口（3457 vs 3456）避免与 travel-planner 冲突
