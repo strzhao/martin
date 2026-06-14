@@ -368,10 +368,12 @@ footer div + div { margin-top: 4px; }
 
 <script>
 var TRIP_DATA = __TRIP_DATA__;
+var currentBudget = 'economy';
 
 function render() {
   var d = TRIP_DATA;
   var t = d.trip;
+  var budgetKey = currentBudget;
 
   document.getElementById('trip-title').textContent = t.title;
   document.getElementById('trip-date').innerHTML = t.date;
@@ -380,7 +382,7 @@ function render() {
   document.getElementById('trip-transport').innerHTML =
     (t.transport.origin || '') + ' &rarr; ' + (t.transport.destination || '') + ' &middot; ' + (t.transport.distance_km || '') + 'km / ' + (t.transport.duration_min || '') + 'min';
   document.getElementById('trip-budget-summary').innerHTML =
-    '&yen;' + (t.budget.food_per_person || t.budget.food_per_person_tight || t.budget.food_per_person_comfort || t.budget.food_per_person_premium || '') + '/person' + (t.budget.note ? '' : '');
+    '&yen;' + getBudgetFoodPrice(t.budget, budgetKey) + '/person';
 
   // Weather card
   var wc = document.getElementById('weather-card');
@@ -460,12 +462,16 @@ function render() {
     if (item.rating && item.rating.amap) {
       ratingStr = ' &middot; <span style="color:var(--green)">&starf; ' + item.rating.amap + '</span>';
     }
-    var priceStr = item.price_per_person ? ' &middot; <span style="font-weight:500">&yen;' + item.price_per_person + '/person</span>' : '';
+    var tierPrice = getTierPrice(item);
+    var priceStr = tierPrice ? ' &middot; <span style="font-weight:500">&yen;' + tierPrice + '/person</span>' : (item.price_per_person ? ' &middot; <span style="font-weight:500">&yen;' + item.price_per_person + '/person</span>' : '');
+
+    var tierName = getTierName(item);
+    var displayTitle = tierName ? (item.title + ' &rarr; ' + tierName) : item.title;
 
     html += '<div class="timeline-item ' + (item.type || '') + '">' +
       '<div class="dot">' + (item.icon || '●') + '</div>' +
       '<div class="time-label">' + item.time + '</div>' +
-      '<div class="item-title">' + item.title + '<span style="font-size:14px;color:var(--muted);font-weight:400">' + ratingStr + priceStr + '</span></div>' +
+      '<div class="item-title">' + displayTitle + '<span style="font-size:14px;color:var(--muted);font-weight:400">' + ratingStr + priceStr + '</span></div>' +
       (item.description ? '<div class="item-meta">' + item.description + '</div>' : '') +
       (item.address ? '<div class="item-meta" style="font-size:11px">' + item.address + '</div>' : '') +
       aggHtml + linksHtml +
@@ -518,6 +524,29 @@ function switchBudget(level) {
   for (var i = 0; i < btns.length; i++) {
     btns[i].classList.toggle('active-budget', levels[i] === level);
   }
+  currentBudget = level;
+  render();
+}
+
+function getBudgetFoodPrice(budget, level) {
+  if (level === 'economy') return budget.food_per_person_tight || budget.economy || '';
+  if (level === 'standard') return budget.food_per_person_comfort || budget.standard || '';
+  if (level === 'premium') return budget.food_per_person_premium || budget.premium || '';
+  return budget.food_per_person || '';
+}
+
+function getTierProp(item, prop) {
+  if (!item.tiers) return null;
+  var tier = item.tiers[currentBudget];
+  return tier ? tier[prop] : null;
+}
+
+function getTierPrice(item) {
+  return getTierProp(item, 'price');
+}
+
+function getTierName(item) {
+  return getTierProp(item, 'name');
 }
 
 document.addEventListener('DOMContentLoaded', render);

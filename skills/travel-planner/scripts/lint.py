@@ -8,6 +8,25 @@
 import json
 import sys
 import os
+import math
+
+# 近似距离常量（北纬30度附近）
+_M_PER_DEG_LNG = 85000
+_M_PER_DEG_LAT = 111000
+
+
+def _approx_distance_m(lng1, lat1, lng2, lat2):
+    """两点间近似距离（米），使用平面近似替代 Haversine"""
+    dx = (lng1 - lng2) * _M_PER_DEG_LNG
+    dy = (lat1 - lat2) * _M_PER_DEG_LAT
+    return math.sqrt(dx * dx + dy * dy)
+
+
+def _to_min(time_str):
+    """将 HH:MM 字符串转为分钟数"""
+    sp = time_str.split(':')
+    return int(sp[0]) * 60 + int(sp[1])
+
 
 def lint(data_path):
     errors = []
@@ -97,6 +116,60 @@ def lint(data_path):
         if item.get('type') and item['type'] not in ('transport', 'food', 'sight', 'break'):
             t = item['type']
             warnings.append(prefix + ' type="' + t + '" 非标准值')
+
+    # === 新增检查：起点正确（规则 7）===
+    first_non_transport = None
+    for item in tl:
+        if item.get('type') != 'transport':
+            first_non_transport = item
+            break
+    if first_non_transport:
+        loc = first_non_transport.get('location', {})
+        lng = loc.get('lng')
+        lat = loc.get('lat')
+        # 默认起点: 120.241, 30.210（龙湖春江天玺/兴议站）
+        home_lng, home_lat = 120.241, 30.210
+        if lng and lat:
+            dist = _approx_distance_m(lng, lat, home_lng, home_lat)
+            if dist > 5000:
+                warnings.append(f'第一个游玩点距默认起点 {dist/1000:.1f}km，确认起点正确？')
+
+    # === 新增检查：流转时间（规则 8）===
+    for i, (a, b) in enumerate(zip(tl, tl[1:])):
+        # 相邻两个非 transport 项之间应插入 transport
+        if a.get('type') != 'transport' and b.get('type') != 'transport':
+            la = a.get('location', {})
+            lb = b.get('location', {})
+            if la.get('lng') and lb.get('lng'):
+                dist = _approx_distance_m(la['lng'], la['lat'], lb['lng'], lb['lat'])
+                if dist > 500:
+                    pa_time = a.get("time", "?")
+                    pb_time = b.get("time", "?")
+                    warnings.append(f'timeline[{i}] ({pa_time}) → timeline[{i+1}] ({pb_time}) 间距 {dist/1000:.2f}km 但中间无 transport 项')
+
+    # === 新增检查：行程不赶 + 用餐时长（规则 9-10）===
+    type_min_duration = {
+        'sight': 60,   # 景点最低 60min（博物馆等≥90，但至少 60）
+        'food': 60,    # 用餐最低 60min
+        'break': 30,   # 休息最低 30min
+    }
+    for i, item in enumerate(tl):
+        t = item.get('type', '')
+        if t not in type_min_duration:
+            continue
+        time_str = item.get('time', '')
+        parts = time_str.replace('-', ' ').replace('—', ' ').split()
+        if len(parts) >= 2:
+            try:
+                start = _to_min(parts[0])
+                end = _to_min(parts[1])
+                duration = end - start if end > start else end + 24*60 - start
+                min_dur = type_min_duration[t]
+                item_time = item.get("time", "?")
+                if duration < min_dur:
+                    warnings.append(f'timeline[{i}] ({item_time}) {t} 类型仅 {duration}min，建议 ≥{min_dur}min')
+            except:
+                pass
 
     # === restaurants ===
     rs = data.get('restaurants', [])

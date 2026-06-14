@@ -1,0 +1,219 @@
+{
+  "trip": {
+    "title": "滨江 · 科技馆+动漫馆+山泽里 City Walk（雨天遛娃版）",
+    "date": "2026-06-13",
+    "weather": {
+      "condition": "小雨",
+      "temp_high": 25,
+      "temp_low": 20,
+      "wind": "东风1-3级",
+      "tip": "三个王牌室内馆 + 文艺街区，今天下雨反而人少。低碳科技馆和动漫博物馆都免费🌂"
+    },
+    "transport": {
+      "mode": "地铁+打车",
+      "distance_km": 8,
+      "duration_min": 1,
+      "duration_note": "兴议站出发，地铁7号线→6号线可到江汉路站，或直接打车15分钟到低碳科技馆",
+      "origin": "7号线兴议站",
+      "destination": "滨江区（低碳科技馆→山泽里→动漫博物馆→天街）",
+      "tip": "滨江核心区景点分散，建议打车间隔每次¥15-25，一家三口打车比地铁换乘方便。全程打车费约¥80。"
+    },
+    "budget": {
+      "economy": 80,
+      "standard": 140,
+      "premium": 220,
+      "food_per_person_tight": 40,
+      "food_per_person_comfort": 90,
+      "food_per_person_premium": 160,
+      "note": "低碳科技馆+动漫博物馆免费。山泽里免费街区。主要消费在餐饮+咖啡+短途打车。"
+    }
+  },
+  "route_map": {
+    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&size=800*400&zoom=13&markers=mid,0xFF6B35,A:120.244,30.197;mid,0x4A90D9,B:120.202,30.209;mid,0x7B68EE,C:120.198,30.181;mid,0x2ECC71,D:120.206,30.162;mid,0xFF69B4,E:120.204,30.201",
+    "navi_url": "https://uri.amap.com/navigation?to=120.202,30.209,中国杭州低碳科技馆&mode=bus&policy=0&origin=120.244,30.197"
+  },
+  "timeline": [
+    {
+      "time": "10:00",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "兴议站出发 → 低碳科技馆",
+      "description": "从兴议站打车约15分钟（¥25）直达低碳科技馆。或者地铁7号线→奥体中心换6号线→江汉路站步行8分钟。下雨天建议直接打车，一家三口不折腾。",
+      "location": { "lng": 120.244, "lat": 30.197, "name": "兴议站" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.202,30.209,中国杭州低碳科技馆&mode=car&origin=120.244,30.197",
+      "confidence": "high"
+    },
+    {
+      "time": "10:00-12:00",
+      "type": "sight",
+      "icon": "🔬",
+      "title": "中国杭州低碳科技馆 — 4.8分 12000㎡ 室内科技殿堂",
+      "description": "滨江王牌室内馆！12000㎡四层楼，有全球变暖体验厅、低碳城市沙盘、儿童科学乐园、4D影院。3岁娃在儿童科学乐园能玩1小时+，各种互动装置——踩一下地就亮、吹一口气风车转。免费免预约（部分影院需领票），雨天遛娃性价比拉满。",
+      "location": { "lng": 120.201967, "lat": 30.209358, "name": "中国杭州低碳科技馆" },
+      "rating": { "amap": 4.8 },
+      "navi_url": "https://uri.amap.com/navigation?to=120.202,30.209,中国杭州低碳科技馆&mode=walk",
+      "confidence": "high",
+      "aggregation": {
+        "gaode_poi": "高德评分4.8，江汉路1888号，12000㎡室内科技馆"
+      },
+      "address": "滨江区江汉路1888号",
+      "features": ["免费免预约", "12000㎡", "儿童科学乐园", "4D影院", "室内全天候"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.201967,30.209358,中国杭州低碳科技馆&mode=walk"
+      }
+    },
+    {
+      "time": "12:00-13:00",
+      "type": "food",
+      "icon": "🍜",
+      "title": "午餐：八鲜面馆 / 乔村高压生蚝",
+      "description": "低碳科技馆步行5分钟到滨盛路。八鲜面馆（4.5分 ¥35/人）海鲜面是招牌；想犒劳一下就去乔村高压生蚝（5.0满分 ¥131/人）——滨江为数不多的满分店，高压锅生蚝+私房菜。",
+      "location": { "lng": 120.203, "lat": 30.211, "name": "滨盛路美食街" },
+      "rating": { "amap": 4.5 },
+      "price_per_person": 35,
+      "navi_url": "https://uri.amap.com/navigation?to=120.203,30.211,滨盛路八鲜面馆&mode=walk",
+      "confidence": "high",
+      "aggregation": {
+        "gaode_poi": "八鲜面馆4.5分¥35，乔村高压生蚝5.0分¥131"
+      },
+      "address": "滨盛路1851号（八鲜面馆）/ 滨盛路1865号（乔村）",
+      "features": ["海鲜面馆", "满分生蚝店", "离科技馆步行5分钟"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.203,30.211,八鲜面馆&mode=walk"
+      }
+    },
+    {
+      "time": "13:00-14:30",
+      "type": "sight",
+      "icon": "🎭",
+      "title": "安放山泽里 — 4.8分 滨江最文艺街区",
+      "description": "从低碳科技馆打车8分钟到。小红书27赞「阴雨天也超好拍的山泽里」+ 16赞「带娃约会干妈团」。旧厂房改造的文创艺术空间，有独立设计师店、手作工坊、小众咖啡馆。比小河直街更安静，比萧然山街更有设计感。下雨天人少，拍照没有任何路人入镜。",
+      "location": { "lng": 120.198303, "lat": 30.181030, "name": "安放山泽里" },
+      "rating": { "amap": 4.8 },
+      "navi_url": "https://uri.amap.com/navigation?to=120.198303,30.181030,安放山泽里&mode=walk",
+      "confidence": "high",
+      "aggregation": {
+        "xhs_likes": 27,
+        "xhs_title": "杭州滨江｜阴雨天也超好拍的山泽里！",
+        "xhs_url2": "杭州滨江山泽里｜带娃约会干妈团 (16赞)"
+      },
+      "address": "滨康路与聚才路交叉口西160米",
+      "features": ["旧厂房改造", "设计师店", "手作工坊", "小众咖啡馆", "免费街区"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.198303,30.181030,安放山泽里&mode=walk"
+      }
+    },
+    {
+      "time": "14:30-16:00",
+      "type": "sight",
+      "icon": "🎬",
+      "title": "中国动漫博物馆 — 4.7分 大小朋友通吃",
+      "description": "从山泽里打车10分钟。全国首家国字号动漫博物馆！四层楼展示中国动漫百年史：从万氏兄弟到哪吒，从水墨动画到3D渲染。一楼有巨型孙悟空雕像，二楼互动区可以自己配音配乐，三楼怀旧放映厅播老动画片——黑猫警长、大闹天宫，大人比娃还激动。免费免预约。",
+      "location": { "lng": 120.205558, "lat": 30.162080, "name": "中国动漫博物馆" },
+      "rating": { "amap": 4.7 },
+      "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=walk",
+      "confidence": "high",
+      "aggregation": {
+        "gaode_poi": "高德评分4.7，白马湖路375号，国字号动漫博物馆"
+      },
+      "address": "滨江区白马湖路375号",
+      "features": ["免费免预约", "互动配音区", "怀旧放映厅", "孙悟空雕像", "5D影厅(收费)"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=walk"
+      }
+    },
+    {
+      "time": "16:00-18:00",
+      "type": "food",
+      "icon": "🛍️",
+      "title": "龙湖杭州滨江天街 — 4.9分 晚餐+收官",
+      "description": "从动漫博物馆打车15分钟。滨江最高评分的商业体，4.9分。B1美食广场选择爆炸：连锁餐饮、小吃、甜品全覆盖；楼上还有亲子乐园。逛完三个馆来这吃顿好的，娃如果还有电可以在亲子区再放一波。",
+      "location": { "lng": 120.203853, "lat": 30.200758, "name": "龙湖杭州滨江天街" },
+      "rating": { "amap": 4.9 },
+      "price_per_person": 60,
+      "navi_url": "https://uri.amap.com/navigation?to=120.203853,30.200758,龙湖杭州滨江天街&mode=walk",
+      "confidence": "high",
+      "aggregation": {
+        "gaode_poi": "高德评分4.9，江汉路1515号，滨江最大商业体"
+      },
+      "address": "滨江区江汉路1515号",
+      "features": ["B1美食广场", "连锁餐饮", "亲子乐园", "IMAX影院"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.203853,30.200758,龙湖杭州滨江天街&mode=walk"
+      }
+    },
+    {
+      "time": "18:00",
+      "type": "transport",
+      "icon": "🏠",
+      "title": "返程：滨江天街 → 兴议站",
+      "description": "滨江天街到兴议站打车约15分钟（¥25），或者6号线江汉路→奥体中心换7号线→兴议站。一天下来：12000㎡科技馆启蒙 + 文艺街区拍照 + 动漫博物馆怀旧 + 天街美食收尾，全程室内，下雨完全没影响。三馆两街区，滨江雨天遛娃三件套齐活。",
+      "location": { "lng": 120.204, "lat": 30.201, "name": "滨江天街" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.244,30.197,兴议站&mode=car&origin=120.204,30.201",
+      "confidence": "high"
+    }
+  ],
+  "restaurants": [
+    {
+      "name": "八鲜面馆",
+      "type": "海鲜面",
+      "price_per_person": 35,
+      "rating_amap": 4.5,
+      "confidence": "high",
+      "district": "滨盛路/低碳科技馆",
+      "address": "滨盛路1851-1号",
+      "features": ["海鲜面招牌", "人均¥35", "离科技馆步行5分钟"],
+      "links": { "amap_navi": "https://uri.amap.com/navigation?to=120.203,30.211,八鲜面馆&mode=walk" }
+    },
+    {
+      "name": "乔村高压生蚝·私房菜",
+      "type": "私房菜/海鲜",
+      "price_per_person": 131,
+      "rating_amap": 5.0,
+      "confidence": "high",
+      "district": "滨盛路/低碳科技馆",
+      "address": "滨盛路1865号（招商银行隔壁）",
+      "features": ["满分5.0", "高压锅生蚝", "人均¥131", "品质之选"],
+      "links": { "amap_navi": "https://uri.amap.com/navigation?to=120.203,30.211,乔村高压生蚝&mode=walk" }
+    },
+    {
+      "name": "管八姑海鲜融合面馆",
+      "type": "海鲜面",
+      "price_per_person": 35,
+      "rating_amap": 4.4,
+      "confidence": "medium",
+      "district": "杭州印/星光大道",
+      "address": "江晖路2030号杭州印19号商铺",
+      "features": ["海鲜融合面", "人均¥35", "近星光大道"],
+      "links": { "amap_navi": "https://uri.amap.com/navigation?to=120.207,30.207,管八姑海鲜融合面馆&mode=walk" }
+    },
+    {
+      "name": "潮根夜档·潮汕菜",
+      "type": "潮汕菜",
+      "price_per_person": 103,
+      "rating_amap": 4.7,
+      "confidence": "high",
+      "district": "星光大道",
+      "address": "丹枫路1088号雪峰银座一楼",
+      "features": ["潮汕砂锅粥", "人均¥103", "晚餐备选"],
+      "links": { "amap_navi": "https://uri.amap.com/navigation?to=120.206,30.208,潮根夜档&mode=walk" }
+    },
+    {
+      "name": "长中面馆",
+      "type": "杭帮面",
+      "price_per_person": 25,
+      "rating_amap": 4.6,
+      "confidence": "high",
+      "district": "长河/动漫博物馆附近",
+      "address": "长江中路1号楼7号商铺",
+      "features": ["本地老面馆", "人均¥25", "近动漫博物馆"],
+      "links": { "amap_navi": "https://uri.amap.com/navigation?to=120.206,30.165,长中面馆&mode=walk" }
+    }
+  ],
+  "sources": [
+    "高德天气API（小雨 25°C/20°C）",
+    "高德POI搜索（低碳科技馆4.8/动漫博物馆4.7/山泽里4.8/天街4.9）",
+    "小红书opencli（山泽里阴雨天好拍/滨江遛娃/滨江约会流水线）",
+    "用户起点信息（7号线兴议站）"
+  ]
+}

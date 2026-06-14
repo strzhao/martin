@@ -1,392 +1,256 @@
 {
   "trip": {
-    "title": "嘉兴 · 西塘小吃扫街+五芳斋朝圣一日自驾",
-    "subtitle": "从西塘古镇烟火气到月河老街粽香，128km吃透嘉兴",
-    "date": "2026-06-13",
+    "title": "滨江 · 动漫博物馆 + 星光大道 City Walk（雨天遛娃版）",
+    "date": "2026-06-14",
     "weather": {
-      "condition": "小雨",
-      "temp_high": 25,
-      "temp_low": 21,
-      "wind": "东风1-3级",
-      "tip": "小雨配烟雨江南西塘古镇，意境满分；石板路湿滑穿防滑鞋"
+      "condition": "小雨转多云",
+      "temp_high": 27,
+      "temp_low": 22,
+      "wind": "东北风1-3级"
     },
     "transport": {
       "mode": "自驾",
-      "distance_km": 262,
-      "duration_total_min": 229,
-      "tolls_roundtrip": 104,
-      "origin": "杭州拱墅区",
-      "destination": "嘉兴（西塘→市区）",
-      "parking": "西塘第1停车场（全天30元），嘉兴月河停车场（5元/小时）",
-      "route_summary": "杭州→G60沪昆→西塘（128km/98min/¥52）→ 市区（34km/51min）→ 返杭（约100km/80min）",
-      "tip": "8:30前出发，避开出城早高峰；西塘10点前人少好拍照"
+      "distance_km": 21.2,
+      "duration_min": 61,
+      "origin": "龙湖春江天玺（萧山区博奥路）",
+      "destination": "滨江区星光大道"
     },
     "budget": {
-      "food_per_person_tight": 148,
-      "food_per_person_comfort": 173,
-      "food_per_person_premium": 220,
-      "parking": 50,
-      "tolls_roundtrip": 104,
-      "gas_estimate": 140,
-      "per_person_total": 295,
-      "note": "按一车2人分摊交通费；人均饮食148-173元，¥150预算刚好"
-    },
-    "highlights": [
-      "6月13日小雨，西塘古镇烟雨长廊意境拉满",
-      "西塘小吃扫街是灵魂——管老太臭豆腐+陆氏馄饨+芡实糕三件套不到¥50",
-      "五芳斋总店（建国路）是粽子界「圣地」，蛋黄肉粽配小馄饨就是嘉兴人的早晨",
-      "月河历史街区免费开放，粽子文化博物馆藏在真真老老店里",
-      "避坑指南：钱塘人家（预制菜+服务差）、天下第一面（态度差）直接跳过"
-    ]
+      "food_per_person": 74,
+      "economy": 52,
+      "standard": 74,
+      "premium": 123
+    }
   },
   "route_map": {
-    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&zoom=9&size=800*400&markers=mid,0xFF0000,A:120.155,30.274;mid,0x0066FF,B:120.924,30.942;mid,0x00AA00,C:120.756,30.754",
-    "navi_url": "https://uri.amap.com/navigation?to=120.924,30.942,西塘古镇第1停车场&mode=car&policy=0"
+    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&size=800*400&markers=mid,0xFF6B35,A:120.241,30.210;mid,0x4A90D9,B:120.205558,30.162080;mid,0xE94E77,C:120.208128,30.209463&paths=3,0x4A90D9,1,,:120.241,30.210;120.205558,30.162080;120.208128,30.209463;120.241,30.210",
+    "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car"
   },
   "timeline": [
     {
-      "time": "08:30",
+      "time": "09:50-10:12",
       "type": "transport",
       "icon": "🚗",
-      "title": "杭州出发 → G60沪昆高速",
-      "description": "从拱墅区出发，走G60沪昆高速→S12申嘉湖高速，约128公里，98分钟，过路费52元。进西塘前在汾湖服务区休息5分钟",
-      "location": { "lng": 120.155, "lat": 30.274, "name": "杭州拱墅区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.924,30.942,西塘古镇第1停车场&mode=car&policy=0",
-      "rating": {},
-      "price_per_person": 0,
-      "confidence": "high"
+      "title": "出发 → 中国动漫博物馆",
+      "description": "从龙湖春江天玺开车前往滨江白马湖，周日早上市区畅通",
+      "location": { "lng": 120.241, "lat": 30.210, "name": "龙湖春江天玺" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car&from=120.241,30.210,龙湖春江天玺",
+      "distance_km": 10.4,
+      "duration_min": 22
     },
     {
-      "time": "10:10",
+      "time": "10:12-10:15",
       "type": "transport",
       "icon": "🅿️",
-      "title": "西塘古镇第1停车场",
-      "description": "全天30元，紧邻景区南入口。停好车直接进古镇——周六上午10点前人少，烟雨长廊拍照最佳时段",
-      "location": { "lng": 120.924, "lat": 30.939, "name": "西塘古镇第1停车场" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.924,30.939,西塘古镇第1停车场&mode=car",
-      "rating": {},
-      "price_per_person": 15,
-      "confidence": "high"
+      "title": "停车 · 动漫博物馆地下停车场",
+      "description": "地下停车场免费，步行3分钟到博物馆入口",
+      "location": { "lng": 120.205135, "lat": 30.161636, "name": "中国动漫博物馆地下停车场" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.205135,30.161636,中国动漫博物馆地下停车场&mode=car",
+      "distance_km": 0.2,
+      "duration_min": 3
     },
     {
-      "time": "10:10-12:00",
-      "type": "sight",
-      "icon": "📍",
-      "title": "西塘古镇漫游 · 烟雨长廊",
-      "description": "周六预报小雨，西塘烟雨长廊就是为此而生的——沿河廊棚连绵千米，下雨不用打伞。路线：南入口→烟雨长廊→送子来凤桥→环秀桥→西街→石皮弄→卧龙桥。最窄的石皮弄仅0.8米宽，两人侧身才能过。免费区域足够逛2小时，若想进宅院可买联票95元（不必须）",
-      "location": { "lng": 120.924, "lat": 30.942, "name": "西塘古镇核心景区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.924,30.942,西塘古镇烟雨长廊&mode=walk",
-      "rating": { "amap": 4.7, "level": "5A景区" },
-      "price_per_person": 0,
-      "confidence": "high",
-      "links": {}
-    },
-    {
-      "time": "12:00-13:00",
-      "type": "food",
-      "icon": "🍜",
-      "title": "小吃扫街第一轮：西塘灵魂三件套",
-      "description": "西塘的正确打开方式是边走边吃，不是正襟危坐吃大餐。三站扫街：① 管老太臭豆腐官方旗舰店（塔湾街55号·Amap4.3分·¥15）祖传工艺，外脆里嫩配甜酱和辣酱；② 陆氏馄饨（里仁街18号·Amap4.4分·¥24）皮薄馅鲜汤底清澈，藏在戉寅桥下的小店；③ 沿线看到芡实糕随便买一块（森林/一线天/曹记三家都行，¥10/块），边走边嚼桂花味韧中带糯",
-      "location": { "lng": 120.925, "lat": 30.943, "name": "西塘塔湾街-里仁街" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.925,30.943,管老太臭豆腐旗舰店&mode=walk",
-      "rating": { "amap": 4.3 },
-      "price_per_person": 49,
-      "confidence": "high",
-      "aggregation": {
-        "primary": {
-          "name": "管老太臭豆腐官方总部旗舰店",
-          "amap_rating": 4.3,
-          "price": 15
-        },
-        "alternatives": [
-          { "name": "陆氏馄饨", "amap_rating": 4.4, "price": 24 },
-          { "name": "森林芡实糕", "location": "塘东街18号", "price": 10 }
-        ],
-        "bilibili_quotes": ["不到100r吃遍西塘美食！真的便宜又好吃"],
-        "websearch_mentioned": true
-      },
-      "address": "西塘古镇塔湾街—里仁街",
-      "features": ["祖传老店", "现做现卖", "边走边吃"],
-      "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.925,30.943,管老太臭豆腐&mode=walk"
-      }
-    },
-    {
-      "time": "13:00-13:30",
-      "type": "food",
-      "icon": "🥮",
-      "title": "小吃扫街第二弹：豆腐花+八珍糕",
-      "description": "沿着西街往北走：① 钱氏豆腐花（双桥附近，一定要喝咸的！）¥8 嫩滑豆花配紫菜虾皮榨菜，江南水乡标配；② 沿途糕点铺试吃八珍糕（西塘特色药膳糕点，¥5/块），茯苓山药芡实莲子八味中药入糕，微甜不腻。这个阶段基本吃半饱，刚好留肚子给嘉兴市区",
-      "location": { "lng": 120.923, "lat": 30.944, "name": "西塘西街-双桥" },
-      "rating": {},
-      "price_per_person": 13,
-      "confidence": "medium",
-      "links": {}
-    },
-    {
-      "time": "13:30-14:20",
-      "type": "transport",
-      "icon": "🚗",
-      "title": "西塘 → 嘉兴市区月河",
-      "description": "34公里，约51分钟。出西塘走平黎公路→G320→嘉兴市区。导航设置：月河历史街区停车场",
-      "location": { "lng": 120.756, "lat": 30.771, "name": "月河历史街区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.756,30.771,月河历史街区停车场&mode=car&policy=0",
-      "rating": {},
-      "price_per_person": 0,
-      "confidence": "high"
-    },
-    {
-      "time": "14:30-15:15",
+      "time": "10:15-11:45",
       "type": "sight",
       "icon": "🏛️",
-      "title": "月河历史街区 + 粽子文化博物馆",
-      "description": "月河是嘉兴保存最完整的老街区，小桥流水+明清建筑+各种老字号扎堆，免费开放。先去真真老老（建国路36号）——店内有粽子文化博物馆，展示嘉兴粽子百年历史，看完直接买一只麻辣鲜肉粽（¥8）尝尝百年老字号的功力。然后沿中基路漫步，看看邹大鲜的门面（不进，原因见下），逛古居斋传统糕点铺",
-      "location": { "lng": 120.754, "lat": 30.772, "name": "月河历史街区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.754,30.772,月河历史街区&mode=walk",
+      "title": "中国动漫博物馆",
+      "description": "全国首家国字号动漫博物馆，免费入馆。4层展厅涵盖动画历史、制作工艺、互动体验区。三楼有儿童互动区，适合3岁小朋友。建议提前在「中国动漫博物馆」公众号预约",
+      "location": { "lng": 120.205558, "lat": 30.162080, "name": "中国动漫博物馆" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car",
       "rating": { "amap": 4.7 },
-      "price_per_person": 8,
       "confidence": "high",
-      "aggregation": {
-        "dianping": {
-          "note": "邹大鲜Amap4.7但B站有UP主明确标记为'踩的美食坑'(播放2578)，信号冲突。环境好但味道有争议，建议门口拍照即走，把预算留给更可靠的店"
-        }
-      }
-    },
-    {
-      "time": "15:15-15:45",
-      "type": "food",
-      "icon": "🥟",
-      "title": "五芳斋总店 · 粽子朝圣",
-      "description": "建国南路286号，嘉兴最硬核的地标——你在全国高速服务区吃过一万次五芳斋，但总店是另一回事。蛋黄肉粽（¥12）糯米软糯油脂渗入每一粒米，大肉粽（¥10）瘦肉不柴肥肉化在米里，再来一碗鲜肉小馄饨（¥8）解腻。天气好的话可以坐二楼临窗位置看建国路街景",
-      "location": { "lng": 120.756, "lat": 30.762, "name": "五芳斋总店" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.756,30.762,五芳斋总店&mode=walk",
-      "rating": { "amap": 4.6 },
-      "price_per_person": 30,
-      "confidence": "high",
-      "aggregation": {
-        "dianping": {
-          "score": 4.3,
-          "reviews": "百年老字号"
-        },
-        "bilibili_bvid": "BV1eG4y1r7y1",
-        "bilibili_quotes": ["除了粽子还有老底子手工糕点"],
-        "websearch_mentioned": true
-      },
-      "address": "建国南路286号",
-      "features": ["百年老字号", "非遗", "二楼堂食"],
+      "address": "白马湖路375号",
+      "features": ["免费", "室内", "有儿童互动区", "地下停车场"],
       "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.756,30.762,五芳斋总店&mode=walk"
+        "amap_navi": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car"
       }
     },
     {
-      "time": "15:45-17:00",
-      "type": "sight",
-      "icon": "🌿",
-      "title": "南湖散步 · 烟雨楼远眺",
-      "description": "从五芳斋步行15分钟到南湖景区（免费进入湖畔步道）。南湖不大但很有灵气——中国共产党诞生地、乾隆六下江南必游。沿着会景园→湖心岛方向散步，远眺烟雨楼（上岛需乘船20元，可不上去）。6月荷叶初长，小雨打在荷叶上很有意境。走累了在湖畔长椅坐会儿，就是江南该有的节奏",
-      "location": { "lng": 120.763, "lat": 30.756, "name": "嘉兴南湖旅游区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.763,30.756,嘉兴南湖旅游区&mode=walk",
-      "rating": { "amap": 4.8, "level": "5A景区" },
-      "price_per_person": 0,
-      "confidence": "high",
-      "links": {}
+      "time": "11:45-12:07",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "前往星光大道",
+      "description": "从白马湖开往滨江核心商圈星光大道",
+      "location": { "lng": 120.205558, "lat": 30.162080, "name": "中国动漫博物馆" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.208128,30.209463,星光大道&mode=car&from=120.205558,30.162080,动漫博物馆",
+      "distance_km": 6.1,
+      "duration_min": 22
     },
     {
-      "time": "17:00-18:00",
+      "time": "12:07-12:10",
+      "type": "transport",
+      "icon": "🅿️",
+      "title": "停车 · 星光大道停车场",
+      "description": "钱源十一道有免费停车，也可停星光大道地下停车场后步行2分钟",
+      "location": { "lng": 120.206859, "lat": 30.212376, "name": "星光大道地面停车场" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.206859,30.212376,星光大道停车场&mode=car",
+      "distance_km": 0.3,
+      "duration_min": 3
+    },
+    {
+      "time": "12:10-13:20",
       "type": "food",
-      "icon": "🍽️",
-      "title": "晚餐：禾城陆稿荐 · 嘉兴本味",
-      "description": "月河街中基路（距邹大鲜867米），携程美食林推荐的老牌江浙菜。推荐：酱鸭（嘉兴招牌，酱香浓郁肉质紧实）、烂糊鳝丝（鳝鱼切丝勾芡，嘉兴经典做法）、绣花锦（本地特色绿叶菜）。人均¥98跟预算刚好。如果想吃更实惠的，替代方案是新塍农家菜（兴业街·Amap4.5分·人均¥73），土灶烧出来的练市羊肉煲、葱油白条一样能打",
-      "location": { "lng": 120.753, "lat": 30.772, "name": "禾城陆稿荐酒楼" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.753,30.772,禾城陆稿荐&mode=walk",
-      "rating": { "dianping": 4.3 },
-      "price_per_person": 98,
+      "icon": "🍜",
+      "title": "午餐 · 钱源十一道·衢州菜",
+      "description": "滨江区衢州菜服务榜第1名。衢州菜以鲜辣著称，招牌菜：鱼头烧粉干、生炒鸡、衢州鸭头。有宝宝椅，适合带娃。人均¥74在预算内",
+      "location": { "lng": 120.204770, "lat": 30.209972, "name": "钱源十一道·衢州菜(隆和国际店)" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.204770,30.209972,钱源十一道衢州菜&mode=car",
+      "rating": { "amap": 4.6 },
+      "price_per_person": 74,
+      "confidence": "high",
+      "aggregation": {
+        "dianping": {
+          "shop_id": "G1oVe3QPCH6gmUEx",
+          "name": "钱源十一道·衢州菜(隆和国际店)",
+          "score": 4.8,
+          "taste": 4.8,
+          "environment": 4.7,
+          "service": 4.8,
+          "reviews": 3735,
+          "rank": "滨江区衢州菜服务榜 · 第1名"
+        }
+      },
+      "address": "江晖路1961号（星光大道旁）",
+      "features": ["有包厢", "有大桌", "免费停车", "有宝宝椅", "营业10:30-14:00"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G1oVe3QPCH6gmUEx",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.204770,30.209972,钱源十一道衢州菜&mode=car"
+      }
+    },
+    {
+      "time": "13:20-13:50",
+      "type": "break",
+      "icon": "📚",
+      "title": "钟书阁（星光国际广场店）",
+      "description": "网红书店，镜面穹顶设计非常出片。儿童阅读区有绘本，小朋友可以翻翻书，大人喝杯茶歇歇脚",
+      "location": { "lng": 120.208128, "lat": 30.209463, "name": "钟书阁(星光国际广场4幢店)" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.208128,30.209463,钟书阁星光大道&mode=car",
+      "rating": { "amap": 4.5 },
+      "confidence": "high",
+      "address": "江南大道228号星光国际广场4幢2楼",
+      "features": ["儿童阅读区", "镜面穹顶", "免费入座"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.208128,30.209463,钟书阁星光大道&mode=car"
+      }
+    },
+    {
+      "time": "13:50-14:20",
+      "type": "break",
+      "icon": "☕",
+      "title": "M Stand 咖啡",
+      "description": "星光大道一楼的设计师咖啡品牌，水泥工业风。招牌燕麦拿铁和水泥芝士蛋糕。大人充电，小朋友休息",
+      "location": { "lng": 120.208791, "lat": 30.208018, "name": "M Stand(杭州滨江星光大道店)" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.208791,30.208018,M Stand星光大道&mode=car",
+      "rating": { "amap": 4.5 },
+      "price_per_person": 32,
       "confidence": "medium",
       "aggregation": {
         "dianping": {
-          "score": 4.3,
-          "reviews": 18
-        },
-        "websearch_mentioned": true,
-        "alternative": {
-          "name": "新塍农家菜(兴业街店)",
-          "amap_rating": 4.5,
-          "price": 73,
-          "recommended": ["练市羊肉煲", "葱油白条", "绣花锦"]
+          "shop_id": "k3D5069fJY4bvPf8",
+          "name": "M Stand(杭州滨江星光大道店)",
+          "score": 4.5
         }
       },
-      "address": "月河历史街区中基路",
-      "features": ["老牌江浙菜", "嘉兴本味"],
+      "address": "江南大道228号星光国际广场F1层",
+      "features": ["设计师咖啡", "有甜点"],
       "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.753,30.772,禾城陆稿荐&mode=walk"
+        "dianping": "https://www.dianping.com/shop/k3D5069fJY4bvPf8",
+        "amap_navi": "https://uri.amap.com/navigation?to=120.208791,30.208018,M Stand星光大道&mode=car"
       }
     },
     {
-      "time": "18:00",
+      "time": "14:20-15:30",
+      "type": "sight",
+      "icon": "🛍️",
+      "title": "星光大道步行街 + 星光国际广场",
+      "description": "滨江最大的商业综合体。步行街有露天雕塑和喷泉，商场内有儿童游乐区。雨后凉爽适合溜达消食。备选：中国杭州低碳科技馆（4.8分，步行10分钟可达）",
+      "location": { "lng": 120.208066, "lat": 30.209255, "name": "星光大道步行街" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.208066,30.209255,星光大道步行街&mode=car",
+      "rating": { "amap": 4.5 },
+      "confidence": "high",
+      "address": "江南大道228号",
+      "features": ["室内商场", "儿童游乐区", "餐饮齐全"],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=120.208066,30.209255,星光大道步行街&mode=car"
+      }
+    },
+    {
+      "time": "15:30-15:47",
       "type": "transport",
       "icon": "🚗",
-      "title": "返程回杭",
-      "description": "走G60沪昆高速原路返回，约100公里80分钟，预计19:20前到家。若想避开晚高峰可推迟到19:00出发，在南湖边再看一眼夜景",
-      "location": { "lng": 120.155, "lat": 30.274, "name": "杭州拱墅区" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.155,30.274,杭州拱墅区&mode=car&policy=0",
-      "rating": {},
-      "price_per_person": 0,
-      "confidence": "high"
+      "title": "返程 · 星光大道 → 龙湖春江天玺",
+      "description": "结束轻松的滨江半日游，开车回家。周日傍晚路况通常较好",
+      "location": { "lng": 120.208066, "lat": 30.209255, "name": "星光大道" },
+      "navi_url": "https://uri.amap.com/navigation?to=120.241,30.210,龙湖春江天玺&mode=car&from=120.208066,30.209255,星光大道",
+      "distance_km": 4.7,
+      "duration_min": 17
     }
   ],
   "restaurants": [
     {
-      "name": "五芳斋(嘉兴总店)",
-      "type": "百年老字号/粽子",
-      "price_per_person": 18,
+      "name": "钱源十一道·衢州菜(隆和国际店)",
+      "type": "衢州菜",
+      "price_per_person": 74,
       "rating_amap": 4.6,
-      "bangdan_name": "嘉兴必打卡No.1",
-      "dianping_score": 4.3,
+      "dianping_score": 4.8,
+      "dianping_reviews": 3735,
+      "dianping_rank": "滨江区衢州菜服务榜第1名",
       "confidence": "high",
-      "district": "建国路",
-      "address": "建国南路286号",
-      "recommended_dishes": ["蛋黄肉粽(¥12)", "贵妃大肉粽(¥10)", "鲜肉小馄饨(¥8)", "卤蛋大排面"],
-      "features": ["百年老字号", "非遗", "二楼堂食", "手工糕点"],
-      "links": {}
+      "district": "星光大道",
+      "address": "江晖路1961号（星光大道旁）",
+      "features": ["有包厢", "有大桌", "免费停车", "有宝宝椅"],
+      "links": {
+        "dianping": "https://www.dianping.com/shop/G1oVe3QPCH6gmUEx"
+      }
     },
     {
-      "name": "管老太臭豆腐官方总部旗舰店",
-      "type": "小吃/臭豆腐",
-      "price_per_person": 15,
+      "name": "浅草屋(滨江星光大道店)",
+      "type": "日本料理",
+      "price_per_person": 74,
       "rating_amap": 4.3,
-      "confidence": "high",
-      "district": "西塘古镇塔湾街",
-      "address": "西塘镇塔湾街小桐圩55-58号",
-      "recommended_dishes": ["臭豆腐（祖传工艺发酵）"],
-      "features": ["西塘最老臭豆腐", "祖传工艺", "甜酱+辣酱"],
-      "links": {}
-    },
-    {
-      "name": "陆氏馄饨",
-      "type": "小吃/馄饨",
-      "price_per_person": 24,
-      "rating_amap": 4.4,
-      "confidence": "medium",
-      "district": "西塘古镇里仁街",
-      "address": "西塘镇里仁街18号戉寅桥下",
-      "recommended_dishes": ["鲜肉小馄饨"],
-      "features": ["皮薄馅鲜", "戉寅桥下小店"],
-      "links": {}
-    },
-    {
-      "name": "七张桌精品餐馆",
-      "type": "西塘本帮菜",
-      "price_per_person": 85,
-      "bangdan_rank": 1,
-      "bangdan_name": "大众点评西塘排名第一",
-      "confidence": "high",
-      "district": "西塘古镇内",
-      "address": "西塘古镇内（仅七张桌，高峰期等位）",
-      "recommended_dishes": ["秘制牛肉(必点)", "螺丝(¥0.01近乎免费)", "酱爆茄子", "蒜泥生菜"],
-      "features": ["仅7张桌", "送水果沙拉", "需等位"],
-      "links": {}
-    },
-    {
-      "name": "钱雨曼·怀旧景观餐厅",
-      "type": "西塘本帮菜/景观餐厅",
-      "price_per_person": 80,
-      "reco_rate": "43%游客推荐",
-      "confidence": "high",
-      "district": "西塘古镇内",
-      "address": "西塘古镇（二楼临河露台）",
-      "recommended_dishes": ["软糯猪脚(必点)"],
-      "features": ["二楼临河露台", "景致绝美", "服务员贴心"],
-      "links": {}
-    },
-    {
-      "name": "西塘老酒文化主题餐厅",
-      "type": "西塘本帮菜/主题餐厅",
-      "price_per_person": 53,
-      "rating_amap": 4.5,
-      "confidence": "medium",
-      "district": "西塘古镇下西街",
-      "address": "西塘古镇下西街1号(西园东边20米)",
-      "recommended_dishes": ["清蒸白水鱼", "老酒"],
-      "features": ["性价比高", "酒文化主题"],
-      "links": {}
-    },
-    {
-      "name": "邹大鲜(月河店)",
-      "type": "江浙菜/嘉兴本帮菜",
-      "price_per_person": 115,
-      "rating_amap": 4.7,
-      "dianping_score": 4.3,
-      "bangdan_name": "浙江餐饮名店(5A级)",
-      "confidence": "medium",
-      "note": "⚠️ Amap4.7但B站UP主标记为'踩的美食坑'(播放2578)。环境好但味道有争议，建议门口拍照即可",
-      "district": "月河历史街区",
-      "address": "月河街中基路59号",
-      "recommended_dishes": ["蛋黄南瓜", "葱油拌面", "酱鸭", "咸肉腌笃鲜"],
-      "features": ["古色古香", "多个庭院", "看实物点餐", "排队严重"],
-      "links": {}
-    },
-    {
-      "name": "禾城陆稿荐酒楼·嘉兴本味(月河店)",
-      "type": "江浙菜/嘉兴本帮菜",
-      "price_per_person": 98,
       "dianping_score": 4.3,
       "confidence": "medium",
-      "district": "月河历史街区",
-      "address": "月河历史街区（距邹大鲜867m）",
-      "recommended_dishes": ["酱鸭", "烂糊鳝丝", "绣花锦"],
-      "features": ["老牌本帮菜", "本地人推荐"],
+      "district": "星光大道",
+      "address": "星光大道二期4楼447号",
+      "features": ["日料", "环境好"],
       "links": {}
     },
     {
-      "name": "新塍农家菜(兴业街店)",
-      "type": "农家菜",
-      "price_per_person": 73,
+      "name": "簇屿(星光大道店)",
+      "type": "私房菜",
+      "price_per_person": 123,
       "rating_amap": 4.5,
+      "dianping_score": 4.5,
       "confidence": "medium",
-      "district": "嘉兴秀洲区",
-      "address": "兴业街18-20号",
-      "recommended_dishes": ["练市羊肉煲", "葱油白条", "绣花锦"],
-      "features": ["土灶烧制", "性价比高", "¥150预算友好替代"],
+      "district": "星光大道",
+      "address": "星光大道内",
+      "features": ["私房菜", "适合约会"],
       "links": {}
     },
     {
-      "name": "真真老老（粽子博物馆）",
-      "type": "百年老字号/粽子博物馆",
-      "price_per_person": 8,
+      "name": "周大宽·江西小炒(星光国际广场店)",
+      "type": "江西菜",
+      "price_per_person": 52,
+      "rating_amap": 4.5,
+      "dianping_score": 4.5,
       "confidence": "medium",
-      "district": "月河建国路",
-      "address": "建国路36号",
-      "recommended_dishes": ["麻辣鲜肉粽", "腐乳鲜肉粽"],
-      "features": ["百年老字号", "内有粽子博物馆", "免费参观"],
-      "links": {}
-    },
-    {
-      "name": "钱塘人家（⚠️ 避雷）",
-      "type": "西塘本帮菜",
-      "price_per_person": 67,
-      "confidence": "low",
-      "note": "⚠️ 明确不建议：服务态度极差（点菜慢遭白眼）、菜是预先做好的（上菜不到3分钟）、19:30后不点单、卫生一般",
-      "district": "西塘古镇永宁桥下",
-      "address": "西塘镇北栅街1号",
-      "features": ["❌ 避雷"],
-      "links": {}
-    },
-    {
-      "name": "西塘天下第一面（⚠️ 避雷）",
-      "type": "面馆",
-      "price_per_person": 18,
-      "confidence": "low",
-      "note": "⚠️ 不推荐：服务态度极其一般，容易引发冲突。肥肠面¥18价格实在但体验差",
-      "district": "西塘古镇",
-      "address": "西塘镇北栅街朝西埭10号",
-      "features": ["❌ 避雷", "24小时营业"],
+      "district": "星光大道",
+      "address": "星光国际广场内",
+      "features": ["实惠", "下饭"],
       "links": {}
     }
   ],
   "sources": [
-    "高德地图API（天气+POI评分+驾车路线）",
-    "Brave WebSearch（携程美食林、知乎、TripAdvisor、什么值得买、上海本地宝等10+平台交叉验证）",
-    "B站（元气八眉菌215万播放、真探唐仁杰80万播放、小猪好吃喝等多UP主探店视频）",
-    "搜狗搜索（小红书/微博信息补充）"
+    "高德API（天气+POI+驾车路线）",
+    "大众点评 opencli（餐厅评分+详情）",
+    "小红书 opencli（攻略笔记）",
+    "Amap POI 搜索"
+  ],
+  "tips": [
+    "明天有小雨，动漫博物馆全程室内不受影响",
+    "建议提前在「中国动漫博物馆」公众号预约（免费）",
+    "钱源十一道营业至14:00，12点前到店不用等位",
+    "带把伞，星光大道步行街雨后走走很舒服",
+    "娃如果精力好，可步行去低碳科技馆（江汉路1888号，免费需预约）"
   ]
 }
