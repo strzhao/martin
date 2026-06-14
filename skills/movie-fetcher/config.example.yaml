@@ -1,0 +1,45 @@
+# movie-fetcher 配置模板
+# 把本文件复制为 config.yaml，权限改成 0600，再运行 `cli.py setup` 自动补全
+
+nas:
+  host: 192.168.31.17
+  admin_user: admin
+  admin_password: "REPLACE_ME"
+
+client:
+  # kind 取 qbittorrent / transmission；setup 会自动探测并写入
+  kind: ""
+  url: ""
+  user: ""
+  password: ""
+
+paths:
+  # qBit/Transmission 视角下的下载目标根目录（NAS 内部路径）
+  nas_internal: ""
+  # 本机 SMB 挂载的迅雷下载根目录
+  local_mount: "/Volumes/stringzhao_主空间/迅雷下载"
+  # 分类子目录映射：key 用作 --category 参数，value 是相对于根目录的子目录名
+  categories:
+    movie: "电影"
+    tv: "剧集"
+  # 不指定 --category 时的默认分类
+  default_category: "movie"
+
+subtitle:
+  # 字幕语言偏好，按顺序尝试；找到任一即停止
+  prefer: ["zh-Hans", "zh-CN", "zh", "en"]
+  # 全部找不到时是否调用 whisper 本地生成
+  whisper_fallback: true
+  whisper_script: "/Users/stringzhao/workspace/martin/scripts/transcribe.py"
+  whisper_model: "large-v3-turbo"
+
+search:
+  # 单源超时（秒）
+  timeout: 5
+  # 默认按 seeders+1080p 自动选第一条
+  prefer_quality: ["1080p", "2160p", "720p"]
+
+download:
+  # fetch 子命令轮询完成的周期与总超时（秒）
+  poll_interval: 30
+  poll_timeout: 86400
