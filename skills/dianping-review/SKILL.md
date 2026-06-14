@@ -195,6 +195,26 @@ done
 If zero pending folders: tell the user and stop.
 Restaurant name inference: folder name first, then audio filename, then context clues.
 
+### Step 0.2: Auto-Discover Restaurant Photos from NAS (NEW)
+
+如果用户尚未手动放置照片到点评文件夹，使用 relight CLI 自动从 NAS 发现：
+
+```bash
+cd /Users/stringzhao/workspace/relight/apps/backend
+npx tsx src/cli/discover-dianping-photos.ts \
+  --time-start "<date>T18:00:00+08:00" \
+  --time-end "<date>T21:00:00+08:00" \
+  --output-dir "$FOLDER" \
+  --mode convert
+```
+
+时间窗口推断：
+- 用户说"X日晚餐" → X日 18:00-21:00
+- 用户说"X日午餐" → X日 11:00-14:00
+- 仅提供日期 → 覆盖 11:00-21:00
+
+如果 CLI 返回 0 张匹配照片，告知用户并继续 Step 0.5（手动放置）。
+
 ### Step 0.5: Gather Materials
 
 ```bash
