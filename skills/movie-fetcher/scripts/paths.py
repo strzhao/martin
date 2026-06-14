@@ -36,17 +36,30 @@ def to_nas(local_path: str, nas_internal: str, local_mount: str) -> str:
 def nas_save_path(nas_internal: str, categories: dict[str, str], category: str) -> str:
     """构建 qBit 视角的分类下载目录。
 
-    例：nas_save_path("/m", {"movie":"电影","tv":"剧集"}, "tv") → "/m/剧集"
-    未匹配的 category 返回 nas_internal 本身。
+    例：nas_save_path("/m", {"movie":"/m","tv":"/d"}, "tv") → "/d"
+    value 为绝对路径时直接使用（支持独立挂载点），相对路径则拼到 nas_internal 后。
     """
     subdir = categories.get(category, "")
-    return f"{nas_internal.rstrip('/')}/{subdir}" if subdir else nas_internal
+    if not subdir:
+        return nas_internal
+    if subdir.startswith("/"):
+        return subdir  # 绝对 NAS 路径（独立挂载点）
+    return f"{nas_internal.rstrip('/')}/{subdir}"
 
 
-def local_category_dir(local_mount: str, categories: dict[str, str], category: str) -> str:
+def local_category_dir(local_mount: str, categories: dict[str, str],
+                       category: str, local_paths: dict[str, str] | None = None) -> str:
     """构建本机挂载路径下的分类目录。
 
-    例：local_category_dir("/Volumes/迅雷下载", {"tv":"剧集"}, "tv") → "/Volumes/迅雷下载/剧集"
+    local_paths 为按分类 key 覆盖的本地路径（用于独立挂载点）。
+    例：local_category_dir("/Volumes/迅雷下载", {"movie":"/m","tv":"/d"}, "tv",
+                          local_paths={"tv":"/Volumes/迅雷下载/电视剧"})
+        → "/Volumes/迅雷下载/电视剧"
     """
+    if local_paths and category in local_paths:
+        return local_paths[category]
     subdir = categories.get(category, "")
+    # 绝对路径且无 local_paths 覆盖 → 返回 local_mount 本身（/m 的 SMB 挂载点）
+    if subdir.startswith("/"):
+        return local_mount
     return f"{local_mount.rstrip('/')}/{subdir}" if subdir else local_mount

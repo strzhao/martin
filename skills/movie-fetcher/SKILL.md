@@ -1,7 +1,7 @@
 ---
 name: movie-fetcher
 description: "用电影名一键下载电影/剧集到绿联 NAS 并自动配字幕（教父 BT + qBit + zimuku/SubHD(Qwen OCR) + 内嵌字幕检测 + whisper 兜底）"
-version: 0.3.0
+version: 0.4.0
 metadata:
   hermes:
     tags:
@@ -70,21 +70,27 @@ $PYTHON -m scripts.cli setup --qbit-password '<qBit Web 密码>' \
 | `search <title> [--limit N]` | 只搜不下，看候选 |
 | `embed <mkv\|dir> [--delete-external] [--no-default]` | 把外挂字幕用 ffmpeg `-c copy` 内嵌到 mkv 容器（视频不重编码，几分钟）。默认标新字幕为 default 轨道，外挂保留 |
 
-## 分类支持
+## 分类支持（v0.4 自动识别）
 
-`config.yaml` 的 `paths.categories` 定义分类映射，`-c` / `--category` 参数控制下载到哪个子目录：
+`config.yaml` 的 `paths.categories` 定义分类映射：
 
 ```yaml
 paths:
   categories:
     movie: "电影"
     tv: "剧集"
-  default_category: "movie"   # 不指定 -c 时的默认值
+  default_category: "movie"   # 无法识别时的兜底
 ```
 
-- `fetch "信条"` → 迅雷下载/电影/
-- `fetch "绝命毒师" -c tv` → 迅雷下载/剧集/
-- `scan-missing` 会自动遍历所有 categories 子目录
+**自动识别**（v0.4）：`fetch`/`download` 不指定 `-c` 时，自动从搜索词+结果标题判断是否为剧集。
+匹配模式：`全\d+集`、`全集打包`、`S\d{2,}`、`Season \d+`、`第\d+季`、`E\d{2,}`、`EP\d{2,}`、`第\d+部`、`\bTV\b`。
+
+- `fetch "信条"` → 自动识别为电影 → 迅雷下载/电影/  ✅
+- `fetch "绝命毒师"` → 标题含 S01 → 自动识别为剧集 → 迅雷下载/剧集/  ✅
+- `fetch "铁拳教育"` → 搜索结果含「全10集」→ 自动识别为剧集 ✅
+- `fetch "XXX" -c tv` → 显式指定，跳过自动识别
+
+**已修复的问题**：剧集误入「电影」目录（根因：opencli `@jackwener` 模块解析失败导致 jiaofu 搜索静默回退英文源，已在 `workspace/martin/node_modules/` 建软链接）
 
 ## 字幕兜底策略（subtitle_for_name 内部，自动）
 

@@ -112,12 +112,39 @@ def search(
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
+# 剧集识别模式：匹配标题中的剧集特征关键词
+_TV_PATTERNS = [
+    r"全\d+集",          # 全24集
+    r"全集打包",          # 全集打包（无数字的简写）
+    r"S\d{2,}",          # S01
+    r"Season\s*\d+",     # Season 1
+    r"第\d+季",          # 第1季
+    r"E\d{2,}",          # E01
+    r"EP\d{2,}",         # EP01
+    r"第\d+部",          # 第1部
+    r"\bTV\b",           # TV
+]
 
-def _resolve_category(data: dict, category: str) -> str:
-    """解析分类参数，兜底到 config 里的 default_category，校验合法性。"""
+import re as _re
+
+def _guess_tv(title: str) -> bool:
+    """从标题文本猜测是否为剧集。"""
+    return any(_re.search(p, title, _re.IGNORECASE) for p in _TV_PATTERNS)
+
+
+def _resolve_category(data: dict, category: str, title_hint: str = "") -> str:
+    """解析分类参数。优先级：显式 -c > 标题自动识别 > config default_category。
+
+    当未指定 -c 时，若 title_hint 匹配剧集特征则自动归类为 tv，
+    避免剧集误入「电影」目录。
+    """
     categories = data["paths"].get("categories", {})
     if not category:
-        category = data["paths"].get("default_category", "movie")
+        if title_hint and _guess_tv(title_hint) and "tv" in categories:
+            category = "tv"
+            typer.echo(f"  🔍 自动识别为剧集（标题含剧集特征）→ 归类「{categories['tv']}」")
+        else:
+            category = data["paths"].get("default_category", "movie")
     if categories and category not in categories:
         valid = ", ".join(categories.keys())
         typer.echo(f"未知分类 '{category}'，支持：{valid}", err=True)
@@ -132,13 +159,13 @@ def _resolve_category(data: dict, category: str) -> str:
 def download(
     target: str = typer.Argument(..., help="magnet:... 或 电影标题"),
     category: str = typer.Option("", "--category", "-c",
-                                 help="分类（电影/剧集），留空用 config 默认"),
+                                 help="分类（电影/剧集），留空自动识别或按 config 默认"),
 ):
     data = cfg_mod.load()
-    category = _resolve_category(data, category)
 
     if target.startswith("magnet:"):
         magnet = target
+        title_hint = ""
     else:
         timeout = data.get("search", {}).get("timeout", 5)
         results = search_mod.search_all(target, timeout=timeout, limit=20)
@@ -148,6 +175,10 @@ def download(
         best = search_mod.pick_best(results, data["search"]["prefer_quality"])
         typer.echo(f"自动选中：[{best.source}] {best.title}  seeders={best.seeders}  size={best.size}")
         magnet = best.magnet
+        # 用搜索词 + 结果标题联合判断分类
+        title_hint = f"{target} {best.title}"
+
+    category = _resolve_category(data, category, title_hint=title_hint)
 
     client, hash_ = dl_mod.push_magnet(data, magnet, category=category)
     categories = data["paths"].get("categories", {})
@@ -247,12 +278,10 @@ def fetch(
                                        help="等到视频下载 100% 完成再退出（默认只等 metadata）"),
     timeout: int = typer.Option(0, help="覆盖默认超时（秒），0 用配置默认"),
     category: str = typer.Option("", "--category", "-c",
-                                 help="分类（电影/剧集），留空用 config 默认"),
+                                 help="分类（电影/剧集），留空自动识别或按 config 默认"),
 ):
     data = cfg_mod.load()
-    category = _resolve_category(data, category)
     categories = data["paths"].get("categories", {})
-    cat_subdir = categories.get(category, "")
 
     typer.echo(f">>> 搜索：{title}")
     s_timeout = data.get("search", {}).get("timeout", 5)
@@ -262,6 +291,10 @@ def fetch(
         raise typer.Exit(1)
     best = search_mod.pick_best(results, data["search"]["prefer_quality"])
     typer.echo(f"  选中：[{best.source}] {best.title}  seeders={best.seeders}  size={best.size}")
+
+    # 用搜索词 + 结果标题联合判断分类
+    category = _resolve_category(data, category, title_hint=f"{title} {best.title}")
+    cat_subdir = categories.get(category, "")
 
     cat_label = f"迅雷下载/{cat_subdir}" if cat_subdir else "迅雷下载"
     typer.echo(f">>> 推送到 NAS → {cat_label}")
@@ -282,7 +315,8 @@ def fetch(
 
     typer.echo(">>> 配字幕（zimuku → SubHD → subliminal，不依赖视频下载完成）")
     target_dir = Path(paths_mod.local_category_dir(
-        data["paths"]["local_mount"], categories, category))
+        data["paths"]["local_mount"], categories, category,
+        local_paths=data["paths"].get("local_paths")))
     target_dir.mkdir(parents=True, exist_ok=True)
     got = sub_mod.subtitle_for_name(t.name, target_dir, data)
 
