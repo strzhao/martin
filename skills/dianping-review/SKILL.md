@@ -1,7 +1,7 @@
 ---
 name: dianping-review
 description: "Use when the user asks to generate Dianping (大众点评) restaurant reviews. Scans /Volumes/stringzhao_主空间/大众点评/ for pending review folders, generates Chinese-language reviews from food photos and voice notes, and saves them to the folder."
-version: 4.5.1
+version: 4.6.0
 author: martin
 license: MIT
 platforms: [macos]
@@ -195,25 +195,64 @@ done
 If zero pending folders: tell the user and stop.
 Restaurant name inference: folder name first, then audio filename, then context clues.
 
-### Step 0.2: Auto-Discover Restaurant Photos from NAS (NEW)
+### Step 0.2: Auto-Discover Restaurant Photos from NAS (v4.6 — Plugin API)
 
-如果用户尚未手动放置照片到点评文件夹，使用 relight CLI 自动从 NAS 发现：
+如果用户尚未手动放置照片到点评文件夹，通过 relight 插件 API 自动从 NAS 发现并导出：
+
+**1. 触发聚类任务**：
 
 ```bash
-cd /Users/stringzhao/workspace/relight/apps/backend
-npx tsx src/cli/discover-dianping-photos.ts \
-  --time-start "<date>T18:00:00+08:00" \
-  --time-end "<date>T21:00:00+08:00" \
-  --output-dir "$FOLDER" \
-  --mode convert
+RELAY_API="${RELAY_API:-http://localhost:3000}"
+RUN_RESULT=$(curl -s -X POST "$RELAY_API/api/plugins/dianping-cluster/run" \
+  -H "Content-Type: application/json" \
+  -d "{\"timeStart\":\"<date>T18:00:00+08:00\",\"timeEnd\":\"<date>T21:00:00+08:00\"}")
+TASK_ID=$(echo "$RUN_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['taskId'])")
+echo "任务 ID: $TASK_ID"
 ```
 
-时间窗口推断：
+**2. 轮询等待完成**（最长 120s）：
+
+```bash
+for i in $(seq 1 40); do
+  TASK_JSON=$(curl -s "$RELAY_API/api/plugins/dianping-cluster/tasks/$TASK_ID")
+  STATUS=$(echo "$TASK_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])")
+  if [ "$STATUS" = "done" ] || [ "$STATUS" = "failed" ]; then break; fi
+  sleep 3
+done
+```
+
+**3. 导出照片到点评文件夹**：
+
+```bash
+# 从任务结果的 photos[].outputPath 复制已转换的 JPEG 文件
+echo "$TASK_JSON" | python3 -c "
+import sys, json, shutil, os
+task = json.load(sys.stdin)['data']
+if task['status'] != 'done':
+    print(f'任务未完成: {task[\"status\"]}', file=sys.stderr)
+    sys.exit(1)
+r = json.loads(task['result']) if isinstance(task['result'], str) else task['result']
+photos = r.get('photos', [])
+for i, p in enumerate(photos):
+    src = p['outputPath']
+    ext = os.path.splitext(src)[1] or '.jpg'
+    dst = os.path.join('$FOLDER', f'{os.path.basename(p[\"path\"])}{ext}')
+    shutil.copy2(src, dst)
+    print(f'  [{i+1}/{len(photos)}] {os.path.basename(dst)}')
+print(f'共 {len(photos)} 张照片 → $FOLDER')
+"
+```
+
+**时间窗口推断**：
 - 用户说"X日晚餐" → X日 18:00-21:00
 - 用户说"X日午餐" → X日 11:00-14:00
 - 仅提供日期 → 覆盖 11:00-21:00
+- 语音文件 mtime 作为日期参考
 
-如果 CLI 返回 0 张匹配照片，告知用户并继续 Step 0.5（手动放置）。
+**降级策略**：
+- API 不可达（`curl` 连接失败）→ 回退 CLI 直调：`cd /Users/stringzhao/workspace/relight/apps/backend && npx tsx src/cli/discover-dianping-photos.ts --time-start "..." --time-end "..." --output-dir "$FOLDER" --mode convert`
+- 聚类结果为 0 张 → 告知用户并继续 Step 0.5（手动放置照片）
+- 任务 failed → 打印 `error` 字段，回退 CLI 直调或手动
 
 ### Step 0.5: Gather Materials
 
@@ -717,6 +756,7 @@ If processing multiple folders, present a clean summary.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 4.6.0 | 2026-06-15 | **Step 0.2 改用插件 API**：聚类触发 `POST /api/plugins/dianping-cluster/run` + 轮询 + 从 `result.photos[].outputPath` 复制已转换 JPEG。新增降级策略（API 不可达→CLI 直调；任务 failed→回退）。relight 管理后台 `/admin/plugins` 可浏览历史任务和照片集合页 |
 | 4.5.1 | 2026-06-11 | 新增 pitfalls #29（餐厅名提取失败：dianping-vision CLI 不提取截图元数据，需单独 OCR 或降级命名）、#30（extract_order_prices.py 误中环境图，团购页面价格未被提取）；强化 pitfall #17（视觉证据必须覆盖所有菜品，100% 非零道）；Step 8 新增餐厅名未知时的 `日期_菜系_位置` 降级命名规则 |
 | 4.5.0 | 2026-05-30 | **语音主线重构**：Step 3a 合成模板从"三层并列段落"改为"单条叙述线（体验→证据→解释→判断）"。新增核心原则#3"语音为主线、视觉为佐证"。视觉证据须用口语词（——、你看、这）嵌入叙事，禁止独立成段 |
 | 4.4.0 | 2026-05-30 | 新增 Step 1.5 订单价格提取：`extract_order_prices.py` 自动检测订单截图并用纯 OCR prompt 提取价格 |
