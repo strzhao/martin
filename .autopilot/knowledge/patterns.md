@@ -1,5 +1,47 @@
 # 工程模式与教训
 
+## 2026-06-18 — 限流反复发作根因：typing 高频累积（成功不打日志）+ cooldown 只防"限流后"不防"限流前" + 可观测性缺失
+
+<!-- tags: api, rate-limit, debugging, messaging-adapter, typing, observability, hermes -->
+
+**场景**：限流问题第 5 次修复。前 4 次都修"限流后善后"（cooldown 门控、retry 对齐），从未碰"为什么限流"。诊断历经"流式新消息→interim 思考片段→typing"三轮推断（前两次被代码 + 用户实测推翻——微信直接模式 raise 跳过流式；用户从没见过思考片段），最终靠 **3 分钟日志空白**（typing 成功不打 INFO）+ 代码机制（`_keep_typing` while True）+ reproducer 坐实：**typing 高频累积**。
+
+**教训**：
+1. **后台定时器（typing/keepalive）成功时不打日志，是隐藏的限流源**。排查时"限流窗口内的日志空白"本身就是线索——某高频调用成功不打日志。审计所有 `while True` 后台循环的调用频率，不只看失败日志。
+2. **cooldown 门控只防"限流后"（`_rate_limited_until` 已设），不防"限流前"高频累积**。typing 每 3s 打 86 次，在限流**前**就打满配额。治本要对调用源加**主动上限**（`_typing_max_calls`），而非只靠限流后 cooldown。
+3. **错误码分类逻辑要基于实测，不能靠注释假设**：`_is_stale_session_ret` 把 `ret=-2 + 空 errmsg` 当 session expired → tokenless retry → 在已限流时多打一次 → 升级成真限流（放大器）。实测 retry 后仍 -2 = rate limit，非 stale token。日志实证 14/14 关联。
+4. **可观测性缺失是反复排查的元凶**。typing/sendmessage 成功不打日志，限流时日志不知触发源 → 三轮推断。治本：内建调用计数（per-run 重置，`on_processing_start`）+ 限流实锤 WARNING（"sendmessage #N / typing #N 触发"）。**投入可观测性 << 反复排查成本**——这是本次最重要的元教训。
+
+**证据**：
+- gateway.log `19:32:21→19:35:22` 整整 3 分钟空白（typing 成功不打 INFO），突然 session expired + rate limited
+- `_keep_typing`（base.py:1978）`while True` 每 `_typing_interval_seconds` 调 `send_typing` → iLink sendtyping，260s 任务 ≈ 86 次
+- `_is_stale_session_ret`（weixin.py:138-145）把 ret=-2+空 errmsg 当 session expired，全天 14 次 session expired 100% 紧跟 rate limit
+- 修复（commit 2053ad7de）：typing 总次数上限（`_typing_max_calls=30`，间隔 5s 对齐 spec §7.2）+ 移除 `_is_stale_session_ret` 误判（真 -14 仍 tokenless retry）+ 结论必达有界重试（`_send_with_retry` rate limit 分支等待 cooldown 重试）+ iLink 调用计数（`on_processing_start` per-run 重置）+ 限流实锤 WARNING
+- 关联 [[2026-06-17]]（cooldown 门控，本次补"限流前"主动上限）[[2026-06-13]]（DEBUG 后台定时器消耗配额，本次深化 typing 是隐藏源）
+
+**修复模板**（typing 高频限流根治）：
+```python
+# ❌ 只防限流后：typing 在限流前 86 次打满配额
+def send_typing(self, chat_id):
+    if time.time() < self._rate_limited_until: return  # 只防限流后
+    await _send_typing(...)  # 限流前每 3s 打，86 次打满
+
+# ✅ 主动上限 + 可观测性：从源头控配额 + 实锤日志
+def __init__(self):
+    self._typing_max_calls = 30           # 主动上限（限流前就控）
+    self._ilink_typing_count = 0          # per-run 计数（实锤用）
+async def on_processing_start(self, event):  # run 开始重置 → #N 是 per-run
+    self._ilink_typing_count = 0
+async def _keep_typing(self, ...):
+    _count = 0
+    while True:
+        if _count >= self._typing_max_calls: return  # 主动上限
+        await self.send_typing(...)  # 内部 _ilink_typing_count += 1
+        _count += 1
+```
+
+**红队 test harness 教训**（顺带）：`@patch("base.asyncio.sleep")` 会污染全局 asyncio.sleep（base.asyncio 即 asyncio 模块），破坏 `asyncio.wait_for` 调度 + 让 drive 的 sleep 也被 mock。正确做法：用极小 interval（0.001）+ 真实时钟，而非 patch sleep 加速；只数 TYPING_START 排除 finally stop_typing 的 TYPING_STOP。
+
 ## 2026-06-17 — 限流 cooldown 门控须 sleep 后重新检查时间（mock-sleep 测试盲区）
 
 <!-- tags: api, rate-limit, testing, asyncio, messaging-adapter, debugging -->
