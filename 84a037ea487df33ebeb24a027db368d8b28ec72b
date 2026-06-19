@@ -1,0 +1,43 @@
+statusline-sage/README.md
+  743b7ede3310948a 1-194
+statusline-sage/statusline-sage.sh
+  743b7ede3310948a 1-267
+statusline-sage/install.sh
+  743b7ede3310948a 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "84a037ea487df33ebeb24a027db368d8b28ec72b",
+  "prompts": {
+    "743b7ede3310948a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7bf840e-1ee3-41d4-aec2-55331d75e25e",
+        "model": "glm-5.2"
+      },
+      "human_author": "赵桂雄",
+      "messages": [],
+      "total_additions": 621,
+      "total_deletions": 74,
+      "accepted_lines": 547,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "statusline-sage/README.md": {
+          "additions": 194,
+          "accepted_lines": 194
+        },
+        "statusline-sage/statusline-sage.sh": {
+          "additions": 338,
+          "deletions": 71,
+          "accepted_lines": 267
+        },
+        "statusline-sage/install.sh": {
+          "additions": 89,
+          "deletions": 3,
+          "accepted_lines": 86
+        }
+      }
+    }
+  }
+}
