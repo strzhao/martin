@@ -1,0 +1,48 @@
+statusline-sage/statusline-sage.sh
+  813b58b33df00918 8-9,26-38,65-80,260-262
+statusline-sage/COLORS.md
+  813b58b33df00918 1-78
+CLAUDE.md
+  813b58b33df00918 215-228
+statusline-sage/README.md
+  813b58b33df00918 18,28,78-79,137-138,164-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "a806033287c73d76b085a5191c1b6abf338fd124",
+  "prompts": {
+    "813b58b33df00918": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b97654e-f200-44d3-9485-4ab54e5f4994",
+        "model": "glm-5.2"
+      },
+      "human_author": "赵桂雄",
+      "messages": [],
+      "total_additions": 143,
+      "total_deletions": 8,
+      "accepted_lines": 136,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "statusline-sage/README.md": {
+          "additions": 10,
+          "accepted_lines": 10
+        },
+        "statusline-sage/statusline-sage.sh": {
+          "additions": 41,
+          "deletions": 8,
+          "accepted_lines": 34
+        },
+        "CLAUDE.md": {
+          "additions": 14,
+          "accepted_lines": 14
+        },
+        "statusline-sage/COLORS.md": {
+          "additions": 78,
+          "accepted_lines": 78
+        }
+      }
+    }
+  }
+}
