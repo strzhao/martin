@@ -212,6 +212,20 @@ python scripts/transcribe.py audio.m4a --language en
 - 模型缓存：`~/.cache/huggingface/`
 - 引擎优先级：mlx-whisper（Metal GPU 加速）> faster-whisper（备选）> openai-whisper（兼容层）
 
+## 色彩体系（stringzhao-life）
+
+本项目 UI / 状态栏统一采用「苔绿 Sage」色彩体系（来源 [stringzhao.life/colors](https://stringzhao.life/colors)）。完整设计资产沉淀在 [`statusline-sage/COLORS.md`](statusline-sage/COLORS.md)：品牌色、核心色板、辅助色板、色彩关系、CSS Tokens、交互原则。
+
+核心语义色：
+- 苔 **Sage** `#3A7D68` — 品牌主色、clean git `⎇`、低用量指标（<60%）
+- 苔浅 **Sage Light** `#52A688` — 路径 / 分支名 / 项目名（活跃态）
+- 琥 **Amber** `#D4920A` — warning / 中用量（60–85%）/ worktree 标记
+- 朱 **Vermillion** `#D94F3D` — destructive / 高用量（≥85%）/ dirty 计数 / **高峰期倍率警示**
+- 天 **Sky** `#3B87CC` — info / 模型名
+- 烟 **Smoke** `#8F8F8D` — 分隔符 `│`、辅助标签
+
+设计原则：纸/墨铺底、苔绿点睛；三级灰阶（雾/烟/炭）承接信息层级；琥/朱/天对应 warning / destructive / info 语义状态。**朱红仅用于"高代价/警示"语义**——高峰期 token 3 倍消耗即归此列。新增 UI 一律按此取色；换配色改 `statusline-sage.sh` 顶部色彩函数的 RGB 三元组（truecolor 24-bit 实现）。
+
 ## 注意事项
 
 - Hermes Agent v0.12.0 使用 OpenAI-compatible API，当前配置为 DeepSeek provider

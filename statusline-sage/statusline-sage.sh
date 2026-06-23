@@ -5,7 +5,8 @@
 # 功能模块：
 #   1. 路径压缩  — 项目名 + worktree 优先（martin ⎇ feature-x），不再裸露长路径
 #   2. git 状态  — 分支 / dirty 计数 / ahead-behind / worktree 自动识别
-#   3. GLM 限额  — 双窗口 token limit（5h + weekly），带 60s 缓存 + 后台刷新防阻塞
+#   3. GLM 限额  — 双窗口 token limit（5h + weekly）+ 高峰期倍率提示（14-18点 ×3，
+#                  仅 glm-5.2/5-turbo），带 60s 缓存 + 后台刷新防阻塞
 #   4. 上下文    — context window 使用百分比（多版本字段兼容）
 #   5. 模型      — 当前模型名
 # 色彩体系：https://stringzhao.life/colors（苔绿 Sage 为主色，truecolor 24-bit）
@@ -21,6 +22,19 @@ GLM_FIRST_TIMEOUT=2        # 冷启动首次同步获取 curl 超时（秒，仅
 GLM_HIGH=85                # 用量阈值：≥ 此值用朱红 vermillion
 GLM_MID=60                 # 用量阈值：≥ 此值用琥 amber
 PATH_TTY_SAFE=1            # 始终输出 ANSI（Claude Code 终端支持 truecolor）
+
+# ---------- 高峰期倍率（GLM Coding Plan 计费规则，写死）----------
+# quota API（/api/monitor/usage/quota/limit）只返回用量百分比，不返回倍率；
+# 倍率属于计费策略，源自官方文档：docs.bigmodel.cn/cn/coding-plan/faq
+#   GLM-5.2 / GLM-5-Turbo（高阶，对标 Opus）：高峰期 3 倍、非高峰期 2 倍
+#   GLM-4.7（对标 Sonnet）：1 倍，无高峰加成（故非高阶模型不显示倍率）
+# 限时福利（至 9 月底）：GLM-5.2/5-Turbo 非高峰期降为 1 倍（高峰期不变，仍 3 倍）
+PEAK_START=14              # 高峰期起始小时（UTC+8，含）
+PEAK_END=18                # 高峰期结束小时（UTC+8，不含，即 [14,18)）
+PEAK_RATE=3                # 高峰期高阶模型消耗倍率
+# 受高峰倍率影响的高阶模型 display_name 模式（ERE，大小写不敏感）
+# 匹配 glm-5.2 / glm-5-turbo（历史模型自动切 glm-5.2）；glm-4.x 不含 5 系，自动排除
+PEAK_MODELS='glm-5\.2|glm-5-turbo'
 
 CACHE_FILE="${HOME}/.claude/.statusline-sage-quota.json"
 REFRESH_FLAG="${HOME}/.claude/.statusline-sage-refreshing"
@@ -46,6 +60,22 @@ _level_color() {
   elif [ "$p" -ge "$GLM_MID"  ]; then _amber
   else                                _sage
   fi
+}
+
+# 高峰期倍率提示 —— GLM Coding Plan 计费规则（写死，见上方 PEAK_* 配置）
+# 独立于 quota 用量：反映"当前时段的计费倍率"，而非"已用多少"——即便 quota 接口挂了，
+# 高峰期 glm-5.2 仍按 3 倍消耗，故此提示独立于 _render_glm_cache 的成败。
+# 仅当 本地时区(强制 UTC+8) 小时 ∈ [PEAK_START, PEAK_END) 且 当前模型为高阶模型 时输出
+# 返回带朱红着色的 " ×N"（N=PEAK_RATE），否则输出空。$model 在调用点已赋值。
+_glm_peak() {
+  local h m_lc
+  h="$(TZ='Asia/Shanghai' date +%H 2>/dev/null)"
+  # 高峰判定：小时落在 [PEAK_START, PEAK_END)（如 14..17 ∈ [14,18)）；date 失败则保守不显示
+  [ -n "$h" ] && [ "$h" -ge "$PEAK_START" ] 2>/dev/null && [ "$h" -lt "$PEAK_END" ] 2>/dev/null || return
+  # 仅高阶模型受倍率影响（glm-4.x 为 1 倍，不显示）；大小写不敏感匹配 display_name
+  m_lc="$(printf '%s' "$model" | tr '[:upper:]' '[:lower:]')"
+  printf '%s' "$m_lc" | grep -qE "$PEAK_MODELS" 2>/dev/null || return
+  printf ' %s×%s%s' "$(_vermillion)" "$PEAK_RATE" "$c_reset"
 }
 
 # ---------- 读取 stdin（一次 jq，兼容 bash 3.2 用 while+process substitution）----------
@@ -226,6 +256,9 @@ else
   _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
   _render_glm_cache || { _glm_part="$(_smoke)GLM …${c_reset}"; _refresh_bg; }
 fi
+
+# 高峰期倍率提示追加到 GLM 区尾部（独立于 quota 数据成败）
+_glm_part="${_glm_part}$(_glm_peak)"
 
 # ---------- context window ----------
 _ctx_part=""

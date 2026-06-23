@@ -15,6 +15,7 @@
 主仓库（dirty）：  ⎇ main ●3 ↑1 │ · martin │ GLM 5h:6% wk:80% max │ glm-5.2[1m] │ ctx 42%
 worktree：        ⎇ feat-x ⌥wt-name │ · martin │ GLM 5h:6% wk:80% max │ ctx 45%
 非 git 目录：     · tmp │ GLM 5h:6% wk:80% max │ glm-5.2[1m] │ ctx 5%
+高峰期（14-18点）：⎇ main │ · martin │ GLM 5h:6% wk:80% max ×3 │ glm-5.2[1m] │ ctx 12%
 ```
 
 **色彩语义**（随用量/状态自动切换）：
@@ -24,6 +25,7 @@ worktree：        ⎇ feat-x ⌥wt-name │ · martin │ GLM 5h:6% wk:80% max 
 - dirty 计数 `●N` → 朱 `Vermillion`
 - GLM / context 用量：< 60% 苔绿 `Sage`，60–85% 琥 `Amber`，≥ 85% 朱 `Vermillion`
 - 模型名 → 天 `Sky`，分隔符 `│` → 烟 `Smoke`
+- 高峰期倍率 `×3` → 朱 `Vermillion`（仅 14–18 点 UTC+8 且当前模型为 glm-5.2 / glm-5-turbo；glm-4.x 为 1 倍不显示）
 
 ---
 
@@ -72,6 +74,8 @@ chmod +x ~/.claude/statusline-sage.sh
 ---
 
 ## 配色体系（[stringzhao.life/colors](https://stringzhao.life/colors)）
+
+> 完整设计资产（品牌色、核心/辅助色板、色彩关系、CSS Tokens、交互原则、本脚本的取色映射）见 [`COLORS.md`](COLORS.md)。
 
 以「苔绿 Sage」为品牌主色，暖黑/暖白构成基底，遵循**克制原则**：品牌色仅作小面积点睛，不大面积铺陈。脚本使用 truecolor（24-bit）ANSI，需现代终端支持。
 
@@ -130,6 +134,8 @@ Header: Authorization: <ANTHROPIC_AUTH_TOKEN>
 
 **窗口判定（启发式）**：把所有 `TOKENS_LIMIT` 按 `nextResetTime` 升序排列 —— reset 最近的为短周期窗口（标 `5h`），reset 最远的为长周期窗口（标 `wk`）。这样不依赖 `unit` 字段的语义猜测，自适应官方调整。
 
+**高峰期倍率（写死）**：`quota/limit` 接口**只返回用量百分比，不返回倍率**——倍率属于计费策略。按[官方 FAQ](https://docs.bigmodel.cn/cn/coding-plan/faq)：GLM-5.2 / GLM-5-Turbo（对标 Opus 的高阶模型）在高峰期（每日 **14:00–18:00 UTC+8**）按 **3 倍**消耗额度（非高峰 2 倍；限时福利至 9 月底非高峰降为 1 倍）；GLM-4.x（对标 Sonnet）为 1 倍、无加成。脚本据此：当前小时 ∈ [14,18) 且模型匹配 `PEAK_MODELS` 时，在 GLM 区尾部追加朱红 `×3`。该提示**独立于 quota 数据**——即便接口失败，高峰期 glm-5.2 仍按 3 倍消耗，提示照常显示。
+
 **缓存策略**（避免每次渲染打 API）
 
 | 场景 | 行为 |
@@ -155,6 +161,10 @@ GLM_API_TIMEOUT=3      # 后台刷新 curl 超时（秒）
 GLM_FIRST_TIMEOUT=2    # 冷启动首次同步获取 curl 超时（秒）
 GLM_HIGH=85            # 用量 ≥ 此值 → 朱红
 GLM_MID=60             # 用量 ≥ 此值 → 琥珀
+PEAK_START=14          # 高峰期起始小时（UTC+8，含）
+PEAK_END=18            # 高峰期结束小时（UTC+8，不含）
+PEAK_RATE=3            # 高峰期高阶模型消耗倍率（×3，写死：quota API 不返回）
+PEAK_MODELS='glm-5\.2|glm-5-turbo'  # 受倍率影响的高阶模型（ERE）；glm-4.x 自动排除
 ```
 
 `install.sh` 写入的 `padding: 0` 让状态栏贴边紧凑，可在 `settings.json` 改为 `1`/`2` 增加左右留白。
