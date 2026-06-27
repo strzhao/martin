@@ -5,13 +5,21 @@ description: 帮助用户规划城市周边短途旅行（1-2天），从多源�
 
 # Travel Planner — 多源周边游攻略生成器
 
+## 依赖 Skill
+
+本 skill 依赖以下 skill，执行到对应步骤时必须先加载：
+
+| 步骤 | 依赖 Skill | 用途 |
+|------|-----------|------|
+| 步骤 6 | `tunnel-wechat-collaboration` | 将本地 HTTP 服务暴露到公网，生成微信可访问的 URL |
+
 ## 工作流概览
 
-```
-读取用户偏好记忆 → 高德天气+路线 → 多源并行搜索(6路)
+```mermaid
+读取用户偏好记忆 → 高德天气+路线 → 多源并行搜索(6路, delegate_task)
     → 交叉验证聚合 → 输出 trip_data.json
     → inject.py 生成 HTML → server.js 启动服务
-    → tunnel 暴露公网 URL → 返回给用户
+    → tunnel-wechat-collaboration skill 暴露公网 URL → 返回给用户
 ```
 
 ## 步骤 0：确定起点 + 出行方式（最高优先级）
@@ -35,8 +43,14 @@ description: 帮助用户规划城市周边短途旅行（1-2天），从多源�
 
 ## 步骤 1：读取用户偏好
 
-在开始搜索前，先检查用户偏好记忆：
+在开始搜索前，先用 Hermes 原生 `memory` 工具查询用户出行偏好：
 
+```
+memory 目标: user + memory
+搜索关键词: "travel"、"出行"、"周边游"、"已去过"、"美食偏好"
+```
+
+同时检查文件偏好作为补充：
 ```bash
 cat ~/.claude/projects/*/memory/travel-preferences.md 2>/dev/null
 cat ~/.claude/projects/*/memory/travel-history.md 2>/dev/null
@@ -48,7 +62,11 @@ cat ~/.claude/projects/*/memory/travel-history.md 2>/dev/null
 
 ## 步骤 2：高德 API — 天气 + 路线（串行调用，间隔 0.3s）
 
-API Key: `673a1050e930744c4affc925dc90dc13`
+API Key: 通过环境变量 `$AMAP_KEY` 设置。先从 `~/.hermes/.env` 读取：
+```bash
+export AMAP_KEY=$(grep AMAP_KEY ~/.hermes/.env 2>/dev/null | cut -d= -f2)
+```
+如果未设置，提示用户配置后再继续。
 
 ### 2.1 天气查询
 ```bash
@@ -85,11 +103,27 @@ curl -s "https://restapi.amap.com/v3/direction/driving?key=<KEY>&origin=<lng>,<l
 - 用户偏好自驾，默认 strategy=0（速度优先）
 
 ### 2.4 高德状元榜（餐厅排名）
-搜索 `高德状元榜 <城市> 美食` 获取 TOP 10 排名数据。
+
+使用 **WebSearch** 搜索「高德状元榜 <城市> 美食」，获取该城市 TOP 10 餐厅排名数据。这不是高德 API 端点，而是搜索引擎查询。
 
 **QPS 控制**：所有高德 API 调用必须串行，间隔 ≥ 0.3 秒，否则触发 `CUQPS_HAS_EXCEEDED_THE_LIMIT`。
 
 ## 步骤 3：多源并行搜索（opencli + WebSearch）
+
+搜索分为 6 路独立数据源。**推荐使用 `delegate_task` 并行执行**，每路一个 subagent，同时收集数据：
+
+```
+delegate_task(tasks=[
+  {goal: "opencli dianping 搜索餐厅 + 详情", ...},
+  {goal: "opencli xiaohongshu 搜索笔记", ...},
+  {goal: "opencli bilibili 搜索探店视频", ...},
+  {goal: "opencli weixin 搜索公众号攻略", ...},
+  {goal: "WebSearch 搜索游记攻略", ...},
+  {goal: "WebSearch 高德状元榜", ...},
+])
+```
+
+如果 delegate_task 不可用，则依次串行执行以下命令。opencli 命令使用 `--window background` 可在后台运行。
 
 ### 3.1 opencli 大众点评 — 餐厅搜索 + 详情
 
@@ -156,9 +190,14 @@ opencli weixin search "<目的地> <美食/攻略>" --window background
 
 用 `WebSearch` 搜索游记攻略，补充 opencli 可能漏掉的信息。搜索词聚焦「目的地 一日游攻略 路线」。
 
-### 3.6 Vision API（可选）— 图片识别
+### 3.6 Vision API（实验性 ⚠️）— 图片识别
 
-仅当需要验证「照骗」或识别关键图片内容时使用：
+**这是实验性功能，已知局限**：本地 Qwen 视觉模型推理极慢（单张 ~2 min），常超时、返回空内容。仅当：
+- 本地 Qwen server 确认正在运行（`curl -s http://127.0.0.1:8001/health`）
+- 确实需要验证「照骗」或识别关键图片内容
+
+时使用此功能。多数情况下跳过即可。
+
 ```bash
 # 先下载图片
 curl -sL -o /tmp/img.jpg "<image_url>"
@@ -166,10 +205,11 @@ curl -sL -o /tmp/img.jpg "<image_url>"
 IMG_B64=$(base64 -i /tmp/img.jpg | tr -d '\n')
 curl -s http://127.0.0.1:8001/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer qwen-local-key" \
+  -H "Authorization: Bearer $QWEN_LOCAL_KEY" \
   -d "{\"model\":\"qwen3.6-35b\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"描述图片内容，中文，30字\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,$IMG_B64\"}}]}],\"max_tokens\":2000}"
 ```
-⚠️ max_tokens 必须 ≥ 2000（Qwen thinking 模型推理链占 ~1500 tokens），单张耗时 ~2 min。
+⚠️ max_tokens 必须 ≥ 2000（Qwen thinking 模型推理链占 ~1500 tokens）。
+⚠️ 如果 120s 内无有效返回，直接跳过，不阻塞主流程。
 
 ## 步骤 4：交叉验证聚合
 
@@ -267,7 +307,7 @@ curl -s http://127.0.0.1:8001/v1/chat/completions \
 
 | # | 检查项 | 说明 |
 |---|--------|------|
-| 1 | **budget 字段** | 必须含 `food_per_person` 或 `food_per_person_tight/comfort/premium` 之一 |
+| 1 | **budget 字段** | 推荐 `food_per_person_tight/comfort/premium` 三档（或 `food_per_person` 单一人均）。旧版 `economy/standard/premium` 仍兼容。至少包含一种 |
 | 2 | **每个 timeline item** | 有坐标的必须带 `navi_url` 或 `links.amap_navi` |
 | 3 | **聚合链接** | aggregation 有 `bilibili_bvid` 的，links 必须含 `bilibili` |
 | 4 | **聚合链接** | aggregation 有 `dianping` 的，links 必须含 `dianping` 或 `dianping_*` |
@@ -291,6 +331,7 @@ python3 scripts/lint.py output/trip_data.json
 
 ## 步骤 6：生成 HTML + 启动服务
 
+### 6.1 生成 HTML
 ```bash
 # 0. 先校验
 python3 scripts/lint.py output/trip_data.json
@@ -301,12 +342,21 @@ python3 scripts/inject.py output/trip_data.json
 # 2. 启动 HTTP 服务器（后台）
 node scripts/server.js &
 echo $! > /tmp/travel-server.pid
-
-# 3. 暴露公网
-tunnel expose 3456 <subdomain>
 ```
 
-生成公网 URL：`https://<subdomain>.tunnel.stringzhao.life`
+### 6.2 暴露公网（微信可访问）
+
+**必须先加载 `tunnel-wechat-collaboration` skill**，然后按该 skill 的指引将本地 3456 端口暴露到公网。
+
+```bash
+# 加载 skill
+skill_view("tunnel-wechat-collaboration")
+# 按该 skill 的步骤创建 tunnel（frp 或等价方式）
+```
+
+生成公网 URL 格式：`https://<subdomain>.tunnel.stringzhao.life`
+
+如果 tunnel 不可用，降级为本地查看 `open output/trip.html`。
 
 ## 步骤 7：更新用户记忆
 

@@ -1,256 +1,444 @@
 {
   "trip": {
-    "title": "滨江 · 动漫博物馆 + 星光大道 City Walk（雨天遛娃版）",
-    "date": "2026-06-14",
+    "title": "上海 · 两天一晚 City Walk 遛娃（徐汇滨江+思南路+新天地+武康路）",
+    "date": "2026-06-20 ~ 06-21",
     "weather": {
-      "condition": "小雨转多云",
-      "temp_high": 27,
-      "temp_low": 22,
-      "wind": "东北风1-3级"
+      "condition": "阴",
+      "temp_high": 28,
+      "temp_low": 23,
+      "wind": "西风1-3级",
+      "tip": "周六阴天不下雨！28°C 微凉，是 City Walk 的完美天气。全程户外为主，带把伞以防万一。"
     },
     "transport": {
       "mode": "自驾",
-      "distance_km": 21.2,
-      "duration_min": 61,
-      "origin": "龙湖春江天玺（萧山区博奥路）",
-      "destination": "滨江区星光大道"
+      "distance_km": 173.4,
+      "duration_min": 140,
+      "origin": "杭州萧山 · 龙湖春江天玺",
+      "destination": "上海徐汇滨江"
     },
     "budget": {
-      "food_per_person": 74,
-      "economy": 52,
-      "standard": 74,
-      "premium": 123
+      "food_per_person_tight": 80,
+      "food_per_person_comfort": 150,
+      "food_per_person_premium": 300
     }
   },
   "route_map": {
-    "static_url": "https://restapi.amap.com/v3/staticmap?key=673a1050e930744c4affc925dc90dc13&size=800*400&markers=mid,0xFF6B35,A:120.241,30.210;mid,0x4A90D9,B:120.205558,30.162080;mid,0xE94E77,C:120.208128,30.209463&paths=3,0x4A90D9,1,,:120.241,30.210;120.205558,30.162080;120.208128,30.209463;120.241,30.210",
-    "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car"
+    "static_url": "https://restapi.amap.com/v3/staticmap?key=***&size=800*400&zoom=11&markers=mid,0xFF6B35,A:120.241,30.210;mid,0x4A90D9,B:121.461,31.167;mid,0x7B68EE,C:121.468,31.214;mid,0x2ECC71,D:121.475,31.218;mid,0xFF69B4,E:121.437,31.208",
+    "navi_url": "https://uri.amap.com/navigation?to=121.461,31.167,徐汇滨江龙腾大道&mode=car&from=120.241,30.210,龙湖春江天玺"
   },
   "timeline": [
     {
-      "time": "09:50-10:12",
+      "time": "08:00-10:20",
       "type": "transport",
       "icon": "🚗",
-      "title": "出发 → 中国动漫博物馆",
-      "description": "从龙湖春江天玺开车前往滨江白马湖，周日早上市区畅通",
-      "location": { "lng": 120.241, "lat": 30.210, "name": "龙湖春江天玺" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car&from=120.241,30.210,龙湖春江天玺",
-      "distance_km": 10.4,
-      "duration_min": 22
+      "title": "开车出发 → 上海徐汇滨江",
+      "description": "龙湖春江天玺出发，沪昆高速→外环，173km约2h20min。带娃建议嘉兴服务区休息一次。",
+      "location": {
+        "lng": 120.241,
+        "lat": 30.21,
+        "name": "龙湖春江天玺"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.461,31.167,徐汇滨江龙腾大道&mode=car&from=120.241,30.210,龙湖春江天玺",
+      "distance_km": 173.4,
+      "duration_min": 140
     },
     {
-      "time": "10:12-10:15",
+      "time": "10:20-10:25",
       "type": "transport",
       "icon": "🅿️",
-      "title": "停车 · 动漫博物馆地下停车场",
-      "description": "地下停车场免费，步行3分钟到博物馆入口",
-      "location": { "lng": 120.205135, "lat": 30.161636, "name": "中国动漫博物馆地下停车场" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.205135,30.161636,中国动漫博物馆地下停车场&mode=car",
-      "distance_km": 0.2,
-      "duration_min": 3
+      "title": "停车 · 阿里中心徐汇滨江",
+      "description": "阿里中心地下停车场，距滨江步道仅128m。停好车推娃直接上滨江。",
+      "location": {
+        "lng": 121.461,
+        "lat": 31.167,
+        "name": "阿里中心徐汇滨江停车场"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.461,31.167,阿里中心徐汇滨江停车场&mode=car"
     },
     {
-      "time": "10:15-11:45",
+      "time": "10:25-12:00",
+      "type": "sight",
+      "icon": "🌊",
+      "title": "徐汇滨江 City Walk（西岸）",
+      "description": "上海最适合遛娃的滨江步道——完全无车、路面平整推车友好、沿途艺术装置+江景。从龙腾大道走到西岸美术馆约2km，3岁娃边走边玩95min刚好。沿途有滑板公园、攀岩墙（可围观）、大片草坪可随时坐下休息。",
+      "location": {
+        "lng": 121.461,
+        "lat": 31.167,
+        "name": "徐汇滨江（西岸）"
+      },
+      "rating": {
+        "amap": 4.6
+      },
+      "confidence": "high",
+      "address": "徐汇区龙腾大道（云锦路至丰谷路段）",
+      "features": [
+        "无车步道",
+        "推车友好",
+        "江景",
+        "艺术装置",
+        "草坪",
+        "滑板公园"
+      ],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=121.461,31.167,徐汇滨江龙腾大道&mode=car"
+      }
+    },
+    {
+      "time": "12:00-13:15",
+      "type": "food",
+      "icon": "🥗",
+      "title": "午餐 · baker&spice（西岸凤巢）",
+      "description": "评分4.6，人均¥80。健康轻食+烘焙，有室外座位，3岁娃可以吃意面/三明治。西岸凤巢商场就在滨江步道旁，推车直达。",
+      "location": {
+        "lng": 121.46,
+        "lat": 31.168,
+        "name": "baker&spice(西岸凤巢店)"
+      },
+      "rating": {
+        "amap": 4.6
+      },
+      "price_per_person": 80,
+      "confidence": "high",
+      "address": "云锦路683号西岸凤巢一楼",
+      "features": [
+        "轻食",
+        "有室外座",
+        "儿童友好",
+        "意面"
+      ],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=121.460,31.168,西岸凤巢&mode=car"
+      }
+    },
+    {
+      "time": "13:15-13:35",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "开车前往思南公馆",
+      "description": "从徐汇滨江到法租界核心区，6.9km市区路约21min。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "思南公馆"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆&mode=car",
+      "distance_km": 6.9,
+      "duration_min": 21
+    },
+    {
+      "time": "13:35-13:40",
+      "type": "transport",
+      "icon": "🅿️",
+      "title": "停车 · 思南公馆地下停车场",
+      "description": "思南公馆地下停车场，距入口仅60m。停车费约¥15/h。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "思南公馆地下停车场"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆地下停车场&mode=car"
+    },
+    {
+      "time": "13:40-15:30",
       "type": "sight",
       "icon": "🏛️",
-      "title": "中国动漫博物馆",
-      "description": "全国首家国字号动漫博物馆，免费入馆。4层展厅涵盖动画历史、制作工艺、互动体验区。三楼有儿童互动区，适合3岁小朋友。建议提前在「中国动漫博物馆」公众号预约",
-      "location": { "lng": 120.205558, "lat": 30.162080, "name": "中国动漫博物馆" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car",
-      "rating": { "amap": 4.7 },
-      "confidence": "high",
-      "address": "白马湖路375号",
-      "features": ["免费", "室内", "有儿童互动区", "地下停车场"],
-      "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.205558,30.162080,中国动漫博物馆&mode=car"
-      }
-    },
-    {
-      "time": "11:45-12:07",
-      "type": "transport",
-      "icon": "🚗",
-      "title": "前往星光大道",
-      "description": "从白马湖开往滨江核心商圈星光大道",
-      "location": { "lng": 120.205558, "lat": 30.162080, "name": "中国动漫博物馆" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.208128,30.209463,星光大道&mode=car&from=120.205558,30.162080,动漫博物馆",
-      "distance_km": 6.1,
-      "duration_min": 22
-    },
-    {
-      "time": "12:07-12:10",
-      "type": "transport",
-      "icon": "🅿️",
-      "title": "停车 · 星光大道停车场",
-      "description": "钱源十一道有免费停车，也可停星光大道地下停车场后步行2分钟",
-      "location": { "lng": 120.206859, "lat": 30.212376, "name": "星光大道地面停车场" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.206859,30.212376,星光大道停车场&mode=car",
-      "distance_km": 0.3,
-      "duration_min": 3
-    },
-    {
-      "time": "12:10-13:20",
-      "type": "food",
-      "icon": "🍜",
-      "title": "午餐 · 钱源十一道·衢州菜",
-      "description": "滨江区衢州菜服务榜第1名。衢州菜以鲜辣著称，招牌菜：鱼头烧粉干、生炒鸡、衢州鸭头。有宝宝椅，适合带娃。人均¥74在预算内",
-      "location": { "lng": 120.204770, "lat": 30.209972, "name": "钱源十一道·衢州菜(隆和国际店)" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.204770,30.209972,钱源十一道衢州菜&mode=car",
-      "rating": { "amap": 4.6 },
-      "price_per_person": 74,
-      "confidence": "high",
-      "aggregation": {
-        "dianping": {
-          "shop_id": "G1oVe3QPCH6gmUEx",
-          "name": "钱源十一道·衢州菜(隆和国际店)",
-          "score": 4.8,
-          "taste": 4.8,
-          "environment": 4.7,
-          "service": 4.8,
-          "reviews": 3735,
-          "rank": "滨江区衢州菜服务榜 · 第1名"
-        }
+      "title": "思南公馆 + 复兴公园 City Walk",
+      "description": "法租界最美街区。思南公馆 ⭐4.9——51栋法式花园洋房，树荫浓密，推车穿行很舒服。复兴公园 ⭐4.7——法式园林+儿童游乐区（滑梯、沙坑），3岁娃可以玩半小时。全程树荫覆盖，午后也不晒。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "思南公馆"
       },
-      "address": "江晖路1961号（星光大道旁）",
-      "features": ["有包厢", "有大桌", "免费停车", "有宝宝椅", "营业10:30-14:00"],
-      "links": {
-        "dianping": "https://www.dianping.com/shop/G1oVe3QPCH6gmUEx",
-        "amap_navi": "https://uri.amap.com/navigation?to=120.204770,30.209972,钱源十一道衢州菜&mode=car"
-      }
-    },
-    {
-      "time": "13:20-13:50",
-      "type": "break",
-      "icon": "📚",
-      "title": "钟书阁（星光国际广场店）",
-      "description": "网红书店，镜面穹顶设计非常出片。儿童阅读区有绘本，小朋友可以翻翻书，大人喝杯茶歇歇脚",
-      "location": { "lng": 120.208128, "lat": 30.209463, "name": "钟书阁(星光国际广场4幢店)" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.208128,30.209463,钟书阁星光大道&mode=car",
-      "rating": { "amap": 4.5 },
+      "rating": {
+        "amap": 4.9
+      },
       "confidence": "high",
-      "address": "江南大道228号星光国际广场4幢2楼",
-      "features": ["儿童阅读区", "镜面穹顶", "免费入座"],
+      "address": "黄浦区思南路51-55号",
+      "features": [
+        "法式洋房",
+        "树荫",
+        "儿童游乐区",
+        "推车友好",
+        "免费"
+      ],
       "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.208128,30.209463,钟书阁星光大道&mode=car"
+        "amap_navi": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆&mode=car"
       }
     },
     {
-      "time": "13:50-14:20",
+      "time": "15:30-16:15",
       "type": "break",
       "icon": "☕",
-      "title": "M Stand 咖啡",
-      "description": "星光大道一楼的设计师咖啡品牌，水泥工业风。招牌燕麦拿铁和水泥芝士蛋糕。大人充电，小朋友休息",
-      "location": { "lng": 120.208791, "lat": 30.208018, "name": "M Stand(杭州滨江星光大道店)" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.208791,30.208018,M Stand星光大道&mode=car",
-      "rating": { "amap": 4.5 },
-      "price_per_person": 32,
-      "confidence": "medium",
-      "aggregation": {
-        "dianping": {
-          "shop_id": "k3D5069fJY4bvPf8",
-          "name": "M Stand(杭州滨江星光大道店)",
-          "score": 4.5
-        }
+      "title": "下午茶 · 思南公馆咖啡馆",
+      "description": "思南公馆内有咖啡馆和长乐新本帮面馆（⭐4.3 ¥29）。娃吃点心补充能量，大人喝杯咖啡。45min从容休整。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "思南公馆"
       },
-      "address": "江南大道228号星光国际广场F1层",
-      "features": ["设计师咖啡", "有甜点"],
-      "links": {
-        "dianping": "https://www.dianping.com/shop/k3D5069fJY4bvPf8",
-        "amap_navi": "https://uri.amap.com/navigation?to=120.208791,30.208018,M Stand星光大道&mode=car"
-      }
+      "navi_url": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆&mode=car"
     },
     {
-      "time": "14:20-15:30",
+      "time": "16:15-16:30",
+      "type": "transport",
+      "icon": "🚶",
+      "title": "步行前往新天地",
+      "description": "思南公馆到新天地仅1.2km，沿复兴中路步行15min。法租界梧桐树下散步本身就是享受。也可以开车（11min）但推荐步行。",
+      "location": {
+        "lng": 121.475,
+        "lat": 31.218,
+        "name": "新天地"
+      },
+      "distance_km": 1.2,
+      "duration_min": 15,
+      "navi_url": "https://uri.amap.com/navigation?to=121.475,31.218,新天地&mode=walk"
+    },
+    {
+      "time": "16:30-18:00",
       "type": "sight",
-      "icon": "🛍️",
-      "title": "星光大道步行街 + 星光国际广场",
-      "description": "滨江最大的商业综合体。步行街有露天雕塑和喷泉，商场内有儿童游乐区。雨后凉爽适合溜达消食。备选：中国杭州低碳科技馆（4.8分，步行10分钟可达）",
-      "location": { "lng": 120.208066, "lat": 30.209255, "name": "星光大道步行街" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.208066,30.209255,星光大道步行街&mode=car",
-      "rating": { "amap": 4.5 },
+      "icon": "🏘️",
+      "title": "新天地 + 太平湖 City Walk",
+      "description": "石库门建筑群改造的潮流街区，推车穿行弄堂感受新旧交融。太平湖公园环绕一圈约1km，湖边草坪可以坐下看夕阳。小朋友喜欢看湖里的鱼和鸭子。",
+      "location": {
+        "lng": 121.475,
+        "lat": 31.218,
+        "name": "新天地"
+      },
+      "rating": {
+        "amap": 4.6
+      },
       "confidence": "high",
-      "address": "江南大道228号",
-      "features": ["室内商场", "儿童游乐区", "餐饮齐全"],
+      "address": "黄浦区马当路245号",
+      "features": [
+        "石库门建筑",
+        "太平湖",
+        "免费",
+        "推车友好"
+      ],
       "links": {
-        "amap_navi": "https://uri.amap.com/navigation?to=120.208066,30.209255,星光大道步行街&mode=car"
+        "amap_navi": "https://uri.amap.com/navigation?to=121.475,31.218,新天地&mode=car"
       }
     },
     {
-      "time": "15:30-15:47",
+      "time": "18:00-18:10",
+      "type": "transport",
+      "icon": "🚶",
+      "title": "步行回思南公馆",
+      "description": "新天地步行回思南公馆取车，沿复兴中路740m约10min。正好衔接晚餐。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "思南公馆"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆&mode=walk",
+      "distance_km": 0.74,
+      "duration_min": 10
+    },
+    {
+      "time": "18:10-19:25",
+      "type": "food",
+      "icon": "🍜",
+      "title": "晚餐 · 思澜新派本帮菜（思南公馆）",
+      "description": "评分4.6，人均¥344。思南公馆内的洋房本帮菜，环境绝美。也可以选对面的长脚面馆（⭐4.4 ¥40）经济实惠。步行回思南公馆取车顺便吃饭。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "思澜新派本帮菜"
+      },
+      "rating": {
+        "amap": 4.6
+      },
+      "price_per_person": 344,
+      "confidence": "high",
+      "address": "思南路51号思南公馆内",
+      "features": [
+        "本帮菜",
+        "洋房环境",
+        "有包间"
+      ],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆&mode=car"
+      }
+    },
+    {
+      "time": "19:40",
+      "type": "transport",
+      "icon": "🏨",
+      "title": "入住酒店（黄浦/徐汇区）",
+      "description": "建议入住黄浦区或徐汇区酒店（新天地-思南路区域），距第二天武康路仅4.8km。推荐全季/亚朵等亲子友好连锁。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "黄浦区酒店"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.468,31.214,思南公馆周边酒店&mode=car"
+    },
+    {
+      "time": "09:00-09:30",
+      "type": "break",
+      "icon": "🥐",
+      "title": "酒店早餐 + 退房",
+      "description": "睡到自然醒。周日不用赶早，从容吃早餐退房。",
+      "location": {
+        "lng": 121.468,
+        "lat": 31.214,
+        "name": "酒店"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.468,31.214,黄浦区酒店&mode=car"
+    },
+    {
+      "time": "09:30-09:50",
       "type": "transport",
       "icon": "🚗",
-      "title": "返程 · 星光大道 → 龙湖春江天玺",
-      "description": "结束轻松的滨江半日游，开车回家。周日傍晚路况通常较好",
-      "location": { "lng": 120.208066, "lat": 30.209255, "name": "星光大道" },
-      "navi_url": "https://uri.amap.com/navigation?to=120.241,30.210,龙湖春江天玺&mode=car&from=120.208066,30.209255,星光大道",
-      "distance_km": 4.7,
-      "duration_min": 17
+      "title": "开车前往武康大楼",
+      "description": "从酒店到武康路，4.8km市区路约19min。周日早上武康路还没什么人，拍照不用排队。",
+      "location": {
+        "lng": 121.437,
+        "lat": 31.208,
+        "name": "武康大楼"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.437,31.208,武康大楼&mode=car",
+      "distance_km": 4.8,
+      "duration_min": 19
+    },
+    {
+      "time": "09:50-09:55",
+      "type": "transport",
+      "icon": "🅿️",
+      "title": "停车 · 武康路周边停车场",
+      "description": "武康路停车位紧张，推荐湖南街道弄堂停车场（122m）或路边停车位。周日早上相对好找。",
+      "location": {
+        "lng": 121.437,
+        "lat": 31.208,
+        "name": "武康路停车场"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=121.437,31.208,武康路停车场&mode=car"
+    },
+    {
+      "time": "09:55-11:30",
+      "type": "sight",
+      "icon": "📸",
+      "title": "武康路 City Walk",
+      "description": "上海最美马路，全长1.2km。起点武康大楼 ⭐4.8——上海最上镜的建筑，早上光影最好。沿途老洋房、梧桐树、小店，推车慢慢逛。中途老麦咖啡馆 ⭐4.6 可以歇脚。全程90min不赶。",
+      "location": {
+        "lng": 121.437,
+        "lat": 31.208,
+        "name": "武康大楼"
+      },
+      "rating": {
+        "amap": 4.8
+      },
+      "confidence": "high",
+      "address": "徐汇区淮海中路1850号",
+      "features": [
+        "历史建筑",
+        "梧桐树荫",
+        "拍照圣地",
+        "咖啡馆",
+        "免费"
+      ],
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=121.437,31.208,武康大楼&mode=car"
+      }
+    },
+    {
+      "time": "11:30-12:30",
+      "type": "food",
+      "icon": "🍜",
+      "title": "午餐 · 武康路周边",
+      "description": "CoffeeTree花园西餐厅 ⭐4.6（武康庭内，有庭院座位）或武康路沿街面馆。吃完准备返程。",
+      "location": {
+        "lng": 121.437,
+        "lat": 31.208,
+        "name": "武康路"
+      },
+      "price_per_person": 80,
+      "confidence": "medium",
+      "address": "武康路376号武康庭",
+      "links": {
+        "amap_navi": "https://uri.amap.com/navigation?to=121.437,31.208,武康路&mode=car"
+      }
+    },
+    {
+      "time": "12:30-15:00",
+      "type": "transport",
+      "icon": "🚗",
+      "title": "返程 → 杭州萧山",
+      "description": "武康路出发，沪昆高速返回。174km约2h28min，过路费¥71。嘉兴服务区休息一次，到家刚好下午茶时间。",
+      "location": {
+        "lng": 120.241,
+        "lat": 30.21,
+        "name": "龙湖春江天玺"
+      },
+      "navi_url": "https://uri.amap.com/navigation?to=120.241,30.210,龙湖春江天玺&mode=car&from=121.437,31.208,武康路",
+      "distance_km": 174.0,
+      "duration_min": 148
     }
   ],
   "restaurants": [
     {
-      "name": "钱源十一道·衢州菜(隆和国际店)",
-      "type": "衢州菜",
-      "price_per_person": 74,
+      "name": "baker&spice(西岸凤巢店)",
+      "type": "轻食/烘焙",
+      "price_per_person": 80,
       "rating_amap": 4.6,
-      "dianping_score": 4.8,
-      "dianping_reviews": 3735,
-      "dianping_rank": "滨江区衢州菜服务榜第1名",
       "confidence": "high",
-      "district": "星光大道",
-      "address": "江晖路1961号（星光大道旁）",
-      "features": ["有包厢", "有大桌", "免费停车", "有宝宝椅"],
-      "links": {
-        "dianping": "https://www.dianping.com/shop/G1oVe3QPCH6gmUEx"
-      }
-    },
-    {
-      "name": "浅草屋(滨江星光大道店)",
-      "type": "日本料理",
-      "price_per_person": 74,
-      "rating_amap": 4.3,
-      "dianping_score": 4.3,
-      "confidence": "medium",
-      "district": "星光大道",
-      "address": "星光大道二期4楼447号",
-      "features": ["日料", "环境好"],
+      "district": "徐汇",
+      "address": "云锦路683号西岸凤巢一楼",
       "links": {}
     },
     {
-      "name": "簇屿(星光大道店)",
-      "type": "私房菜",
-      "price_per_person": 123,
-      "rating_amap": 4.5,
-      "dianping_score": 4.5,
-      "confidence": "medium",
-      "district": "星光大道",
-      "address": "星光大道内",
-      "features": ["私房菜", "适合约会"],
+      "name": "道道鲜崇明私房菜(滨江店)",
+      "type": "本帮菜",
+      "price_per_person": 260,
+      "rating_amap": 4.6,
+      "confidence": "high",
+      "district": "徐汇",
+      "address": "龙兰路277号T3区域2楼",
       "links": {}
     },
     {
-      "name": "周大宽·江西小炒(星光国际广场店)",
-      "type": "江西菜",
-      "price_per_person": 52,
-      "rating_amap": 4.5,
-      "dianping_score": 4.5,
+      "name": "思澜·新派本帮菜(思南公馆店)",
+      "type": "本帮菜",
+      "price_per_person": 344,
+      "rating_amap": 4.6,
+      "confidence": "high",
+      "district": "黄浦",
+      "address": "思南路51号思南公馆内",
+      "links": {}
+    },
+    {
+      "name": "长脚面馆(复兴中路店)",
+      "type": "面馆",
+      "price_per_person": 40,
+      "rating_amap": 4.4,
       "confidence": "medium",
-      "district": "星光大道",
-      "address": "星光国际广场内",
-      "features": ["实惠", "下饭"],
+      "district": "黄浦",
+      "address": "复兴中路553弄1-97号复兴坊",
+      "links": {}
+    },
+    {
+      "name": "CoffeeTree花园西餐厅(武康路店)",
+      "type": "西餐/咖啡",
+      "price_per_person": 100,
+      "rating_amap": 4.6,
+      "confidence": "medium",
+      "district": "徐汇",
+      "address": "武康路376号武康庭1层",
+      "links": {}
+    },
+    {
+      "name": "老麦咖啡馆(武康路店)",
+      "type": "咖啡馆",
+      "price_per_person": 50,
+      "rating_amap": 4.6,
+      "confidence": "medium",
+      "district": "徐汇",
+      "address": "武康路439号",
       "links": {}
     }
   ],
   "sources": [
-    "高德API（天气+POI+驾车路线）",
-    "大众点评 opencli（餐厅评分+详情）",
-    "小红书 opencli（攻略笔记）",
-    "Amap POI 搜索"
-  ],
-  "tips": [
-    "明天有小雨，动漫博物馆全程室内不受影响",
-    "建议提前在「中国动漫博物馆」公众号预约（免费）",
-    "钱源十一道营业至14:00，12点前到店不用等位",
-    "带把伞，星光大道步行街雨后走走很舒服",
-    "娃如果精力好，可步行去低碳科技馆（江汉路1888号，免费需预约）"
+    "高德API（天气+路线+POI+停车场）",
+    "WebSearch（City Walk攻略）"
   ]
 }

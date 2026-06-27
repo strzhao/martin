@@ -15,6 +15,20 @@ const SKILL_ROOT = path.join(__dirname, '..');
 const TRIP_HTML = path.join(SKILL_ROOT, 'output', 'trip.html');
 const TRIP2_HTML = path.join(SKILL_ROOT, 'output', 'trip2.html');
 const TRIP3_HTML = path.join(SKILL_ROOT, 'output', 'trip3.html');
+const TRIP_JSON = path.join(SKILL_ROOT, 'output', 'trip_data.json');
+const TRIP2_JSON = path.join(SKILL_ROOT, 'output', 'trip2_data.json');
+const TRIP3_JSON = path.join(SKILL_ROOT, 'output', 'trip3_data.json');
+
+// 读取 trip 标题（从 JSON 中提取）
+function readTripTitle(jsonPath) {
+  try {
+    const raw = fs.readFileSync(jsonPath, 'utf-8');
+    const data = JSON.parse(raw);
+    return (data.trip && data.trip.title) ? data.trip.title : null;
+  } catch {
+    return null;
+  }
+}
 
 // 检查 HTML 文件是否存在
 if (!fs.existsSync(TRIP_HTML)) {
@@ -92,11 +106,14 @@ server.listen(PORT, () => {
   const htmlSize = (fs.statSync(TRIP_HTML).size / 1024).toFixed(1);
   const r2 = routeExists['2'] ? '✅ 可用' : '❌ 未生成';
   const r3 = routeExists['3'] ? '✅ 可用' : '❌ 未生成';
+  const t1 = readTripTitle(TRIP_JSON) || '路线 1';
+  const t2 = readTripTitle(TRIP2_JSON) || '路线 2';
+  const t3 = readTripTitle(TRIP3_JSON) || '路线 3';
   console.log('');
   console.log(`🌐 攻略页面已上线:`);
-  console.log(`   路线1: http://localhost:${PORT}/      (运河 City Walk)`);
-  console.log(`   路线2: http://localhost:${PORT}/route2 (萧山 City Walk) ${r2}`);
-  console.log(`   路线3: http://localhost:${PORT}/route3 (滨江 City Walk) ${r3}`);
+  console.log(`   路线1: http://localhost:${PORT}/      (${t1})`);
+  console.log(`   路线2: http://localhost:${PORT}/route2 (${t2}) ${r2}`);
+  console.log(`   路线3: http://localhost:${PORT}/route3 (${t3}) ${r3}`);
   console.log(`   健康: http://localhost:${PORT}/health`);
   console.log(`   文件: ${TRIP_HTML} (${htmlSize} KB)`);
   console.log('');

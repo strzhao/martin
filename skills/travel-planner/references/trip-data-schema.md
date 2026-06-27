@@ -21,10 +21,13 @@
       "destination": "绍兴"
     },
     "budget": {
-      "economy": 150,
-      "standard": 188,
-      "premium": 243
+      "food_per_person_tight": 150,
+      "food_per_person_comfort": 188,
+      "food_per_person_premium": 243
     }
+    // 推荐使用 food_per_person_tight/comfort/premium 三档
+    // 模板同时兼容旧版 economy/standard/premium 字段名（fallback 读取）
+    // 也可以只提供 food_per_person 单一人均（无三档切换）
   },
   "route_map": {
     "static_url": "https://restapi.amap.com/v3/staticmap?...",

@@ -64,6 +64,10 @@ def lint(data_path):
     # budget — 检查字段一致性
     bg = t.get('budget', {})
     budget_keys = set(bg.keys())
+    # 支持三种模式（模板有 fallback 兼容）：
+    # 1. 推荐: food_per_person_tight / food_per_person_comfort / food_per_person_premium
+    # 2. 旧版: economy / standard / premium
+    # 3. 单一: per_person_total（无三档切换）
     known_patterns = [
         {'food_per_person', 'economy', 'standard', 'premium'},
         {'food_per_person_tight', 'food_per_person_comfort', 'food_per_person_premium'},
