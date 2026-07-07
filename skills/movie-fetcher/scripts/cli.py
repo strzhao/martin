@@ -26,6 +26,7 @@ if __package__ in (None, ""):
     from scripts import subtitle as sub_mod  # type: ignore
     from scripts import paths as paths_mod  # type: ignore
     from scripts import embed as embed_mod  # type: ignore
+    from scripts import discover as discover_mod  # type: ignore
 else:
     from . import config as cfg_mod
     from . import nas as nas_mod
@@ -34,6 +35,7 @@ else:
     from . import subtitle as sub_mod
     from . import paths as paths_mod
     from . import embed as embed_mod
+    from . import discover as discover_mod
 
 app = typer.Typer(add_completion=False, no_args_is_help=True,
                   help="电影下载 + 字幕一体化工具")
@@ -363,6 +365,29 @@ def embed(
     else:
         changed = embed_mod.embed_dir(p, set_default=not no_default, keep_external=not delete_external)
         typer.echo(f"完成：内嵌了 {len(changed)} 个 mkv")
+
+
+# ─── weekly（每周新片速递） ─────────────────────────────────────────────────
+
+
+@app.command(help="生成上周新片周报（豆瓣≥阈值，输出到 stdout，供 hermes 定时推送）")
+def weekly(
+    kind: str = typer.Option("all", "--kind", "-k", help="mv / tv / all"),
+    min_score: float = typer.Option(0, "--min-score", help="豆瓣最低分，0=用 config discover.min_score"),
+    pages: int = typer.Option(2, "--pages", help="每种类型拉几页（每页 48 条）"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="只看不写去重库"),
+):
+    data = cfg_mod.load()
+    disc = data.get("discover", {})
+    if min_score <= 0:
+        min_score = float(disc.get("min_score", 8.0))
+    kinds = ["mv", "tv"] if kind == "all" else [kind]
+    db_path = Path(disc.get("state_db", "discovered.db"))
+    if not db_path.is_absolute():
+        db_path = Path(__file__).resolve().parent.parent / db_path
+    typer.echo(f">>> 拉取 {kinds}（豆瓣≥{min_score}，{pages} 页/类）…", err=True)
+    report = discover_mod.run_weekly(kinds, min_score, pages, dry_run, db_path)
+    typer.echo(report)
 
 
 if __name__ == "__main__":

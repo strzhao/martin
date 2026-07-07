@@ -1,7 +1,7 @@
 ---
 name: movie-fetcher
-description: "用电影名一键下载电影/剧集到绿联 NAS 并自动配字幕（教父 BT + qBit + zimuku/SubHD(Qwen OCR) + 内嵌字幕检测 + whisper 兜底）"
-version: 0.4.0
+description: "一键下载电影/剧集到绿联 NAS 并自动配字幕（教父 BT + qBit + zimuku/SubHD + whisper 兜底）；每周一新片速递（教父站筛选 + 豆瓣评分过滤 + 回复下载）"
+version: 0.5.0
 metadata:
   hermes:
     tags:
@@ -17,6 +17,10 @@ metadata:
       - 下载
       - 看电影
       - 字幕组
+      - 新片
+      - 周报
+      - 豆瓣
+      - 每周
     category: media
     requires_toolsets:
       - terminal
@@ -31,6 +35,7 @@ metadata:
 - 用户说"下载《XXX》"、"我想看 XXX"、"NAS 上下个 XXX"、"找 XXX 的资源"
 - 用户说"给 XXX 补字幕"、"扫一下哪些电影没字幕"
 - 用户给一个 `magnet:?xt=...` 链接，希望推到 NAS
+- 用户说"最近/上周有什么新片"、"本周看什么"、"豆瓣 8 分以上的新电影/剧集"（→ `weekly`）
 
 **不要**用在：剧集追更（电视剧批量订阅）、流媒体在线播放、视频转码。
 
@@ -69,6 +74,7 @@ $PYTHON -m scripts.cli setup --qbit-password '<qBit Web 密码>' \
 | `scan-missing [--apply]` | 扫所有分类目录列出缺字幕的电影/剧集；`--apply` 批量补 |
 | `search <title> [--limit N]` | 只搜不下，看候选 |
 | `embed <mkv\|dir> [--delete-external] [--no-default]` | 把外挂字幕用 ffmpeg `-c copy` 内嵌到 mkv 容器（视频不重编码，几分钟）。默认标新字幕为 default 轨道，外挂保留 |
+| `weekly [-k mv\|tv\|all] [--min-score N] [--pages P] [--dry-run]` | **新片速递**：教父站按首播时间拉最新 → 豆瓣≥N 过滤 → 剧集只留全集完成 → 去重 → markdown 周报到 stdout（供 hermes 定时推送） |
 
 ## 分类支持（v0.4 自动识别）
 
@@ -125,11 +131,29 @@ $PYTHON -m scripts.cli scan-missing --apply    # 批量补（电影+剧集都扫
 # 把外挂字幕烧进 mkv（不重新编码视频，几分钟一部）
 $PYTHON -m scripts.cli embed "<电影目录或单个 mkv>"
 $PYTHON -m scripts.cli embed "/Volumes/.../迅雷下载"  # 批量整库
+
+# 每周新片速递（电影+剧集，豆瓣≥8，输出周报到 stdout）
+$PYTHON -m scripts.cli weekly
+$PYTHON -m scripts.cli weekly -k tv --min-score 9 --dry-run  # 调试：只剧集/9分/不写库
 ```
+
+## 每周新片速递（v0.5）
+
+把"上周有什么值得看的新片"自动化。**数据全部来自教父站**（列表卡片自带豆瓣分，绕过豆瓣反爬）：
+
+- **电影**：最近首播的（`sort=date`）
+- **剧集**：全集完成的（状态 `全N集`，非连载）
+- **过滤**：豆瓣 ≥ `discover.min_score`（默认 8.0）；卡片无分（`--`，预告/未开分）直接跳过
+
+**hermes 串联**（定时/推送由 hermes 配置，不在本 skill 内）：
+- cron 每周一 → `weekly` → stdout 周报 → gateway 推微信
+- 用户回复「下 铁拳教育」→ hermes 调 `download "铁拳教育" -c tv`（或 `fetch`）
 
 ## 关键路径
 
-- `~/.opencli/clis/jiaofu/search.js` — 教父 BT adapter（要 Chrome 登录）
+- `~/.opencli/clis/jiaofu/list.js` — 教父站列表/筛选 adapter（weekly 用，卡片自带豆瓣分）
+- `~/.opencli/clis/jiaofu/detail.js` — 教父站详情 adapter（评分/首播日期/简介/magnet）
+- `~/.opencli/clis/jiaofu/search.js` — 教父 BT 搜索 adapter（要 Chrome 登录）
 - `~/.opencli/clis/subhd/{search,download}.js` — SubHD 字幕 adapter（Qwen SVG captcha 解码）
 - `~/.opencli/clis/zimuku/{search,download}.js` — zimuku 字幕 adapter（Qwen 图片 captcha 解 Yunsuo WAF）
 - `~/.opencli/clis/zimuku/_lib.js` — 共享：`ensureBypassed()` + `ocrCaptcha()`

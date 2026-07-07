@@ -43,3 +43,10 @@ download:
   # fetch 子命令轮询完成的周期与总超时（秒）
   poll_interval: 30
   poll_timeout: 86400
+
+discover:
+  # 每周新片速递（`cli.py weekly`）配置
+  min_score: 8.0            # 豆瓣最低分，低于此分不进周报
+  kinds: [mv, tv]           # 发现范围：mv=电影 tv=剧集
+  pages: 2                  # 每种类型拉几页（每页 48 条，sort=date 最新在前）
+  state_db: "discovered.db"  # 去重状态库（相对 skill 根目录）
