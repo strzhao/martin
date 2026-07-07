@@ -1,7 +1,7 @@
 ---
 name: dianping-review
 description: "Use when the user asks to generate Dianping (大众点评) restaurant reviews. Scans /Volumes/stringzhao_主空间/大众点评/ for pending review folders, generates Chinese-language reviews from food photos and voice notes, and saves them to the folder."
-version: 4.6.0
+version: 4.6.1
 author: martin
 license: MIT
 platforms: [macos]
@@ -267,6 +267,44 @@ AUDIO=$(find "$FOLDER" -maxdepth 1 \( -iname "*.m4a" -o -iname "*.mp3" -o -iname
 3. Fallback: audio filename (e.g., "龙湖春江天玺(北门).m4a" → near 龙湖春江天玺)
 4. Fallback: folder name
 
+### Step 0.6: User Input Check（v4.6.1 新增 — 无语音时强制询问）
+
+**硬性规则：没有用户的评价作为「定调层」，不生成任何评价文本。图片只能提供视觉证据，不能替代用户的味觉判断。**
+
+在 Step 0.5 收集素材后，检查是否找到了语音文件：
+
+```bash
+AUDIO=$(find "$FOLDER" -maxdepth 1 \( -iname "*.m4a" -o -iname "*.mp3" -o -iname "*.wav" \) -print | sort)
+if [ -z "$AUDIO" ]; then
+  echo "NO_AUDIO"
+fi
+```
+
+**如果 `NO_AUDIO`**：
+1. **立即暂停所有后续步骤**，不要进入 Step 1 图片分析
+2. 使用 `clarify()` 工具询问用户
+3. 用户的文字回复 → 作为「定调层」，逐菜映射到后续三层分析中
+4. **只有在获得用户文字评价后**，才继续 Step 1 及之后步骤
+
+**询问模板**（用 `clarify()` 发送，open-ended 模式）：
+
+```
+这个文件夹「<folder_name>」没有语音笔记。跟我说说这顿饭吧——
+- 整体感觉怎么样？
+- 每道菜吃了什么感受？（哪些好、哪些一般、哪些不行）
+- 有什么特别想提的？
+```
+
+**为什么必须这样做**：
+- 核心原则#1「绝不杜撰」：口味评价必须来自用户本人
+- 图片只能提供外观证据（火候/食材/调味的可见线索），不能替代「好不好吃」
+- 没有定调层的评价 = 基于外观猜测口味 = 杜撰
+
+**如果用户回复了文字评价**：
+- 将用户原话作为「定调层」文本
+- 在 Step 2b 三层结构组装时，用用户文字替代语音转写
+- 后续流程与有语音时一致（图片分析 + 知识解释 = 专业增量）
+
 ### Step 1: Professional Image Analysis（专业图片分析 — v4.3 CLI 化）
 
 **v4.3 起，图片分析链路全部下沉到 relight 仓库的 `dianping-vision` CLI**。原先在 SKILL.md 内联的 sips/base64/curl/python/并行 wait 逻辑（HEIC 解码、resize、字段 fallback、超时重试、错误聚合）全部封装在编译型 TS 代码里，避免 shell 链路的脆弱性。
@@ -366,30 +404,35 @@ python3 <skill_dir>/scripts/extract_order_prices.py \
 
 **集成**：Step 3 生成评价时，从 `prices.json` 的 `items` 中查找对应菜品价格填入 `（¥XX）`，从 `total` 填入开篇总消费。
 
-### Step 2: Input Processing & Audio Transcription
+### Step 2: Input Processing — Audio or User Text
 
-**2a. Audio Transcription** — Use bundled script:
+**2a. Audio Transcription**（如果有语音文件）— Use bundled script:
 ```bash
 python3 <skill_dir>/scripts/whisper_transcribe.py "<audio_path>" zh
 ```
 Extract: dishes mentioned + opinions, prices, service, atmosphere, standout points.
 If the script fails, fall back to `execute_code` with inline faster-whisper Python.
 
+**2a-alt. User Text Input**（如果 Step 0.6 触发了无语音询问）：
+- 用户的文字回复已经通过 `clarify()` 获得
+- 将用户原文作为「定调层」使用，不需要转写
+- 逐句提取：每道菜的评价、整体感受、人数、消费
+
 **2b. Assemble Three-Layer Structured Analysis（三层结构组装）**
 
-读取 Step 1 产出的 `/tmp/dianping-review/<folder>/vision.json`（`results[].analysis` 是每张图的 7 项专业分析），结合语音转写，组装为结构化文档，供 Step 3 使用。按三层模型组织：
+读取 Step 1 产出的 `/tmp/dianping-review/<folder>/vision.json`（`results[].analysis` 是每张图的 7 项专业分析），结合语音转写或用户文字输入，组装为结构化文档，供 Step 3 使用。按三层模型组织：
 
 ```markdown
 ## 结构化分析 (v4.0 三层模型)
 
 ### 整体信息
 - 餐厅：<名称推测>
-- 人数：<语音提到>
-- 总消费/人均：<语音或收据>
+- 人数：<语音/文字中提到>
+- 总消费/人均：<语音/收据>
 
 ### 菜品 1: <菜名>
-#### 定调层（语音）
-- 评价者判断：<引用语音原文观点>
+#### 定调层（语音/用户文字）
+- 评价者判断：<引用语音原文 或 引用用户文字回复>
 - 态度倾向：好评/中评/差评
 
 #### 观察层（图片分析 · 此菜对应图片）
@@ -468,22 +511,25 @@ skill_view(name="dianping-review", file_path="references/dianping-style-guide.md
 语音体验开篇 → 视觉证据嵌入 → 知识解释收尾 → 回到个人判断
 ```
 
-**合成模板（v4.5）**：
+**合成模板（v4.6.1 — 新增逐菜评分）**：
 
 ```
-<菜名>（<价格>）<定调短语>。
+<菜名>（<价格>）<推荐度>，<X分>。<一句话定调>。
 
 [语音体验开篇 — 1-2句]
 用第一人称吃的感受自然开场。不转述「语音说鱼很嫩」，
 而是「咬下去鱼肉嫩滑」「吃起来没有腥味」「第一口就觉得...」
 
 [视觉证据嵌入 — 紧随其后，不超过2句]
-用破折号（——）直接连到视觉观察，不加"你看""这"等指向词。
+用破折号（——）直接连到视觉观察。
 视觉证据必须直接支持上面的体验判断。
 禁止独立成段的纯视觉描述。
 
-⚠️ 禁止用"你看这盘里""你看这里""你看这"——这些词打破第一人称叙述的沉浸感，
-让读者感觉有人在指着照片解说。破折号本身已经完成了叙事节奏的切换。
+⚠️ 硬性规则：破折号后直接接观察，**永远不要用「你看」**。
+破折号（——）本身已经切断了叙事节奏、引出了视觉证据，
+再加「你看」是画蛇添足，让读者感觉有人在指着照片解说。
+正确：「——蛙肉发白发暗，没有活蛙的透亮质感」
+错误：「——你看这盘里，蛙肉发白发暗」← 多此一举
 
 [知识解释收尾 — 1-2句]
 用「其实...」「这说明...」「所以...」「难怪...」自然带出，
@@ -491,6 +537,23 @@ skill_view(name="dianping-review", file_path="references/dianping-style-guide.md
 
 [性价比 — 1句] <值不值>
 ```
+
+**每道菜开头的推荐度是读者最需要的信息，必须第一时间给出**。推荐度 + 评分体系：
+
+| 推荐度 | 分数 | 含义 |
+|--------|------|------|
+| 推荐 | 4-5分 | 值得专门点 / 超出预期 |
+| 中规中矩 | 3分 | 不功不过，正常水准 |
+| 不推荐 | 1-2.5分 | 有明显缺陷 / 不值 |
+
+格式：`<菜名>（¥价格）<推荐度>，<X分>。`
+
+示例：
+- `花菜炒肉片（套餐内）推荐，4分。今天是超出预期的一道。吃起来...`
+- `石锅牛蛙（¥46.9）不推荐，2.5分。材料很一般，吃起来蛙肉不紧弹...`
+- `蛋黄鸡翅（套餐内）中规中矩，3分。蛋黄裹得不太均匀...`
+
+**推荐度必须在菜名后第一句出现**，不能藏在段落中间或结尾。读者扫一眼就要知道这道菜值不值得点。
 
 **参考示例**：`skill_view(name="dianping-review", file_path="references/v4.5-before-after.md")` — 包含 v4.4 vs v4.5 的真实 before/after 对比和结构拆解。首次使用 v4.5 模板时建议先加载。
 
@@ -554,10 +617,12 @@ X人用餐总消费X元，人均X元。整体口味X分——<定性短语>。
 - 环境 → 只在图片中**明确可见**或语音提及时描述
 - 知识融入 → 老高式："其实…""有意思的是…"；最多 2-3 处（v3 是 1-2 处，v4 因为用知识做解释所以适度增加）
 
-#### Step 3e: v4.5 质量门禁（更新）
+#### Step 3e: v4.6.1 质量门禁（更新）
 
+- [ ] **逐菜推荐度**：每道菜开头是否有明确的「推荐/中规中矩/不推荐」+ 评分？（读者第一眼就要知道值不值得点）
 - [ ] **第一人称主线**：每道菜是否以个人体验开头+收尾？（不允许视觉描述作为开头）
-- [ ] **视觉嵌入而非独立**：视觉观察是否用"——""你看""这"等口语词嵌入叙述？（不允许独立成段）
+- [ ] **视觉嵌入而非独立**：视觉观察是否用「——」嵌入叙述？（不允许独立成段）
+- [ ] **「你看」零容忍**：全文是否有任何「你看」？出现即不合格（破折号已足够）
 - [ ] **纯视觉≤2句**：是否有超过 2 句纯视觉描述未回到第一人称？（超过 = 不合格）
 - [ ] 每道菜是否有图片观察层？（至少 1 句基于图片的技术证据）
 - [ ] 每道菜是否有知识解释层？（至少 1 处料理知识解释）
@@ -735,8 +800,9 @@ If processing multiple folders, present a clean summary.
 
 - [ ] Directory scanned for pending folders
 - [ ] `.reviewed` folders skipped
+- [ ] **如果无语音文件 → 已通过 `clarify()` 获得用户文字评价（Step 0.6）**
 - [ ] Images professionally analyzed via `dianping-vision` CLI（vision.json 已生成且 `stats.failed=0`）
-- [ ] Audio transcribed (if available)
+- [ ] Audio transcribed **或** 用户文字评价已作为定调层（if available）
 - [ ] Three-layer analysis assembled（定调层 + 观察层 + 解释层）
 - [ ] Deep culinary research per dish（每道菜 3 次搜索，结构化笔记）
 - [ ] No fabrication: all facts cross-checked (对照 v4 零杜撰边界表)
@@ -756,6 +822,7 @@ If processing multiple folders, present a clean summary.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 4.6.1 | 2026-07-04 | **无语音强制询问**：新增 Step 0.6「User Input Check」——文件夹无语音文件时立即暂停，用 clarify() 询问用户文字评价。**模板新增逐菜评分**：每道菜开头必须标注「推荐/中规中矩/不推荐」+分数（1-5），读者扫一眼知值不值得点。**「你看」零容忍**：破折号后直接接观察，禁止加「你看」——画蛇添足破坏沉浸感。Step 2 适配双输入源 |
 | 4.6.0 | 2026-06-15 | **Step 0.2 改用插件 API**：聚类触发 `POST /api/plugins/dianping-cluster/run` + 轮询 + 从 `result.photos[].outputPath` 复制已转换 JPEG。新增降级策略（API 不可达→CLI 直调；任务 failed→回退）。relight 管理后台 `/admin/plugins` 可浏览历史任务和照片集合页 |
 | 4.5.1 | 2026-06-11 | 新增 pitfalls #29（餐厅名提取失败：dianping-vision CLI 不提取截图元数据，需单独 OCR 或降级命名）、#30（extract_order_prices.py 误中环境图，团购页面价格未被提取）；强化 pitfall #17（视觉证据必须覆盖所有菜品，100% 非零道）；Step 8 新增餐厅名未知时的 `日期_菜系_位置` 降级命名规则 |
 | 4.5.0 | 2026-05-30 | **语音主线重构**：Step 3a 合成模板从"三层并列段落"改为"单条叙述线（体验→证据→解释→判断）"。新增核心原则#3"语音为主线、视觉为佐证"。视觉证据须用口语词（——、你看、这）嵌入叙事，禁止独立成段 |
