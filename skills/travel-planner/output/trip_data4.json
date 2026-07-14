@@ -1,0 +1,430 @@
+{
+  "trip": {
+    "title": "三亚 · 5天5晚亲子慢游（带3岁娃+父母）",
+    "subtitle": "7月21日晚出发 → 7月26日返回 | 5人出行（夫妻+3岁娃+爷爷奶奶）",
+    "date": "2026-07-21 ~ 2026-07-26",
+    "weather": {
+      "condition": "阵雨/多云交替",
+      "temp_high": 33,
+      "temp_low": 27,
+      "wind": "西风 3-4级",
+      "note": "7月三亚雨季，午后阵雨常见但来得快去得也快，备好雨具和室内备选方案"
+    },
+    "transport": {
+      "mode": "✈️ 飞机（杭州→三亚）+ 🚕 当地打车",
+      "distance_km": 1800,
+      "duration_min": 180,
+      "origin": "杭州萧山",
+      "destination": "三亚凤凰机场"
+    },
+    "budget": {
+      "food_per_person_tight": 120,
+      "food_per_person_comfort": 150,
+      "food_per_person_premium": 200,
+      "hotel_first_2nights": "¥600-800/晚 (大东海民宿两室一厅)",
+      "hotel_last_3nights": "已定（海棠区英墩路9号）"
+    }
+  },
+  "route_map": {
+    "static_url": "",
+    "navi_url": ""
+  },
+  "timeline": [
+    {
+      "time": "7/21 傍晚",
+      "type": "transport",
+      "icon": "✈️",
+      "title": "杭州萧山 → 三亚凤凰机场",
+      "description": "晚班机出发，飞行约3小时。建议提前2小时到机场。到三亚后打车去大东海民宿（约30分钟，¥50-70）",
+      "location": { "lng": 109.413, "lat": 18.305, "name": "三亚凤凰国际机场" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&destination=18.305,109.413",
+      "distance_km": 1800,
+      "duration_min": 180
+    },
+    {
+      "time": "7/21 深夜",
+      "type": "transport",
+      "icon": "🚕",
+      "title": "机场 → 大东海民宿（入住）",
+      "description": "打车约30分钟到达大东海民宿。推荐金茂海景花园/途家民宿两室一厅海景公寓（¥600-800/晚），步行5分钟到沙滩，有厨房和客厅，5人住2房比订2间酒店便宜30-50%",
+      "location": { "lng": 109.518, "lat": 18.219, "name": "大东海" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&origin=18.305,109.413&destination=18.219,109.518",
+      "distance_km": 18,
+      "duration_min": 30,
+      "price_per_person": 0,
+      "confidence": "high"
+    },
+    {
+      "time": "7/22 上午",
+      "type": "break",
+      "icon": "😴",
+      "title": "睡到自然醒 + 适应气候",
+      "description": "前一天晚班机比较累，今天不赶行程。早上自然醒，在民宿周边吃个海南粉/抱罗粉早餐（人均¥15-25），感受三亚的慢节奏",
+      "location": { "lng": 109.518, "lat": 18.219, "name": "大东海" },
+      "confidence": "high"
+    },
+    {
+      "time": "7/22 上午 10:00",
+      "type": "sight",
+      "icon": "🏖️",
+      "title": "大东海沙滩漫步",
+      "description": "步行到沙滩踩踩水、看看海。老人小孩都轻松。沙滩不如亚龙湾细腻但胜在近，适应三亚的第一站",
+      "location": { "lng": 109.518, "lat": 18.219, "name": "大东海沙滩" },
+      "navi_url": "https://www.google.com/maps/search/?api=1&query=大东海沙滩",
+      "duration_min": 60,
+      "confidence": "high"
+    },
+    {
+      "time": "7/22 中午 11:30",
+      "type": "food",
+      "icon": "🍜",
+      "title": "午餐 · 拾味馆（海景花园店）",
+      "description": "三亚湾路附近的中餐馆，海南本地菜为主。招牌：骨汤、文昌鸡。人均约¥60-80。有宝宝椅",
+      "location": { "lng": 109.496, "lat": 18.253, "name": "拾味馆海景花园店" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&destination=18.253,109.496",
+      "price_per_person": 70,
+      "confidence": "medium",
+      "features": ["有宝宝椅", "海南本帮菜"],
+      "duration_min": 75
+    },
+    {
+      "time": "7/22 下午 13:00-15:30",
+      "type": "break",
+      "icon": "🏠",
+      "title": "午休 · 避开正午暴晒",
+      "description": "三亚7月正午11:00-15:00紫外线最强，回民宿休息、午睡、吹空调。这是带老人小孩最重要的节奏——中午不出门",
+      "duration_min": 150,
+      "confidence": "high"
+    },
+    {
+      "time": "7/22 下午 16:00",
+      "type": "transport",
+      "icon": "🚕",
+      "title": "大东海 → 亚龙湾沙滩（打车）",
+      "description": "打车约35-40分钟，¥60-80。亚龙湾是三亚沙质最好的沙滩，沙细浪小坡缓，最适合3岁娃挖沙玩水",
+      "location": { "lng": 109.634, "lat": 18.224, "name": "亚龙湾沙滩" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&origin=18.219,109.518&destination=18.224,109.634",
+      "distance_km": 20,
+      "duration_min": 40,
+      "confidence": "high"
+    },
+    {
+      "time": "7/22 下午 16:40-18:00",
+      "type": "sight",
+      "icon": "🏖️",
+      "title": "亚龙湾沙滩 · 挖沙玩水时间",
+      "description": "三亚最细沙滩！坡度平缓浪小，特别安全。给娃一把铲子能玩两小时。老人可在沙滩椅休息。免费公共沙滩，带好挖沙工具+防晒+水",
+      "location": { "lng": 109.634, "lat": 18.224, "name": "亚龙湾沙滩" },
+      "navi_url": "https://www.google.com/maps/search/?api=1&query=亚龙湾沙滩",
+      "duration_min": 80,
+      "confidence": "high",
+      "features": ["免费", "适合低龄宝宝", "沙质最细"]
+    },
+    {
+      "time": "7/22 傍晚 18:00",
+      "type": "transport",
+      "icon": "🚕",
+      "title": "亚龙湾 → 第一市场（打车）",
+      "description": "打车约40分钟，¥70-90",
+      "distance_km": 25,
+      "duration_min": 40,
+      "confidence": "high"
+    },
+    {
+      "time": "7/22 晚上 19:00",
+      "type": "food",
+      "icon": "🦞",
+      "title": "晚餐 · 第一市场海鲜加工 + 林姐香味海鲜",
+      "description": "三亚最老牌海鲜加工地！先去市场自选鲜活海鲜（基围虾35-50/斤、石斑鱼60-80/斤、花蟹50-70/斤），再拿到林姐加工（27年老字号，香辣和乐蟹必点！椒盐皮皮虾店员帮剥壳）。加工费15-30元/斤，人均¥120-150吃得丰盛。⚠️避坑：要求去皮称重，避开拉客的",
+      "location": { "lng": 109.502, "lat": 18.251, "name": "第一市场 · 林姐香味海鲜" },
+      "navi_url": "https://www.google.com/maps/search/?api=1&query=第一市场+三亚",
+      "price_per_person": 130,
+      "confidence": "high",
+      "features": ["27年老字号", "香辣和乐蟹", "明码标价", "海鲜自选加工"],
+      "aggregation": {
+        "dianping": { "shop_id": "", "score": 4.4, "taste": 4.5, "environment": 4.0, "service": 4.3 },
+        "note": "TripAdvisor高评分，三亚TOP海鲜加工店"
+      },
+      "duration_min": 90
+    },
+    {
+      "time": "7/22 晚上 21:00",
+      "type": "food",
+      "icon": "🥥",
+      "title": "饭后消暑 · 清补凉",
+      "description": "三亚必吃消暑甜品！椰奶+红豆+绿豆+薏米+芋圆，人均¥15。路边随处可见，第一市场周边就有",
+      "price_per_person": 15,
+      "confidence": "high"
+    },
+    {
+      "time": "7/23 上午",
+      "type": "break",
+      "icon": "📦",
+      "title": "退房 + 搬去海棠湾",
+      "description": "收拾行李退房，打车前往海棠区英墩路9号（约40-50分钟，¥80-100）。后3晚住这里",
+      "location": { "lng": 109.730, "lat": 18.315, "name": "海棠区英墩路9号" },
+      "duration_min": 60,
+      "confidence": "high"
+    },
+    {
+      "time": "7/23 下午 14:00-16:00",
+      "type": "sight",
+      "icon": "🐠",
+      "title": "亚特兰蒂斯 · 失落的空间水族馆",
+      "description": "86000+尾海洋生物！白鲸、魔鬼鱼、鲨鱼…超大的观景玻璃幕墙，3岁娃站前面看鱼可以看半小时。室内有空调，雨天最佳选择。成人约¥198/人，1米以下儿童免费",
+      "location": { "lng": 109.741, "lat": 18.359, "name": "三亚亚特兰蒂斯" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&destination=18.359,109.741",
+      "price_per_person": 198,
+      "duration_min": 120,
+      "confidence": "high",
+      "features": ["室内空调", "3岁娃最爱", "86000+海洋生物", "白鲸表演"]
+    },
+    {
+      "time": "7/23 傍晚 17:00",
+      "type": "food",
+      "icon": "🥘",
+      "title": "晚餐 · 龙泉人椰子鸡（海棠湾店）",
+      "description": "海南本地椰子鸡连锁品牌，比网红店更受本地人认可。新鲜椰青水煮文昌鸡，汤甜肉嫩。人均¥80-120",
+      "price_per_person": 100,
+      "confidence": "medium",
+      "features": ["海南本地品牌", "椰子鸡火锅"],
+      "duration_min": 75
+    },
+    {
+      "time": "7/23 晚上 19:00",
+      "type": "sight",
+      "icon": "🎪",
+      "title": "亚特兰蒂斯 · C秀",
+      "description": "1小时水上表演：肩上芭蕾、花式跳水、小丑互动。3岁娃也看得津津有味！约¥200起/人",
+      "location": { "lng": 109.741, "lat": 18.359, "name": "亚特兰蒂斯C秀剧场" },
+      "price_per_person": 200,
+      "duration_min": 60,
+      "confidence": "high",
+      "features": ["水上杂技", "适合全家观看"]
+    },
+    {
+      "time": "7/24 上午 9:00-12:00",
+      "type": "sight",
+      "icon": "🌊",
+      "title": "亚特兰蒂斯水世界 · 海洋帝国（儿童区）",
+      "description": "19条迷你滑道专为小朋友设计！3岁宝宝也能玩。注意：成人区的大型滑道老人慎玩。建议早去避开人流，玩到中午回酒店休息。⚠️必须全身防晒+儿童泳衣",
+      "location": { "lng": 109.741, "lat": 18.359, "name": "亚特兰蒂斯水世界" },
+      "price_per_person": 258,
+      "duration_min": 150,
+      "confidence": "high",
+      "features": ["19条迷你滑道", "3岁可玩", "需防晒"]
+    },
+    {
+      "time": "7/24 下午 13:00-16:00",
+      "type": "break",
+      "icon": "🏠",
+      "title": "酒店午休 + 泳池",
+      "description": "回英墩路9号休息，避开正午暴晒。下午可以在住处泳池玩玩水",
+      "duration_min": 180,
+      "confidence": "high"
+    },
+    {
+      "time": "7/24 傍晚 17:00",
+      "type": "sight",
+      "icon": "🛍️",
+      "title": "海棠湾CDF国际免税城",
+      "description": "亚洲最大单体免税店！化妆品、奢侈品、电子产品。年额度10万/人。提前注册会员积分当钱花（30元=1积分=1元）。带娃可去3楼儿童区。老人不逛的可在一楼咖啡厅坐",
+      "location": { "lng": 109.740, "lat": 18.360, "name": "海棠湾CDF免税城" },
+      "duration_min": 120,
+      "confidence": "high",
+      "features": ["室内空调", "儿童区", "提前注册会员双倍积分"]
+    },
+    {
+      "time": "7/24 晚上 19:00",
+      "type": "food",
+      "icon": "🦀",
+      "title": "晚餐 · 海棠湾海鲜餐厅",
+      "description": "海棠湾附近选择：林姐香味海鲜海棠湾店（连锁品质稳定），或英墩路附近本地海鲜排档。人均¥100-150",
+      "price_per_person": 130,
+      "confidence": "medium",
+      "duration_min": 75
+    },
+    {
+      "time": "7/25 上午 9:00-10:00",
+      "type": "transport",
+      "icon": "🚕",
+      "title": "海棠湾 → 三亚千古情（打车）",
+      "description": "打车约40-50分钟，¥70-90",
+      "location": { "lng": 109.528, "lat": 18.292, "name": "三亚千古情" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&origin=18.315,109.730&destination=18.292,109.528",
+      "distance_km": 30,
+      "duration_min": 50,
+      "confidence": "high"
+    },
+    {
+      "time": "7/25 上午 10:30-12:30",
+      "type": "sight",
+      "icon": "🎭",
+      "title": "三亚千古情 · 大型歌舞秀",
+      "description": "室内演出！天涯传说+冼夫人+海上丝路，特效震撼，娃和老人都会喜欢。看完演出可以在园区逛逛。成人约¥280/人。⚠️如遇大雨天，千古情室内演出是完美备选",
+      "location": { "lng": 109.528, "lat": 18.292, "name": "三亚千古情景区" },
+      "navi_url": "https://www.google.com/maps/search/?api=1&query=三亚千古情",
+      "price_per_person": 280,
+      "duration_min": 120,
+      "confidence": "high",
+      "features": ["室内空调", "震撼特效", "适合全家", "雨天备选"]
+    },
+    {
+      "time": "7/25 中午 12:30",
+      "type": "food",
+      "icon": "🍗",
+      "title": "午餐 · 海亚餐厅（新风路店）",
+      "description": "三亚老牌海南菜馆！海南四大名菜：文昌鸡、加积鸭、东山羊、和乐蟹。人均¥80-120。附近可顺便逛逛三亚市区",
+      "location": { "lng": 109.505, "lat": 18.255, "name": "海亚餐厅新风路店" },
+      "navi_url": "https://www.google.com/maps/search/?api=1&query=海亚餐厅+三亚",
+      "price_per_person": 100,
+      "duration_min": 75,
+      "confidence": "high",
+      "features": ["海南四大名菜", "老字号"],
+      "aggregation": {
+        "note": "TripAdvisor推荐，三亚为数不多的正宗海南菜老店"
+      }
+    },
+    {
+      "time": "7/25 下午 14:00",
+      "type": "transport",
+      "icon": "🚕",
+      "title": "返回海棠湾住处",
+      "description": "打车回英墩路9号，约40分钟",
+      "duration_min": 40,
+      "confidence": "high"
+    },
+    {
+      "time": "7/25 下午 15:00-17:00",
+      "type": "break",
+      "icon": "🏠",
+      "title": "午休 + 收拾 + 最后一晚",
+      "description": "最后一天下午放松，老人休息，带娃在住处附近走走。收拾行李准备明天返程",
+      "duration_min": 120,
+      "confidence": "high"
+    },
+    {
+      "time": "7/25 晚上 18:00",
+      "type": "food",
+      "icon": "🥂",
+      "title": "告别晚餐 · 海棠湾附近餐厅",
+      "description": "最后一顿选点想吃的。可以再吃一次椰子鸡/海鲜，或者附近找家干净的小馆。人均¥80-120",
+      "price_per_person": 100,
+      "duration_min": 90,
+      "confidence": "medium"
+    },
+    {
+      "time": "7/26 上午",
+      "type": "break",
+      "icon": "🏖️",
+      "title": "最后的海滩时光",
+      "description": "早起去海棠湾沙滩走走（注意浪大，不可下水游泳但可踩水），拍全家福。回住处收拾行李",
+      "location": { "lng": 109.757, "lat": 18.409, "name": "海棠湾沙滩" },
+      "duration_min": 90,
+      "confidence": "high"
+    },
+    {
+      "time": "7/26 中午 12:00",
+      "type": "food",
+      "icon": "🍽️",
+      "title": "退房 + 午餐",
+      "description": "退房后在附近找家餐厅吃午饭，然后打车去机场",
+      "duration_min": 60,
+      "confidence": "high"
+    },
+    {
+      "time": "7/26 下午",
+      "type": "transport",
+      "icon": "✈️",
+      "title": "三亚凤凰机场 → 杭州",
+      "description": "提前1.5小时到机场。海棠湾到机场约50-60分钟，¥100-130。✈️ 飞行约3小时回家",
+      "location": { "lng": 109.413, "lat": 18.305, "name": "三亚凤凰国际机场" },
+      "navi_url": "https://www.google.com/maps/dir/?api=1&destination=18.305,109.413",
+      "distance_km": 45,
+      "duration_min": 60,
+      "confidence": "high"
+    }
+  ],
+  "restaurants": [
+    {
+      "name": "林姐香味海鲜加工店",
+      "type": "海鲜加工",
+      "price_per_person": 130,
+      "rating_amap": 0,
+      "dianping_score": 4.4,
+      "dianping_reviews": 0,
+      "confidence": "high",
+      "district": "第一市场",
+      "address": "第一市场新民街",
+      "features": ["27年老字号", "香辣和乐蟹", "椒盐皮皮虾帮剥壳", "海鲜自选加工"],
+      "links": {}
+    },
+    {
+      "name": "拾味馆（海景花园店）",
+      "type": "海南菜/中餐",
+      "price_per_person": 70,
+      "dianping_score": 0,
+      "confidence": "medium",
+      "district": "三亚湾",
+      "address": "三亚湾路昌达海景花园",
+      "features": ["有宝宝椅", "骨汤", "文昌鸡"],
+      "links": {}
+    },
+    {
+      "name": "龙泉人椰子鸡",
+      "type": "椰子鸡火锅",
+      "price_per_person": 100,
+      "confidence": "medium",
+      "district": "海棠湾/多店",
+      "address": "海棠湾店",
+      "features": ["本地品牌", "椰青水煮鸡", "清甜"],
+      "links": {}
+    },
+    {
+      "name": "海亚餐厅（新风路店）",
+      "type": "海南菜",
+      "price_per_person": 100,
+      "dianping_score": 0,
+      "confidence": "high",
+      "district": "三亚市区",
+      "address": "新风路138号",
+      "features": ["老字号", "海南四大名菜", "文昌鸡", "东山羊"],
+      "links": {}
+    },
+    {
+      "name": "清补凉（路边摊/椰语堂）",
+      "type": "甜品/小吃",
+      "price_per_person": 15,
+      "confidence": "high",
+      "district": "遍布全城",
+      "address": "第一市场/商品街均有",
+      "features": ["椰奶", "红豆绿豆", "消暑必吃"],
+      "links": {}
+    }
+  ],
+  "tips": {
+    "weather": "7月三亚27-33℃，台风季。阵雨频繁但通常30分钟即停，不影响游玩。出发前3天关注台风预警",
+    "sun_protection": "SPF50+防水防晒霜每2小时补涂，11:00-15:00不出门，带防晒衣+遮阳帽+儿童太阳镜",
+    "seafood": "第一市场自选海鲜→林姐加工。要求去皮称重，别让出租车推荐便宜海鲜店（拿回扣的）",
+    "kids": "带便携推车！娃走不动可以推着。儿童防晒泳衣长袖款、沙滩鞋（防烫沙）、退烧药+益生菌",
+    "tickets": "景点门票提前1天在携程/美团订，比现场便宜。亚特兰蒂斯水族馆+水世界有联票",
+    "transport": "5人出行打车比分租两辆车方便，三亚滴滴很方便。不需要租车（停车麻烦+安全座椅问题）"
+  },
+  "sources": [
+    "中国天气网（weather.com.cn）",
+    "TripAdvisor猫途鹰",
+    "携程攻略（jina.ai）",
+    "163.com攻略",
+    "Bing搜索",
+    "OpenStreetMap/Nominatim",
+    "综合旅游知识"
+  ],
+  "itinerary_summary": {
+    "day0": "7/21晚：杭州✈️三亚，入住大东海民宿",
+    "day1": "7/22：大东海→亚龙湾沙滩→第一市场海鲜",
+    "day2": "7/23：搬海棠湾→亚特兰蒂斯水族馆→C秀",
+    "day3": "7/24：水世界儿童区→免税店",
+    "day4": "7/25：千古情演出→海南菜→收拾",
+    "day5": "7/26：海滩→退房→✈️返程"
+  }
+}
