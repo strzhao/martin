@@ -154,8 +154,8 @@ def _embed_mkv(mkv: Path, srt: Path, set_default: bool, streams: list[StreamInfo
         "-i", str(mkv), "-i", str(srt),
         "-map", "0", "-map", "1",
         "-c", "copy",
-        f"-metadata:s:s:{new_sub_idx}", "language=zho",
-        f"-metadata:s:s:{new_sub_idx}", f"title=中文 ({srt.suffix.lstrip('.').upper()})",
+        f"-metadata:s:s:{new_sub_idx}", "language=chi",
+        f"-metadata:s:s:{new_sub_idx}", "title=Chinese (简体中文)",
     ]
     if set_default:
         for i in range(existing_sub_count):
@@ -193,8 +193,8 @@ def _embed_mp4(mp4: Path, srt: Path, set_default: bool, streams: list[StreamInfo
         "-map", "0", "-map", "1",
         "-c:v", "copy", "-c:a", "copy",
         "-c:s", "mov_text",
-        f"-metadata:s:s:{new_sub_idx}", "language=zho",
-        f"-metadata:s:s:{new_sub_idx}", f"title=中文",
+        f"-metadata:s:s:{new_sub_idx}", "language=chi",
+        f"-metadata:s:s:{new_sub_idx}", "title=Chinese (简体中文)",
     ]
     if set_default:
         for i in range(existing_sub_count):

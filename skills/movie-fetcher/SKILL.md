@@ -1,110 +1,115 @@
 ---
 name: movie-fetcher
-description: "一键下载电影/剧集到绿联 NAS 并自动配字幕（教父 BT + qBit + zimuku/SubHD + whisper 兜底）；每周一新片速递（教父站筛选 + 豆瓣评分过滤 + 回复下载）"
-version: 0.5.0
+description: "一键下载电影/剧集到绿联 NAS 并自动配字幕（教父 BT + qBit + zimuku/SubHD + whisper 兜底）；每周一新片速递"
+version: 0.9.0
 metadata:
   hermes:
-    tags:
-      - movie
-      - download
-      - subtitle
-      - magnet
-      - bt
-      - nas
-      - qbittorrent
-      - 电影
-      - 字幕
-      - 下载
-      - 看电影
-      - 字幕组
-      - 新片
-      - 周报
-      - 豆瓣
-      - 每周
+    tags: [movie, download, subtitle, magnet, bt, nas, qbittorrent, 电影, 字幕, 下载, 看电影, 字幕组, 新片, 周报, 豆瓣, 每周]
     category: media
-    requires_toolsets:
-      - terminal
+    requires_toolsets: [terminal]
 ---
 
 # movie-fetcher
 
-把一句"我想看 X"翻译成"NAS 上下好 X 并配好字幕"。**默认不等视频下载完**——qBit 拿到 metadata（文件名就绪，~30s）就立即配字幕并返回。
+把一句"我想看 X"翻译成"NAS 上下好 X 并配好字幕"。
 
 ## When to use
 
-- 用户说"下载《XXX》"、"我想看 XXX"、"NAS 上下个 XXX"、"找 XXX 的资源"
-- 用户说"给 XXX 补字幕"、"扫一下哪些电影没字幕"
-- 用户给一个 `magnet:?xt=...` 链接，希望推到 NAS
-- 用户说"最近/上周有什么新片"、"本周看什么"、"豆瓣 8 分以上的新电影/剧集"（→ `weekly`）
+- 下载电影/剧集到 NAS
+- 给已下载内容补字幕
+- 每周新片速递
 
-**不要**用在：剧集追更（电视剧批量订阅）、流媒体在线播放、视频转码。
-
-## 前置依赖（首次使用前必须自检）
+## 前置依赖
 
 | 项 | 检查命令 | 期望 |
 |---|---|---|
-| Chrome 扩展（opencli） | `opencli doctor` | `Extension: connected` |
-| 教父站登录 | 用户手动在 chrome 登录 `https://www.xn--wcv59z.com/` | tab 显示用户名 |
-| SubHD 登录 | 用户手动在 chrome 登录 `https://subhd.tv/` | 同上 |
-| zimuku 登录 | 用户手动在 chrome 登录 `https://zimuku.org/` | 同上（用于 Yunsuo WAF cookie） |
-| 本地 Qwen 多模态服务 | `curl -s --max-time 3 http://127.0.0.1:8001/v1/models -H "Authorization: Bearer qwen-local-key"` | 返 model list 含 `qwen3.6-35b`（zimuku/SubHD captcha 都靠它） |
-| qBittorrent 可达 | `cd ~/.hermes/skills/media/movie-fetcher && $PYTHON -m scripts.cli status` | 列出现有任务 |
+| qBittorrent 可达 | `$PYTHON -m scripts.cli status` | 列出现有任务 |
 
-`$PYTHON = /Users/stringzhao/workspace/martin/.venv/bin/python`，所有命令的工作目录都是
-`~/.hermes/skills/media/movie-fetcher/`。
-
-## Setup（仅首次）
-
-NAS 凭据/路径已经写在 `config.yaml`（0600，.gitignore）。如果换 NAS 或重装，重跑：
-
-```bash
-$PYTHON -m scripts.cli setup --qbit-password '<qBit Web 密码>' \
-    --nas-internal '<qBit 容器内电影目录，如 /m>'
-```
+`$PYTHON = /Users/stringzhao/workspace/martin/.venv/bin/python`，工作目录 `~/.hermes/skills/media/movie-fetcher/`。
 
 ## 子命令
 
 | 命令 | 行为 |
 |---|---|
-| `fetch <title> [-c movie|tv]` | **主入口**：教父 BT 搜 → 自动选最佳 magnet → 推 qBit → 等 metadata → 配字幕 |
-| `fetch <title> --wait-download [-c movie|tv]` | 同上但等视频 100% 下完（数十分钟~数小时） |
-| `download <magnet\|title> [-c movie|tv]` | 只推 magnet，不等也不配字幕 |
+| `fetch <title> [-c movie\|tv]` | 主入口：多源搜索 → pick_best → 推 qBit → 配字幕 |
+| `search <title> [--limit N] [--json]` | 只搜不下；`--json` 输出含 magnet |
+| `download <magnet\|title> [-c movie\|tv]` | 只推 magnet |
 | `status [hash]` | 查任务进度 |
-| `subtitle <movie_dir>` | 为已下完的电影目录补字幕（含 whisper 兜底） |
-| `scan-missing [--apply]` | 扫所有分类目录列出缺字幕的电影/剧集；`--apply` 批量补 |
-| `search <title> [--limit N]` | 只搜不下，看候选 |
-| `embed <mkv\|dir> [--delete-external] [--no-default]` | 把外挂字幕用 ffmpeg `-c copy` 内嵌到 mkv 容器（视频不重编码，几分钟）。默认标新字幕为 default 轨道，外挂保留 |
-| `weekly [-k mv\|tv\|all] [--min-score N] [--pages P] [--dry-run]` | **新片速递**：教父站按首播时间拉最新 → 豆瓣≥N 过滤 → 剧集只留全集完成 → 去重 → markdown 周报到 stdout（供 hermes 定时推送） |
+| `subtitle <movie_dir>` | 为目录补字幕 |
+| `weekly [-k mv\|tv\|all] [--min-score N]` | 每周新片速递 |
 
-## 分类支持（v0.4 自动识别）
+## 搜索与 pick_best (v0.9)
 
-`config.yaml` 的 `paths.categories` 定义分类映射：
+### 多源合并 + per-source 诊断
 
-```yaml
-paths:
-  categories:
-    movie: "电影"
-    tv: "剧集"
-  default_category: "movie"   # 无法识别时的兜底
+`search_all` 合并 jiaofu → yts → apibay → btdig 四个源（标题去重），不再短路返回。每个源返回独立的 `SearchDiagnostic`（状态、详情、结果数），源间加 1 秒延迟避免安全封控。
+
+搜索无结果时不再只显示「无结果」，而是输出每个源的详细状态：
+
+```
+无结果 — 1个源被安全封控（btdig）；1个源不支持中文搜索（apibay）；1个源无匹配（yts）
+搜索诊断：
+  — 无结果  jiaofu — jiaofu 无匹配「xxx」的结果
+  — 不支持中文  apibay — apibay 不支持中文搜索「xxx」
+  — 无结果  yts — YTS 无匹配（仅英文片源）
+  🚫 被封  btdig — btdig 触发安全验证: 「Checking your browser」
 ```
 
-**自动识别**（v0.4）：`fetch`/`download` 不指定 `-c` 时，自动从搜索词+结果标题判断是否为剧集。
-匹配模式：`全\d+集`、`全集打包`、`S\d{2,}`、`Season \d+`、`第\d+季`、`E\d{2,}`、`EP\d{2,}`、`第\d+部`、`\bTV\b`。
+**不要看到「无结果」就放弃**——先看诊断，判断是封控/超时/真的没资源。
 
-- `fetch "信条"` → 自动识别为电影 → 迅雷下载/电影/  ✅
-- `fetch "绝命毒师"` → 标题含 S01 → 自动识别为剧集 → 迅雷下载/剧集/  ✅
-- `fetch "铁拳教育"` → 搜索结果含「全10集」→ 自动识别为剧集 ✅
-- `fetch "XXX" -c tv` → 显式指定，跳过自动识别
+### 安全封控检测
 
-**已修复的问题**：剧集误入「电影」目录（根因：opencli `@jackwener` 模块解析失败导致 jiaofu 搜索静默回退英文源，已在 `workspace/martin/node_modules/` 建软链接）
+btdig 返回 HTML 时检测 Cloudflare challenge / captcha / 静默封控（页面内容极少且无搜索结果）。apibay 检测 rate limit 响应。检测到封控时，`SourceStatus=BLOCKED` 并携带具体匹配到的封控特征。
 
-## 字幕兜底策略（subtitle_for_name 内部，自动）
+### 源间延迟
 
-1. **内嵌检测**：文件名含「国语中字 / 中字 / 内嵌 / 双语 / CHS&ENG」等 → 跳过外挂搜索（资源自带）
-2. **zimuku**（**主源**）：opencli adapter 搜 → 自动绕过 Yunsuo WAF 图片 captcha（Qwen OCR）→ 5 镜像下 → 解压 → 命名对齐。zimuku 中文片库覆盖最全
-3. **SubHD**（备源）：opencli adapter 搜 → 自动解 SVG captcha（Qwen）→ CDN 下 → 解压。当 zimuku 没有结果时启用（也用于 zimuku 宕机时兜底）
-4. **subliminal**：OpenSubtitles/Podnapisi（不稳定，podnapisi 经常 SSL 抖动）
-5. **whisper**：本机 `scripts/transcribe.py large-v3-turbo`（**需视频文件下完才能跑**，fetch 默认流程跳过；可单独 `subtitle <dir>` 触发）
+连续搜索源之间强制 sleep 1 秒，避免 btdig 等站触发频率限制（429 或静默封控）。
+
+### pick_best 相关性过滤
+
+排序维度：1) config `prefer_quality` 画质偏好  2) seeders 数量。关键词匹配率过滤（≥30%），拦截 btdig 等源的噪音结果。
+
+### btdig 精确搜索
+
+btdig 搜索自动加双引号做 AND 精确匹配。
+
+## 字幕系统 (v0.7)
+
+### 来源匹配
+
+`_try_zimuku` 从视频文件名提取来源关键词（BluRay/WEBRip/NF 等），优先下载同版本字幕包。避免时间轴不匹配。
+
+### 剧集多文件字幕
+
+剧集字幕包（含多集独立 ass/srt）解压后**全部返回**，按集数（S01E01）匹配视频文件命名。不再只取第一个文件。
+
+### 自动内嵌（`fetch --wait-download`）
+
+`fetch` 命令在下载完成后自动：
+1. 检查是否已有内嵌中文字幕
+2. 下载匹配的字幕包
+3. `ffmpeg -c copy` 将字幕内嵌到每个 mkv（不重编码）
+4. 处理 SMB 目录写保护（rename 旧目录 → 新建可写目录 → 嵌入 → 清理旧目录）
+5. 验证字幕匹配性：检查字幕轨道语言、提取尾句确认含中文、时间轴与视频时长匹配
+
+### 默认字幕处理
+
+嵌入字幕时自动：
+1. **清除原有字幕的 default 标记**：原文件自带的 PGS/VobSub 字幕标记为非默认
+2. **新字幕设为默认**：嵌入的 ASS 中文字幕标记 `language=chi`、`title=Chinese (简体中文)`、`default=1`
+3. **删除冲突字幕轨道**：若播放器不认 `default_track` 标记（按 track 顺序选第一个），用 `mkvmerge` 删除原 PGS/VobSub 轨道，只留 ASS
+
+**mkvmerge 删除原字幕（不改编码，~20s/集）**：
+```bash
+# 查看轨道：Track ID 0=video, 1=audio, 2=PGS, 3=ASS
+mkvmerge -i video.mkv
+
+# 只保留 0+1+3，删 Track 2（PGS）
+mkvmerge -o output.mkv -d 0 -a 1 -s 3 video.mkv
+```
+> `-d` 选视频轨，`-a` 选音轨，`-s` 选字幕轨
+
+> **注意**：`-c copy` 模式不重编码音视频，只改容器 metadata；若存量文件默认字幕轨道有误，可用 `mkvpropedit` 修复（见排错章节）。
 
 ## 典型工作流
 
@@ -112,58 +117,105 @@ paths:
 PYTHON=/Users/stringzhao/workspace/martin/.venv/bin/python
 cd ~/.hermes/skills/media/movie-fetcher
 
-# 一句话下载电影 + 配字幕（默认不等下完）
-$PYTHON -m scripts.cli fetch "信条"
+# 先搜后确认（推荐）
+$PYTHON -m scripts.cli search "Stranger Things S01" --json --limit 15
+# 确认后直接 push magnet
+$PYTHON -m scripts.cli download "magnet:?xt=urn:btih:..." -c tv
 
-# 下载剧集 → 迅雷下载/剧集/
-$PYTHON -m scripts.cli fetch "绝命毒师" -c tv
+# 一句话下载
+$PYTHON -m scripts.cli fetch "怪奇物语" -c tv
 
-# 已有 magnet，指定分类只推
-$PYTHON -m scripts.cli download "magnet:?xt=urn:btih:..." -c movie
-
-# 看进度
-$PYTHON -m scripts.cli status
-
-# 扫整个迅雷下载目录缺字幕的
-$PYTHON -m scripts.cli scan-missing            # 看哪些缺
-$PYTHON -m scripts.cli scan-missing --apply    # 批量补（电影+剧集都扫）
-
-# 把外挂字幕烧进 mkv（不重新编码视频，几分钟一部）
-$PYTHON -m scripts.cli embed "<电影目录或单个 mkv>"
-$PYTHON -m scripts.cli embed "/Volumes/.../迅雷下载"  # 批量整库
-
-# 每周新片速递（电影+剧集，豆瓣≥8，输出周报到 stdout）
-$PYTHON -m scripts.cli weekly
-$PYTHON -m scripts.cli weekly -k tv --min-score 9 --dry-run  # 调试：只剧集/9分/不写库
+# 看进度 / 配字幕
+$PYTHON -m scripts.cli status <hash>
+$PYTHON -m scripts.cli subtitle "<本地目录路径>"
 ```
-
-## 每周新片速递（v0.5）
-
-把"上周有什么值得看的新片"自动化。**数据全部来自教父站**（列表卡片自带豆瓣分，绕过豆瓣反爬）：
-
-- **电影**：最近首播的（`sort=date`）
-- **剧集**：全集完成的（状态 `全N集`，非连载）
-- **过滤**：豆瓣 ≥ `discover.min_score`（默认 8.0）；卡片无分（`--`，预告/未开分）直接跳过
-
-**hermes 串联**（定时/推送由 hermes 配置，不在本 skill 内）：
-- cron 每周一 → `weekly` → stdout 周报 → gateway 推微信
-- 用户回复「下 铁拳教育」→ hermes 调 `download "铁拳教育" -c tv`（或 `fetch`）
-
-## 关键路径
-
-- `~/.opencli/clis/jiaofu/list.js` — 教父站列表/筛选 adapter（weekly 用，卡片自带豆瓣分）
-- `~/.opencli/clis/jiaofu/detail.js` — 教父站详情 adapter（评分/首播日期/简介/magnet）
-- `~/.opencli/clis/jiaofu/search.js` — 教父 BT 搜索 adapter（要 Chrome 登录）
-- `~/.opencli/clis/subhd/{search,download}.js` — SubHD 字幕 adapter（Qwen SVG captcha 解码）
-- `~/.opencli/clis/zimuku/{search,download}.js` — zimuku 字幕 adapter（Qwen 图片 captcha 解 Yunsuo WAF）
-- `~/.opencli/clis/zimuku/_lib.js` — 共享：`ensureBypassed()` + `ocrCaptcha()`
-- `~/.hermes/skills/media/movie-fetcher/scripts/` — Python 主体
-- `config.yaml` — NAS 凭据 + 路径（不要 git commit）
 
 ## 排错
 
-- `setup` 报"未发现存活端口"：检查 NAS 上 qBit 是否启用 Web UI，端口配置是否对
-- `fetch` 超时/搜不到资源：教父站可能临时挂或被封；用 `search "标题"` 看候选；若都无结果，用户手贴 magnet
-- `subtitle` Qwen 报错：`curl http://127.0.0.1:8001/v1/models` 验证服务，必要时 `pm2 restart qwen-35b`
-- SubHD captcha 多次解错：调高 `--max-cap-tries`（默认 3），或 SubHD 服务端 token 超时（间隔几秒后重试）
-- `config.yaml` 权限错：会被自动 chmod 0600，但不入 git
+### 搜索返回「无结果」——先看诊断，别直接放弃
+
+**症状**：搜索"低智商犯罪"等中文内容显示「无结果」。
+
+**错误做法**：「无结果」就认为资源不存在，换关键词反复搜。
+
+**正确做法**：看 per-source 诊断输出。每次搜索无结果时会打印类似：
+
+```
+无结果 — 1个源被安全封控（btdig）；1个源不支持中文搜索（apibay）
+搜索诊断：
+  — 无结果  jiaofu — jiaofu 无匹配「xxx」的结果
+  🚫 被封  btdig — btdig 触发安全验证: 「Checking your browser」
+```
+
+常见状态解读：
+| 状态 | 含义 | 对策 |
+|------|------|------|
+| `— 无结果` | 源正常但真的没这个资源 | 换英文名/别名重试 |
+| `🚫 被封` | 触发安全验证（Cloudflare/captcha） | 等几分钟重试，或手动浏览器访问验证 |
+| `⏱ 超时` | 网络超时/被墙 | 检查代理，重试 |
+| `— 不支持中文` | apibay CJK 查询返回 noise | 正常，用英文名搜 apibay |
+| `✗ 不可用` | opencli 未安装 / Chrome 登录态失效 | 修复 opencli 或跳过此源 |
+
+### fetch 选到完全不相关的资源
+
+**症状**：搜索 "Stranger Things S01" 却推了 1227GB 的 "My Movies"
+**原因**：btdig 噪音覆盖了 apibay 结果（v0.6 已修复）
+**方案**：用 `search --json` 获取正确 magnet，再 `download "magnet:..."` 直接推送
+
+### 字幕写入 NAS 报 Permission denied（qBit 做种锁）
+
+**症状**：`subtitle` / `cp` / `touch` 写任务子目录报 `Permission denied`，但：
+- `ls -la` 显示 owner 是当前用户且 `rwx------`
+- 上级目录（`电视剧/`）✅ 可写
+- 老的已下载目录 ✅ 可写
+- 只有**正在做种（stalledUP/seeding）的任务子目录** ❌ 不可写
+
+**根因**：qBit 容器在做种时持有任务子目录的文件锁，SMB 客户端无法写入。
+
+**诊断步骤**：参见 `references/qbit-seeder-lock.md`
+
+**解决方案**：
+1. （推荐）qBit Web UI → 暂停任务 → 释放锁 → `cp` 字幕进去 → 恢复做种
+2. （兜底）字幕下载到 `~/Downloads/`，Finder 手动拖入 NAS 目录
+
+### 内嵌后默认字幕不是中文（PGS 变成默认）
+
+**症状**：播放器打开后显示 "dvd subtitle"（PGS/VobSub），需手动切换到 ASS 中文字幕。
+
+**根因**：原文件自带的 PGS 字幕在嵌入前已是 `default=1`，ffmpeg 命令未清除它的默认标记。
+
+**修复（已嵌入的文件，无需重编码）**：
+```bash
+# 查看字幕轨道
+mkvmerge -J video.mkv | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for t in data['tracks']:
+    if t['type'] == 'subtitles':
+        print(f\"Track {t['id']}: {t.get('codec','')}  lang={t['properties'].get('language','')}  default={t['properties'].get('default_track',False)}\")
+"
+
+# 修复：PGS 取消默认，ASS 设为默认 + 命名
+mkvpropedit video.mkv \
+  --edit track:=<PGS_UID> --set flag-default=0 --delete name \
+  --edit track:=<ASS_UID> --set flag-default=1 --set name="Chinese (简体中文)" --set language=chi
+```
+
+> 此问题已在 v0.8 embed 代码中修复：`_embed_mkv` 和 `_embed_subs_post_download` 都会先清旧字幕 default，再设新字幕 default。
+
+### 播放器不认 default_track 标记（仍然选原字幕）
+
+**症状**：`mkvpropedit` 修复后 `default=True` 在 ASS 上，但播放器仍然选 PGS/dvd subtitle。
+
+**根因**：部分播放器（如某些智能电视、Infuse、Plex）忽略 Matroska `default_track` 标志，按 track 顺序选第一个字幕。
+
+**修复：删除原 PGS 轨道**
+```bash
+# 查看轨道顺序
+mkvmerge -i video.mkv
+
+# 只保留 video(0) + audio(1) + ASS(3)，删 PGS(2)
+mkvmerge -o output.mkv -d 0 -a 1 -s 3 video.mkv
+mv output.mkv video.mkv
+```
+> `mkvmerge` 只改容器不改编码，文件大小几乎不变，~20s 一集。

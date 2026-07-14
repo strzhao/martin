@@ -56,8 +56,42 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> list[Path]:
     return extracted
 
 
-def _try_zimuku(filename: str, target_dir: Path) -> list[Path]:
-    """调 opencli zimuku adapter：search → 选最匹配 → download → 解压。"""
+def _source_match_score(source_hint: str, cand_title: str) -> int:
+    """根据视频来源关键词匹配字幕候选。分数越高越匹配。
+
+    source_hint 从文件名提取（如 'BluRay', 'WEBRip'），cand_title 是字幕标题。
+    返回 2=精确匹配, 1=没有来源信息(任选), 0=来源不匹配。
+    """
+    if not source_hint:
+        return 1  # 无法判断来源，中性
+    source_low = source_hint.lower()
+    cand_low = cand_title.lower()
+    # 精确匹配来源
+    if source_low in cand_low:
+        return 2
+    # BluRay 和 BDRip 等价
+    if source_low == "bluray" and ("bluray" in cand_low or "bdrip" in cand_low):
+        return 2
+    if source_low == "webrip" and ("webrip" in cand_low or "web-dl" in cand_low or "webdl" in cand_low):
+        return 2
+    # 不匹配：比如视频是 BluRay 但候选是 WEBRip
+    return 0
+
+
+def _extract_source_hint(filename: str) -> str:
+    """从文件名提取来源关键词。"""
+    low = filename.lower()
+    for hint in ("bluray", "bdrip", "webrip", "web-dl", "webdl", "hdtv", "nf", "netflix"):
+        if hint in low:
+            return hint
+    return ""
+
+
+def _try_zimuku(filename: str, target_dir: Path, video_dir: Path | None = None) -> list[Path]:
+    """调 opencli zimuku adapter：search → 按来源匹配选最佳 → download → 解压。
+
+    返回提取出的所有字幕文件（剧集可能有多集独立字幕）。
+    若提供 video_dir，新文件按视频文件名对齐命名。"""
     if not shutil.which("opencli"):
         return []
     stem = Path(filename).stem
@@ -91,13 +125,23 @@ def _try_zimuku(filename: str, target_dir: Path) -> list[Path]:
         print("[subtitle][zimuku] 无候选字幕")
         return []
 
-    # zimuku 已按简中→繁中→中文→下载量排序，直接 top-3 尝试
+    # 提取视频来源关键词，用于匹配字幕
+    source_hint = _extract_source_hint(filename)
+    # 按来源匹配分 + 下载量排序
+    candidates.sort(
+        key=lambda c: (_source_match_score(source_hint, c.get("title", "")), c.get("downloads", 0)),
+        reverse=True,
+    )
+
     target_dir.mkdir(parents=True, exist_ok=True)
-    for cand in candidates[:3]:
+    for cand in candidates[:5]:
         did = cand.get("detail_id")
         if not did:
             continue
-        print(f"[subtitle][zimuku] 尝试下载：[{did}] {cand.get('title','')[:60]}")
+        title = cand.get("title", "")
+        score = _source_match_score(source_hint, title)
+        tag = "✓" if score >= 2 else ("~" if score == 1 else "✗")
+        print(f"[subtitle][zimuku] 尝试下载：[{did}] {tag} {title[:60]}")
         with tempfile.TemporaryDirectory() as tmpd:
             tmpd_path = Path(tmpd)
             out_path = tmpd_path / f"zimuku_{did}.bin"
@@ -121,16 +165,44 @@ def _try_zimuku(filename: str, target_dir: Path) -> list[Path]:
                 extracted = _extract_archive(out_path, tmpd_path / "ex")
                 if not extracted:
                     continue
-                srts = [p for p in extracted if p.suffix.lower() == ".srt"]
-                pick = (srts or extracted)[0]
+                # 返回所有提取的字幕文件（剧集可能有多集）
+                results: list[Path] = []
+                for pick in extracted:
+                    ext = pick.suffix.lower() if pick.suffix.lower() in SUBTITLE_EXTS else ".srt"
+                    sub_basename = pick.stem
+                    # 尝试匹配视频文件命名
+                    if video_dir and video_dir.is_dir():
+                        matched = False
+                        # 从字幕文件名提取集数（如 S01E01）
+                        ep_match = re.search(r"[Ss]\\d+[Ee]\\d+", sub_basename)
+                        if ep_match:
+                            ep_tag = ep_match.group(0)
+                            for vf in sorted(video_dir.glob("*.mkv")) + sorted(video_dir.glob("*.mp4")):
+                                if ep_tag.lower() in vf.stem.lower():
+                                    final = target_dir / f"{vf.stem}.chi{ext}"
+                                    shutil.copyfile(pick, final)
+                                    results.append(final)
+                                    matched = True
+                                    break
+                        if not matched:
+                            final = target_dir / f"{sub_basename}.chi{ext}"
+                            shutil.copyfile(pick, final)
+                            results.append(final)
+                    else:
+                        final = target_dir / f"{sub_basename}.chi{ext}"
+                        shutil.copyfile(pick, final)
+                        results.append(final)
+                if results:
+                    print(f"[subtitle][zimuku]   ✓ 落地 {len(results)} 个字幕文件")
+                    return results
             else:
-                pick = out_path
-            video_stem = Path(filename).stem
-            ext = pick.suffix.lower() if pick.suffix.lower() in SUBTITLE_EXTS else ".srt"
-            final = target_dir / f"{video_stem}.zh{ext}"
-            shutil.copyfile(pick, final)
-            print(f"[subtitle][zimuku]   ✓ 落地：{final}")
-            return [final]
+                # 单字幕文件（非压缩包）
+                ext = out_path.suffix.lower() if out_path.suffix.lower() in SUBTITLE_EXTS else ".srt"
+                video_stem = Path(filename).stem
+                final = target_dir / f"{video_stem}.zh{ext}"
+                shutil.copyfile(out_path, final)
+                print(f"[subtitle][zimuku]   ✓ 落地：{final}")
+                return [final]
     return []
 
 
@@ -375,11 +447,12 @@ _EMBEDDED_HINTS = (
 )
 
 
-def subtitle_for_name(filename: str, output_dir: Path, cfg: dict[str, Any]) -> Path | None:
+def subtitle_for_name(filename: str, output_dir: Path, cfg: dict[str, Any],
+                     video_dir: Path | None = None) -> Path | None:
     """根据"虚拟"文件名（来自 qBit task.name）配字幕，不依赖视频文件已下载完。
 
-    顺序：内嵌字幕预检（按文件名关键词跳过） → SubHD → subliminal → 跳过 whisper。
-    """
+    顺序：内嵌字幕预检（按文件名关键词跳过） → zimuku → SubHD → subliminal → 跳过 whisper。
+    若提供 video_dir，zimuku 会尝试按集数匹配视频文件命名。"""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 0) 内嵌字幕预检：文件名暗示已带中字 → 跳过外挂搜索
@@ -390,7 +463,7 @@ def subtitle_for_name(filename: str, output_dir: Path, cfg: dict[str, Any]) -> P
             return None
 
     # 1) zimuku（中文字幕主源，Yunsuo WAF 自动绕过）
-    got_list = _try_zimuku(filename, output_dir)
+    got_list = _try_zimuku(filename, output_dir, video_dir=video_dir)
     if got_list:
         return got_list[0]
 

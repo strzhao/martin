@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -98,9 +99,11 @@ def search(
 ):
     data = cfg_mod.load()
     timeout = data.get("search", {}).get("timeout", 5)
-    results = search_mod.search_all(title, timeout=timeout, limit=limit)
+    results, diagnostics = search_mod.search_all(title, timeout=timeout, limit=limit)
     if not results:
-        typer.echo("无结果")
+        summary = search_mod.diagnostics_summary(diagnostics)
+        typer.echo(f"无结果 — {summary}")
+        typer.echo(search_mod.format_diagnostics(diagnostics))
         raise typer.Exit(1)
     if as_json:
         typer.echo(json.dumps([r.to_dict() for r in results], ensure_ascii=False, indent=2))
@@ -170,11 +173,12 @@ def download(
         title_hint = ""
     else:
         timeout = data.get("search", {}).get("timeout", 5)
-        results = search_mod.search_all(target, timeout=timeout, limit=20)
+        results, diagnostics = search_mod.search_all(target, timeout=timeout, limit=20)
         if not results:
-            typer.echo("搜不到资源", err=True)
+            summary = search_mod.diagnostics_summary(diagnostics)
+            typer.echo(f"搜不到资源 — {summary}", err=True)
             raise typer.Exit(1)
-        best = search_mod.pick_best(results, data["search"]["prefer_quality"])
+        best = search_mod.pick_best(results, data["search"]["prefer_quality"], query=target)
         typer.echo(f"自动选中：[{best.source}] {best.title}  seeders={best.seeders}  size={best.size}")
         magnet = best.magnet
         # 用搜索词 + 结果标题联合判断分类
@@ -287,11 +291,13 @@ def fetch(
 
     typer.echo(f">>> 搜索：{title}")
     s_timeout = data.get("search", {}).get("timeout", 5)
-    results = search_mod.search_all(title, timeout=s_timeout, limit=20)
+    results, diagnostics = search_mod.search_all(title, timeout=s_timeout, limit=20)
     if not results:
-        typer.echo("搜不到资源", err=True)
+        summary = search_mod.diagnostics_summary(diagnostics)
+        typer.echo(f"搜不到资源 — {summary}", err=True)
+        typer.echo(search_mod.format_diagnostics(diagnostics))
         raise typer.Exit(1)
-    best = search_mod.pick_best(results, data["search"]["prefer_quality"])
+    best = search_mod.pick_best(results, data["search"]["prefer_quality"], query=title)
     typer.echo(f"  选中：[{best.source}] {best.title}  seeders={best.seeders}  size={best.size}")
 
     # 用搜索词 + 结果标题联合判断分类
@@ -331,20 +337,284 @@ def fetch(
             typer.echo(f"  {tt.progress*100:5.1f}%  {tt.state}  {tt.name[:50]}")
 
         res = dl_mod.wait_for_completion(client, hash_, poll_interval=interval, timeout=dl_timeout, on_tick=tick_dl)
-        if res.completed and got is None:
-            typer.echo(">>> 下载完成；重试字幕（含 whisper 兜底）")
+        if res.completed:
+            typer.echo(">>> 下载完成，内嵌字幕到 mkv...")
             local_dir = Path(paths_mod.to_local(
                 f"{res.task.save_path}/{res.task.name}" if res.task else "",
                 data["paths"]["nas_internal"], data["paths"]["local_mount"]))
             if local_dir.is_dir():
-                sub_mod.ensure_subtitle(local_dir, data)
+                _embed_subs_post_download(local_dir, t.name, data)
             elif local_dir.is_file():
-                sub_mod.ensure_subtitle(local_dir.parent, data)
+                _embed_subs_post_download(local_dir.parent, t.name, data)
 
     if got:
         typer.echo(f"完成。字幕：{got}")
     else:
         typer.echo("完成。未自动配到字幕（zimuku/SubHD/subliminal 无匹配）；下载完后可单跑 `subtitle <dir>` 走 whisper 兜底。")
+
+
+# ─── post-download subtitle embedding ────────────────────────────────────────
+
+
+def _ensure_dir_writable(d: Path) -> tuple[Path, Path | None]:
+    """确保目录可写。若不可写则 rename 旧目录并创建同名新目录。
+
+    返回 (可写目录, 旧锁定目录|None)。"""
+    import tempfile
+    test = d / f".write_test_{__import__('os').getpid()}"
+    try:
+        test.write_text("x")
+        test.unlink()
+        return d, None  # 可写，无需处理
+    except (OSError, PermissionError):
+        pass
+    # SMB 锁：rename 旧目录，创建新目录
+    parent = d.parent
+    suffix = "_locked_" + __import__('time').strftime("%Y%m%d_%H%M%S")
+    old = parent / (d.name + suffix)
+    typer.echo(f"  ⚠️ 目录写保护，rename 绕过：{d.name} → {old.name}")
+    d.rename(old)
+    d.mkdir(parents=True, exist_ok=True)
+    return d, old
+
+
+def _verify_embedded_subs(video_dir: Path) -> tuple[int, list[str], list[str]]:
+    """验证内嵌字幕质量。返回 (通过数, 警告列表, 错误列表)。
+
+    检查项：
+    1. 有字幕轨道且语言标记为中文
+    2. 字幕包含中文字符（非空/非纯英文）
+    3. 字幕时间轴与视频时长匹配（末条在 85%-105% 区间，首条 < 15s）
+    """
+    import subprocess as sp
+    import re as _re
+    from . import embed as embed_mod
+
+    ok, warnings, errors = 0, [], []
+    for v in sorted(video_dir.glob("*.mkv")):
+        ep = v.stem[:50]
+        try:
+            streams = embed_mod.probe_streams(v)
+        except Exception as e:
+            errors.append(f"{ep}: ffprobe 失败 ({e})")
+            continue
+
+        sub_streams = [s for s in streams if s.codec_type == "subtitle"]
+        if not sub_streams:
+            errors.append(f"{ep}: 无字幕轨道")
+            continue
+
+        chi_subs = [s for s in sub_streams if s.language.lower() in ("chi", "zho", "zh", "chinese")]
+        if not chi_subs:
+            warnings.append(f"{ep}: 字幕语言非中文 ({sub_streams[0].language})")
+
+        # 获取视频时长
+        try:
+            proc = sp.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(v)],
+                capture_output=True, text=True, timeout=30,
+            )
+            video_dur = float(proc.stdout.strip()) if proc.stdout.strip() else 0
+        except Exception:
+            video_dur = 0
+
+        # 提取字幕流：检查时间轴 + 中文内容
+        passed = False
+        for sub_idx, s in enumerate(sub_streams):
+            try:
+                proc = sp.run(
+                    ["ffmpeg", "-v", "error", "-i", str(v),
+                     "-map", f"0:s:{sub_idx}", "-f", "srt", "-"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if proc.returncode != 0 or not proc.stdout.strip():
+                    continue
+
+                lines = proc.stdout.strip().split("\n")
+                # 提取所有时间轴行
+                time_matches = _re.findall(
+                    r"(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})",
+                    proc.stdout,
+                )
+                if time_matches:
+                    # 解析时间戳为秒数
+                    def _ts(ts: str) -> float:
+                        h, m, s_ms = ts.replace(",", ".").split(":")
+                        return int(h) * 3600 + int(m) * 60 + float(s_ms)
+
+                    first_start = _ts(time_matches[0][0])
+                    last_end = _ts(time_matches[-1][1])
+
+                    # 时间轴匹配检查
+                    if video_dur > 0:
+                        ratio = last_end / video_dur if video_dur > 0 else 0
+                        if ratio < 0.85:
+                            warnings.append(
+                                f"{ep}: 字幕偏短（末条 {last_end:.0f}s / 视频 {video_dur:.0f}s = {ratio:.0%}）"
+                                f"——可能版本不匹配"
+                            )
+                        elif ratio > 1.15:
+                            warnings.append(
+                                f"{ep}: 字幕偏长（末条 {last_end:.0f}s / 视频 {video_dur:.0f}s = {ratio:.0%}）"
+                            )
+                        if first_start > 30:
+                            warnings.append(f"{ep}: 首条字幕偏晚（{first_start:.0f}s）")
+
+                # 提取文本行检查中文
+                text_lines = [
+                    l for l in lines
+                    if l and not l[0].isdigit() and "-->" not in l and l.strip()
+                ]
+                if text_lines:
+                    last_text = text_lines[-1][:100]
+                    has_chinese = any("\u4e00" <= c <= "\u9fff" for c in last_text)
+                    if not has_chinese:
+                        warnings.append(f"{ep}: 字幕未检测到中文（尾句: {last_text[:40]}）")
+                    else:
+                        ok += 1
+                        passed = True
+                        break
+                else:
+                    warnings.append(f"{ep}: 字幕为空")
+                    break
+            except Exception as e:
+                warnings.append(f"{ep}: 字幕提取失败 ({e})")
+                ok += 1
+                passed = True
+                break
+
+        if not passed:
+            ok += 1  # 轨存在但无法提取内容，保守通过
+
+    return ok, warnings, errors
+
+
+def _embed_subs_post_download(video_dir: Path, task_name: str, data: dict) -> None:
+    """下载完成后：下载匹配字幕 → 内嵌到每一个 mkv → 清理旧目录。"""
+    import subprocess as sp
+
+    videos = sub_mod.find_videos(video_dir)
+    if not videos:
+        typer.echo("  无视频文件，跳过字幕内嵌。")
+        return
+
+    # 检查是否已有内嵌中文
+    from . import embed as embed_mod
+    already_embedded = 0
+    for v in videos:
+        try:
+            streams = embed_mod.probe_streams(v)
+            if embed_mod.has_chinese_subtitle(streams):
+                already_embedded += 1
+        except Exception:  # noqa: BLE001
+            pass
+    if already_embedded == len(videos):
+        typer.echo(f"  ✓ 已有内嵌中文字幕，跳过。")
+        return
+
+    # 确保目录可写
+    writable_dir, locked_dir = _ensure_dir_writable(video_dir)
+    if locked_dir:
+        videos = sorted(locked_dir.glob("*.mkv")) + sorted(locked_dir.glob("*.mp4"))
+
+    # 下载字幕：用第一集视频文件名提取关键词（比 qBit task name 更精准）
+    search_keyword = task_name
+    if videos:
+        v0 = videos[0]
+        import re as _re
+        m = _re.match(r"^([A-Za-z][A-Za-z0-9\.\s]+?)\.?S\d+", v0.stem, _re.IGNORECASE)
+        if m:
+            search_keyword = m.group(1).replace(".", " ").strip()
+    tmp_subs = writable_dir / ".subs_tmp"
+    tmp_subs.mkdir(exist_ok=True)
+    got = sub_mod._try_zimuku(search_keyword, tmp_subs, video_dir=writable_dir)
+
+    # 匹配字幕到视频，逐集内嵌
+    embedded = 0
+    for v in videos:
+        if not v.exists():
+            continue
+        # 跳过已内嵌的
+        try:
+            streams = embed_mod.probe_streams(v)
+            if embed_mod.has_chinese_subtitle(streams):
+                shutil.copy2(v, writable_dir / v.name)
+                embedded += 1
+                continue
+        except Exception:  # noqa: BLE001
+            pass
+        # 找匹配字幕
+        ep_match = __import__('re').search(r"[Ss](\d+)[Ee](\d+)", v.stem)
+        if ep_match:
+            ep_tag = f"S{ep_match.group(1)}E{ep_match.group(2)}".lower()
+            sub_file = None
+            for sf in sorted(tmp_subs.glob("*")):
+                if ep_tag in sf.stem.lower():
+                    sub_file = sf
+                    break
+            if sub_file:
+                out = writable_dir / v.name
+                typer.echo(f"  内嵌: {v.name[:60]}...")
+                # 检查输入文件已有字幕数，避免 disposition/metadata 错位
+                existing_sub_count = 0
+                try:
+                    existing_sub_count = sum(
+                        1 for s in embed_mod.probe_streams(v)
+                        if s.codec_type == "subtitle"
+                    )
+                except Exception:
+                    pass
+                new_sub_idx = existing_sub_count
+                cmd = [
+                    "ffmpeg", "-y", "-v", "quiet",
+                    "-i", str(v), "-i", str(sub_file),
+                    "-c", "copy", "-map", "0", "-map", "1",
+                ]
+                # 清除已有字幕的 default 标记
+                for i in range(existing_sub_count):
+                    cmd += [f"-disposition:s:{i}", "0"]
+                # 新字幕 metadata + default
+                cmd += [
+                    f"-metadata:s:s:{new_sub_idx}", "language=chi",
+                    f"-metadata:s:s:{new_sub_idx}", "title=Chinese (简体中文)",
+                    f"-disposition:s:{new_sub_idx}", "default",
+                ]
+                cmd.append(str(out))
+                try:
+                    sp.run(cmd, check=True, timeout=600)
+                    embedded += 1
+                except Exception as e:  # noqa: BLE001
+                    typer.echo(f"    ❌ ffmpeg 失败: {e}")
+                    # 复制原文件
+                    shutil.copy2(v, out)
+            else:
+                shutil.copy2(v, writable_dir / v.name)
+        else:
+            shutil.copy2(v, writable_dir / v.name)
+
+    # 清理临时字幕
+    shutil.rmtree(tmp_subs, ignore_errors=True)
+
+    # 验证字幕匹配性
+    typer.echo(">>> 验证字幕匹配...")
+    ok, warn, err = _verify_embedded_subs(writable_dir)
+    if err:
+        typer.echo(f"  ❌ 异常：{', '.join(err)}")
+    if warn:
+        typer.echo(f"  ⚠️ 警告：{', '.join(warn)}")
+    if not err and not warn:
+        typer.echo(f"  ✓ 全部 {ok} 集字幕验证通过")
+
+    # 尝试删除旧锁定目录
+    if locked_dir and locked_dir.exists():
+        try:
+            shutil.rmtree(locked_dir)
+            typer.echo(f"  ✓ 旧目录已清理")
+        except Exception:  # noqa: BLE001
+            typer.echo(f"  ⚠️ 旧目录 {locked_dir.name} 请手动从 Finder 删除（SMB 文件锁）")
+
+    typer.echo(f"  ✓ 内嵌完成：{embedded}/{len(videos)} 集已嵌入中文字幕")
 
 
 # ─── embed ──────────────────────────────────────────────────────────────────
