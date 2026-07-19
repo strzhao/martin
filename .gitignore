@@ -2,3 +2,5 @@
 .autopilot/runtime/
 __pycache__/
 node_modules/
+
+skills/travel-planner/output/
