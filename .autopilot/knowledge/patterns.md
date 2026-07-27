@@ -109,3 +109,70 @@ async function apiFetch(path: string, options: { method?: string; body?: unknown
   const res = await fetch(url, init as RequestInit);
 }
 ```
+
+---
+
+## 2026-07-16 — 改 hermes display 平台默认值要追到 display_config.py tier 系统，run.py default= 是末端 no-op 陷阱
+
+<!-- tags: hermes, display, config, contribution, no-op, tier-system, plan-reviewer -->
+
+**场景**：想给微信/QQ 等"无编辑能力平台"默认关 `interim_assistant_messages`。第一反应改 `gateway/run.py:15991` 的 `_resolve_gateway_display_bool(..., default=...)`。plan-reviewer（独立读代码）+ 实测发现是 **no-op**——上游 `display_config.py` 早已把微信归入 `_TIER_LOW`（interim=False），`default=` 是 4 层查找链最末端、被 tier 提前命中、永不到达。差点提交一个"改前后无差异"的 PR（必被 reviewer 拒）。
+
+**教训**：
+1. **`resolve_display_setting` 是 4 层查找链**：①`display.platforms.<p>.<k>`（显式平台 override）→ ②`display.<k>`（全局）→ ③`_PLATFORM_DEFAULTS[platform]`（tier 系统，display_config.py:106）→ ④`_GLOBAL_DEFAULTS` → 最后才调用方传的 `default=` 参数。**改平台默认值的正确位置是 ③（tier 系统），不是 run.py 调用方的 `default=`。**
+2. **实测优先于读代码推断**：`.venv/bin/python -c "from gateway.display_config import resolve_display_setting; print(resolve_display_setting({}, 'weixin', 'interim_assistant_messages'))"` 直接看真实默认值（→False），比顺着 run.py 一路读更快证伪。改默认值前先实测当前值。
+3. **plan-reviewer（独立子 agent 读代码）能救命**：编排器只追溯到 run.py 就以为是 `default=` 生效；审查 agent 才发现 display_config.py tier 系统更上游。复杂/开源贡献必须有独立审查层。
+4. **用户 config 显式值覆盖一切**：用户 `config.yaml` 显式 `interim_assistant_messages: true` 是第 ①②层，优先于 tier。诊断"某平台行为异常"时先查用户显式配置，别只盯代码默认。
+5. **唯一真实 gap = 漏配**：qqbot 是唯一 `SUPPORTS_MESSAGE_EDITING=False` 但 `_PLATFORM_DEFAULTS` 无条目的平台（→ 落 GLOBAL 默认 True）。配置表遗漏是干净可贡献点。PR #65100。
+
+**证据**：
+- `display_config.py:143` `"weixin": _TIER_LOW`；`_TIER_LOW` 含 `interim_assistant_messages: False`（:91）
+- 实测 `resolve_display_setting({}, 'qqbot', 'interim_assistant_messages')` 改前 True（漏配→GLOBAL）、改后 False（→_TIER_LOW）
+- plan-reviewer 报告 BLOCKER；改方向后 PASS；PR https://github.com/NousResearch/hermes-agent/pull/65100
+
+**附：workflow scope 坑**（fork→upstream PR）：feature 分支若基于 upstream main（含 `.github/workflows/ci.yml` 历史改动），push 到 fork 时 GitHub 要求 token 有 `workflow` scope（`gh repo sync` 同样要求）。解法：`gh auth refresh -h github.com -s workflow` 一次性加 scope，之后 sync+push+pr 一气呵成。
+
+关联 [[2026-06-18]]（hermes 限流贡献，本次是 display 默认值不同主题；共同元教训：实测优先 + 独立审查）。
+
+---
+
+## 2026-07-17 — gateway 改 final 回复内容要注入到 _handle_message_with_agent 末端（footer 后/return 前），_run_agent_inner 的 final_response 取出点是中间会被再加工
+
+<!-- tags: hermes, gateway, injection-point, no-op, response, contribution, plan-reviewer -->
+
+**场景**：要给 gateway 最终回复 prepend 一行图片处理状态（📎 已识别/⚠ 失败）。第一反应注入 `run.py:19683` `final_response = result.get("final_response")`（`_run_agent_inner` 内）。plan-reviewer 第1轮 + 编排器亲自读 run.py:12060-12613 发现是**中间点非出口**——其后 response 还要经 `_handle_message_with_agent` 的 normalize(12136)→sanitize(12139)→**reasoning prepend(12186，`response = f"💭 Reasoning...\n\n{response}"` 会在前面插)**→footer append(12241) 四道再加工。在 19683 prepend 会被 reasoning 插到前面，破坏"状态行首行"语义。
+
+**教训**：
+1. **gateway final response 发送链是多层**：`_run_agent_inner`(19683 取出) → `_handle_message_with_agent`(12070 再取出 + normalize/sanitize/reasoning-prepend/footer-append + 12613 return response) → base.py 发送。**改 final 回复文本的注入点要在 `_handle_message_with_agent` 所有后处理之后（footer append 12241 后）、`return response`(12613) 前**，不是 `_run_agent_inner` 的取出点。
+2. **与 [2026-07-16] no-op 陷阱同构**：都是把多层链的"中间点"误当"出口/生效点"。display 是 4 层查找链末端 default= 被 tier 命中；本次是 response 处理链末端被 reasoning-prepend/footer 再加工。**改 hermes 输出内容前，先追完整条处理链到真正发送出口（grep `return response` + 顺流读后处理）**。
+3. **MEDIA append(19847) 是 append 先例但不可类比 prepend**：MEDIA 标签语义稳定（下游 `extract_media` 识别），位置不敏感；纯文本状态行位置敏感（必须首行），对再加工零容忍。**append 先例 ≠ prepend 安全**。
+4. **流式平台 already_sent(12589) return None**：流式回复不返回 response（已流式发送），prepend 不显示。声明为已知限制（流式平台主模型多为 native 不降级），**不蹭 footer 的 trailing-send**（那样破坏"零额外 gateway 消息"红线，加重 iLink 限流）。
+
+**证据**：
+- run.py:12186 reasoning prepend（在 footer 前）；run.py:12241 footer append；run.py:12266-12282 图片反馈 prepend（正确注入点）；run.py:12613 return response
+- plan-reviewer 第1轮 BLOCKER B1 → 编排器修正 → 第2轮 PASS（亲自读 12060-12613 验证 12241→12613 区间仅 12386 append 不破坏首行）
+- PR https://github.com/NousResearch/hermes-agent/pull/65794
+
+**附：红队 xfail 信号 + 编排器修复**：红队对 `build_image_feedback_line` 的 cfg 形式参数化标 xfail，暴露 `_read_main_model_name` 漏 `cfg["model"]["model"]` 形式（run.py:2481-2487 single-source resolver 支持三形式：str / `["default"]` / `["model"]`）。编排器对齐 resolver 修复 + 清理红队过时 xfail 标记 → 31 passed。**红队 xfail 是有价值的"待修复信号"，别当 pass 忽略；修后要清理 xfail 标记让测试干净**。
+
+关联 [[2026-07-16]]（no-op 注入点陷阱同构，本次是 response 链）。
+
+---
+
+## 2026-07-19 — hermes PR 迭代：先 rebase main（main 会漂移）+ sweeper 引用的 commit 常是 maintainer 已做的
+
+<!-- tags: hermes, contribution, rebase, sweeper, main-drift, PR-iteration -->
+
+**场景**：PR #65794（图片反馈层）提后 sweeper 给 keep_open/medium 3 问题，其中 Problem 1（模型名读 `_RUNTIME_MAIN_MODEL`/`load_config` 过时）引用 commit `73057ed16`。查证：feat(2724ccbab) 落后 origin/main(7235592ad)，merge-base 659d1123c；`73057ed16` 是 maintainer（Teknium = sweeper 作者 teknium1）提的 `fix(auxiliary): scope runtime state to each turn`，改了 image_routing.py/run.py/auxiliary_client.py/run_agent.py（与 feat 同批文件）。
+
+**教训**：
+1. **PR 迭代先 rebase main**：feat PR 基于 main，main 持续演进。更新 PR 前必 `git fetch origin main && git rebase origin/main`，解冲突后 `push --force-with-lease`。feat 落后 main 时 sweeper 会基于最新 main 认知挑"用旧机制"。
+2. **sweeper 引用的 commit 常是 maintainer 自己的改动**：sweeper 作者 teknium1 = maintainer Teknium，它引用的 commit 往往是 maintainer 已做的同类修复——**rebase 后 main 可能已给一半答案**。本案 `73057ed16` 已在图片路由时调 `_resolve_session_agent_runtime` 拿 turn_model + `scoped_runtime_main` 包裹；feat rebase 后只需"路由时存 turn_model 到 status，render 用 captured"（sweeper 建议方向）即解 Problem 1。
+3. **rebase 冲突解决：保留双方机制**：main 机制改动（`scoped_runtime_main` 包裹）+ feat 业务改动（`session_key` 旁路记录）可共存——plan-reviewer 验证 `_record_outcome` 在 scoped 块内可用、不覆盖 captured `main_model`。
+4. **main 的测试 mock 要适配新参数**：feat 给 `_enrich_message_with_vision` 加 `session_key` → main 测试 `fake_enrich` mock 签名加 `session_key=None`（rebase 副产物，断言语义不变）。
+5. **sweeper 红线复现**：source-shape 测试（`inspect.getsource` 读源码）违反 AGENTS.md:1380——写"真实验证"时别用 inspect.getsource 证明注入点，改 behavior 测试（[[hermes-contribution-followups]] sweeper 红线同源）。
+
+**证据**：PR #65794 commit e1316af09；rebase 2724ccbab→e1316af09；73057ed16 stat（image_routing +4 / run.py +28 / auxiliary_client +78）；修复后 159 passed。
+
+关联 [[2026-07-17]]（同 PR 注入点教训，本次是迭代流程）+ [[hermes-contribution-followups]]（sweeper 红线）。
+```
