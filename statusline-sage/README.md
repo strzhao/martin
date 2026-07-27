@@ -1,14 +1,14 @@
 # statusline-sage
 
-> Sage 色彩体系的 Claude Code 状态栏 —— 路径压缩 · git/worktree · GLM Coding Plan 双窗口 token 限额 · 上下文用量。
+> Sage 色彩体系的 Claude Code 状态栏 —— 路径压缩 · git/worktree · 订阅限额双 provider（GLM / Kimi 自动识别）· 上下文用量。
 
-一个用 [stringzhao.life/colors](https://stringzhao.life/colors) 色彩体系重写的 Claude Code `statusLine` 脚本。纯 bash（兼容 macOS 自带 bash 3.2），零运行时依赖（仅需系统自带的 `jq` / `git` / `curl`），自带 GLM token 限额的本地缓存与后台刷新，**绝不阻塞输入**。
+一个用 [stringzhao.life/colors](https://stringzhao.life/colors) 色彩体系重写的 Claude Code `statusLine` 脚本。纯 bash（兼容 macOS 自带 bash 3.2），零运行时依赖（仅需系统自带的 `jq` / `git` / `curl`），自带订阅限额的本地缓存与后台刷新，**绝不阻塞输入**。
 
 ---
 
 ## 效果预览
 
-单行布局，从左到右：`git 区 │ 路径区 │ GLM 限额 │ 模型 │ 上下文 │ 输出风格`
+单行布局，从左到右：`git 区 │ 路径区 │ 订阅限额 │ 模型 │ 上下文 │ 输出风格`
 
 ```
 主仓库（clean）：  ⎇ main      │ · martin │ GLM 5h:6% wk:80% max │ glm-5.2[1m] │ ctx 12%
@@ -16,6 +16,7 @@
 worktree：        ⎇ feat-x ⌥wt-name │ · martin │ GLM 5h:6% wk:80% max │ ctx 45%
 非 git 目录：     · tmp │ GLM 5h:6% wk:80% max │ glm-5.2[1m] │ ctx 5%
 高峰期（14-18点）：⎇ main │ · martin │ GLM 5h:6% wk:80% max ×3 │ glm-5.2[1m] │ ctx 12%
+Kimi 环境：       ⎇ main      │ · martin │ KIMI 5h:18% wk:15% │ k3[1M] │ ctx 12%
 ```
 
 **色彩语义**（随用量/状态自动切换）：
@@ -23,8 +24,8 @@ worktree：        ⎇ feat-x ⌥wt-name │ · martin │ GLM 5h:6% wk:80% max 
 - 分支名 / 项目名 → 苔浅 `Sage Light`
 - `⎇` 标记：主仓库用苔绿 `Sage`，worktree 用琥 `Amber`
 - dirty 计数 `●N` → 朱 `Vermillion`
-- GLM / context 用量：< 60% 苔绿 `Sage`，60–85% 琥 `Amber`，≥ 85% 朱 `Vermillion`
-- 模型名 → 天 `Sky`，分隔符 `│` → 烟 `Smoke`
+- GLM / context 用量：< 60% 苔绿 `Sage`，60–85% 琥 `Amber`，≥ 85% 朱 `Vermillion`（Kimi 同理）
+- 模型名 → 天 `Sky`，分隔符 `│` → 烟 `Smoke`，限额标签（`GLM`/`KIMI`）→ 烟 `Smoke`
 - 高峰期倍率 `×3` → 朱 `Vermillion`（仅 14–18 点 UTC+8 且当前模型为 glm-5.2 / glm-5-turbo；glm-4.x 为 1 倍不显示）
 
 ---
@@ -35,7 +36,7 @@ worktree：        ⎇ feat-x ⌥wt-name │ · martin │ GLM 5h:6% wk:80% max 
 |------|------|
 | **路径压缩** | 项目名 + worktree 优先。主仓库只显示项目名（`martin`），worktree 额外用 `⌥wt-name` 标注；不再裸露 `/Users/.../long/path` |
 | **git 状态** | 分支 / detached short-hash / dirty 计数 `●N` / ahead-behind `↑N↓N` / **worktree 自动识别**（基于 `--absolute-git-dir` vs `--git-common-dir`） |
-| **GLM 限额** | 双窗口 token limit（短周期 `5h` + 长周期 `wk`）+ 套餐等级（`max`/`pro`/...），60s 缓存 + 后台静默刷新 |
+| **订阅限额** | **双 provider 按 `ANTHROPIC_BASE_URL` 域名自动识别**（`kimi.com`/`moonshot` → Kimi，其余 → GLM）：双窗口 token limit（短周期 `5h` + 长周期 `wk`）+ 套餐等级（GLM `max`/`pro`、Kimi `LEVEL_*`），60s 缓存 + 后台静默刷新；缓存带 provider 标记，切 provider 自动重取 |
 | **上下文** | context window 使用百分比，兼容 `used_percentage` / `remaining_percentage` 多版本字段 |
 | **模型** | 当前模型 `display_name` |
 | **性能** | 缓存命中 ~0.35s，冷启动一次性同步获取 ~0.85s；git 调用合并到 3 次 |
@@ -103,7 +104,11 @@ chmod +x ~/.claude/statusline-sage.sh
 
 ---
 
-## GLM token limit 原理
+## 订阅限额原理（GLM / Kimi）
+
+脚本按 `ANTHROPIC_BASE_URL` 的域名自动识别 provider（`kimi.com` / `moonshot` → Kimi，其余 → GLM），两个 provider 的数据统一收敛为同构缓存 `{ ts, ok, provider, level, tokens: [{p, r}] }`（`p`=用量百分比，`r`=reset 时间），渲染层不感知差异。
+
+### GLM Coding Plan
 
 参考开源项目 [jeongsk/glm-coding-plan-statusline](https://github.com/jeongsk/glm-coding-plan-statusline) 的接口与数据结构，用纯 bash + curl 自实现（无 node 依赖）。
 
@@ -111,7 +116,7 @@ chmod +x ~/.claude/statusline-sage.sh
 
 ```
 GET {domain}/api/monitor/usage/quota/limit
-Header: Authorization: <ANTHROPIC_AUTH_TOKEN>
+Header: Authorization: <ANTHROPIC_AUTH_TOKEN>          # 裸 token
         Accept-Language: en-US,en
 ```
 
@@ -134,14 +139,48 @@ Header: Authorization: <ANTHROPIC_AUTH_TOKEN>
 
 **窗口判定（启发式）**：把所有 `TOKENS_LIMIT` 按 `nextResetTime` 升序排列 —— reset 最近的为短周期窗口（标 `5h`），reset 最远的为长周期窗口（标 `wk`）。这样不依赖 `unit` 字段的语义猜测，自适应官方调整。
 
-**高峰期倍率（写死）**：`quota/limit` 接口**只返回用量百分比，不返回倍率**——倍率属于计费策略。按[官方 FAQ](https://docs.bigmodel.cn/cn/coding-plan/faq)：GLM-5.2 / GLM-5-Turbo（对标 Opus 的高阶模型）在高峰期（每日 **14:00–18:00 UTC+8**）按 **3 倍**消耗额度（非高峰 2 倍；限时福利至 9 月底非高峰降为 1 倍）；GLM-4.x（对标 Sonnet）为 1 倍、无加成。脚本据此：当前小时 ∈ [14,18) 且模型匹配 `PEAK_MODELS` 时，在 GLM 区尾部追加朱红 `×3`。该提示**独立于 quota 数据**——即便接口失败，高峰期 glm-5.2 仍按 3 倍消耗，提示照常显示。
+**高峰期倍率（写死）**：`quota/limit` 接口**只返回用量百分比，不返回倍率**——倍率属于计费策略。按[官方 FAQ](https://docs.bigmodel.cn/cn/coding-plan/faq)：GLM-5.2 / GLM-5-Turbo（对标 Opus 的高阶模型）在高峰期（每日 **14:00–18:00 UTC+8**）按 **3 倍**消耗额度（非高峰 2 倍；限时福利至 9 月底非高峰降为 1 倍）；GLM-4.x（对标 Sonnet）为 1 倍、无加成。脚本据此：当前小时 ∈ [14,18) 且模型匹配 `PEAK_MODELS` 时，在限额区尾部追加朱红 `×3`。该提示**独立于 quota 数据**——即便接口失败，高峰期 glm-5.2 仍按 3 倍消耗，提示照常显示。Kimi 无高峰倍率概念，`PEAK_MODELS` 正则天然不匹配 kimi 模型名。
 
-**缓存策略**（避免每次渲染打 API）
+### Kimi for Coding
+
+实现对齐 Moonshot 官方 [kimi-cli](https://github.com/MoonshotAI/kimi-cli) 的 `/usage` 命令（`src/kimi_cli/ui/shell/usage.py`）。
+
+**接口**
+
+```
+GET {domain}/coding/v1/usages
+Header: Authorization: Bearer <ANTHROPIC_AUTH_TOKEN>    # 必须 Bearer 前缀，裸 token 401
+        Accept: application/json
+```
+
+**返回数据**（实测节选，2026-07）
+
+```jsonc
+{ "user": { "membership": { "level": "LEVEL_INTERMEDIATE" } },   // 会员等级
+  "usage": { "limit": "100", "used": "15", "remaining": "85",
+             "resetTime": "2026-08-03T08:10:52.328159Z" },        // 周窗口（官方标注 "Weekly limit"）
+  "limits": [
+    { "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },   // 5h 窗口
+      "detail": { "limit": "100", "used": "18", "remaining": "82",
+                  "resetTime": "2026-07-27T18:10:52.328159Z" } }
+  ]
+}
+```
+
+与 GLM 的关键差异：
+
+- **数值是字符串**：`limit`/`used`/`remaining` 需 `tonumber` 后自算百分比（`used*100/limit`）
+- **`used` 兜底**：缺失时用 `limit - remaining`（对齐官方 `_to_usage_row`）
+- **窗口判定**：`limits[]` 中 `window.duration=300` 且 `timeUnit` 含 `MINUTE` → 5h；顶层 `usage` → 周
+- **reset 时间是 ISO8601 字符串**：字典序即时间序，复用 `sort_by(.r)` 升序启发式
+
+**缓存策略**（两个 provider 共用，避免每次渲染打 API）
 
 | 场景 | 行为 |
 |------|------|
-| 缓存有效（< 60s） | 直接用缓存，**秒回** |
+| 缓存有效（< 60s）且 provider 匹配 | 直接用缓存，**秒回** |
 | 缓存过期（有旧值） | 输出旧缓存 + `nohup` 后台 curl 刷新，**不阻塞** |
+| 缓存 provider 与当前域名不符 | 同步重取一次（切 provider 是一次性事件，可接受一次性阻塞）；失败显示 `…`，**不展示错配数据** |
 | 冷启动（无缓存） | 同步 curl 获取一次（一次性 ≤ 2s），之后靠缓存/后台 |
 | API 失败 | 缓存标记 `ok:0`，TTL 降到 15s 以便尽快重试 |
 
@@ -175,7 +214,8 @@ PEAK_MODELS='glm-5\.2|glm-5-turbo'  # 受倍率影响的高阶模型（ERE）；
 
 | 现象 | 排查 |
 |------|------|
-| 一直显示 `GLM …` | API 未通或未配置 token。检查 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL` / `env.ANTHROPIC_AUTH_TOKEN`；手动测：`curl -sH "Authorization: <token>" https://open.bigmodel.cn/api/monitor/usage/quota/limit`；删缓存重试：`rm ~/.claude/.statusline-sage-quota.json` |
+| 一直显示 `GLM …` / `KIMI …` | API 未通或未配置 token。检查 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL` / `env.ANTHROPIC_AUTH_TOKEN`；手动测（GLM）：`curl -sH "Authorization: <token>" https://open.bigmodel.cn/api/monitor/usage/quota/limit`；（Kimi）：`curl -sH "Authorization: Bearer <token>" https://api.kimi.com/coding/v1/usages`；删缓存重试：`rm ~/.claude/.statusline-sage-quota.json` |
+| 限额区 provider 标签不对 | 缓存里存的是上一个 provider 的数据。删缓存即可：`rm ~/.claude/.statusline-sage-quota.json`（正常切换时会自动同步重取，一般无需手动） |
 | 颜色显示为乱码/原始码 | 终端不支持 truecolor。换用 iTerm2 / WezTerm / Ghostty / Kitty / 现代版 Terminal.app |
 | worktree 未识别 | git 版本需 ≥ 2.5（`--git-common-dir` 支持）。`git --version` 检查 |
 | 渲染偏慢 | 常态应 < 0.4s。若 git 仓库巨大，`git status --porcelain` 会变慢，属正常 |
@@ -197,6 +237,7 @@ rm ~/.claude/statusline-sage.sh ~/.claude/.statusline-sage-quota.json
 ## 致谢
 
 - **[jeongsk/glm-coding-plan-statusline](https://github.com/jeongsk/glm-coding-plan-statusline)** —— GLM Coding Plan 用量查询的 API 接口与数据结构参考
+- **[MoonshotAI/kimi-cli](https://github.com/MoonshotAI/kimi-cli)** —— Kimi for Coding `/usages` 接口的官方实现参考（`src/kimi_cli/ui/shell/usage.py`）
 - **[stringzhao.life/colors](https://stringzhao.life/colors)** —— Sage 色彩设计体系
 
 ## License

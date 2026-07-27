@@ -5,8 +5,12 @@
 # 功能模块：
 #   1. 路径压缩  — 项目名 + worktree 优先（martin ⎇ feature-x），不再裸露长路径
 #   2. git 状态  — 分支 / dirty 计数 / ahead-behind / worktree 自动识别
-#   3. GLM 限额  — 双窗口 token limit（5h + weekly）+ 高峰期倍率提示（14-18点 ×3，
-#                  仅 glm-5.2/5-turbo），带 60s 缓存 + 后台刷新防阻塞
+#   3. 订阅限额 — 双 provider 自动识别（按 ANTHROPIC_BASE_URL 域名）：
+#                  GLM（bigmodel/z.ai）→ quota/limit，双窗口 5h + weekly +
+#                  高峰期倍率提示（14-18点 ×3，仅 glm-5.2/5-turbo）；
+#                  Kimi（kimi.com/moonshot）→ /coding/v1/usages（Bearer 认证），
+#                  5h 窗口（limits[].window 300min）+ 周窗口（顶层 usage）。
+#                  带 60s 缓存 + 后台刷新防阻塞
 #   4. 上下文    — context window 使用百分比（多版本字段兼容）
 #   5. 模型      — 当前模型名
 # 色彩体系：https://stringzhao.life/colors（苔绿 Sage 为主色，truecolor 24-bit）
@@ -168,7 +172,7 @@ elif [ -n "$cur_dir" ]; then
   _path_part="$(_smoke)·${c_reset}$(_sage_light)$(basename "$cur_dir")${c_reset}"
 fi
 
-# ---------- GLM token limit（双窗口 + 缓存 + 后台刷新）----------
+# ---------- 订阅限额（GLM / Kimi 双 provider，缓存 + 后台刷新）----------
 _now="$(date +%s)"
 
 # 从 ~/.claude/settings.json 读取 base url / token（环境变量优先）
@@ -176,6 +180,17 @@ _read_glm_env() {
   local sf="${HOME}/.claude/settings.json"
   [ -z "$ANTHROPIC_BASE_URL" ]   && ANTHROPIC_BASE_URL="$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$sf" 2>/dev/null)"
   [ -z "$ANTHROPIC_AUTH_TOKEN" ] && ANTHROPIC_AUTH_TOKEN="$(jq -r '.env.ANTHROPIC_AUTH_TOKEN // empty' "$sf" 2>/dev/null)"
+}
+
+# 按 ANTHROPIC_BASE_URL 域名识别订阅 provider：kimi / glm（未知网关默认 glm，保持旧行为）
+# 需在 _read_glm_env 之后调用
+_detect_provider() {
+  local base_lc
+  base_lc="$(printf '%s' "${ANTHROPIC_BASE_URL:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$base_lc" in
+    *kimi.com*|*moonshot*) printf 'kimi' ;;
+    *)                     printf 'glm' ;;
+  esac
 }
 
 # 同步抓取 quota 并原子写入缓存
@@ -186,7 +201,45 @@ _fetch_quota_sync() {
   domain="$(printf '%s' "$base" | sed -E 's#(https?://[^/]+).*#\1#')"
   [ -z "$domain" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ] && return 1
 
-  local resp
+  local provider; provider="$(_detect_provider)"
+  local resp ts; ts="$(date +%s)"
+
+  if [ "$provider" = "kimi" ]; then
+    # Kimi for Coding：GET /coding/v1/usages（必须 Bearer 前缀，裸 token 401）
+    # 官方实现参考 kimi-cli src/kimi_cli/ui/shell/usage.py：
+    #   顶层 usage → 周窗口（官方标注 "Weekly limit"）
+    #   limits[] 中 window.duration=300 + timeUnit=MINUTE → 5h 窗口
+    #   数值为字符串；used 缺失时用 limit - remaining 兜底（对齐官方 _to_usage_row）
+    resp="$(curl -s --max-time "$_timeout" \
+      "${domain}/coding/v1/usages" \
+      -H "Authorization: Bearer ${ANTHROPIC_AUTH_TOKEN}" \
+      -H 'Accept: application/json' 2>/dev/null)" || return 1
+    [ -z "$resp" ] && return 1
+
+    # 用 jq 直接构造与 GLM 同构的缓存 JSON（resetTime 为 ISO8601 UTC 字符串，字典序即时间序）
+    printf '%s' "$resp" | jq -c --arg ts "$ts" '
+      def _num: try tonumber catch null;
+      def pct($d):
+        if $d == null then null
+        else
+          ( ($d.used|_num) // ( ($d.limit|_num) as $l0 | ($d.remaining|_num) as $r0
+                                | if $l0 != null and $r0 != null then $l0 - $r0 else null end ) ) as $u
+          | ($d.limit|_num) as $l
+          | if $u != null and $l != null and $l > 0 then (($u * 100 / $l) | floor) else null end
+        end;
+      { ts:   ($ts|tonumber),
+        ok:   1,
+        provider: "kimi",
+        level: (.user.membership.level // null),
+        tokens: ( [ (.limits[]? | select(.window.duration == 300 and ((.window.timeUnit // "") | test("MINUTE")))
+                      | { p: pct(.detail), r: .detail.resetTime }),
+                    ( { p: pct(.usage), r: .usage.resetTime } ) ]
+                  | map(select(.p != null)) | sort_by(.r) ) }
+    ' > "${CACHE_FILE}.tmp" 2>/dev/null && mv -f "${CACHE_FILE}.tmp" "$CACHE_FILE" 2>/dev/null
+    return
+  fi
+
+  # GLM Coding Plan：GET /api/monitor/usage/quota/limit（裸 token 认证）
   resp="$(curl -s --max-time "$_timeout" \
     "${domain}/api/monitor/usage/quota/limit" \
     -H "Authorization: ${ANTHROPIC_AUTH_TOKEN}" \
@@ -195,10 +248,10 @@ _fetch_quota_sync() {
 
   # 用 jq 直接构造缓存 JSON（避免 shell 拼接引号 / 转义出错）
   # sort_by(.r)：reset 时间升序 → 第一个为短周期窗口(5h)，最后一个为长周期窗口(weekly)
-  local ts; ts="$(date +%s)"
   printf '%s' "$resp" | jq -c --arg ts "$ts" '
     { ts:   ($ts|tonumber),
       ok:   1,
+      provider: "glm",
       level: (.data.level // null),
       tokens: ( [ (.data.limits[]? | select(.type=="TOKENS_LIMIT")
                    | { p: (.percentage|floor), r: .nextResetTime }) ]
@@ -220,41 +273,55 @@ _refresh_bg() {
   disown 2>/dev/null || true
 }
 
-# 从缓存文件渲染 GLM 区到 _glm_part（无可显示数据时返回非 0）
+# 从缓存文件渲染限额区到 _glm_part（无可显示数据时返回非 0）
 _render_glm_cache() {
-  # 单次 jq 提取 level / token 数 / 短窗口百分比 / 长窗口百分比
-  local _parsed _level _n _short_p _long_p
+  # 单次 jq 提取 level / token 数 / 短窗口百分比 / 长窗口百分比 / provider
+  local _parsed _level _n _short_p _long_p _prov
   _parsed="$(jq -r '
     [ (.level // ""),
       ((.tokens // []) | length),
       ((.tokens // [{}])[0].p // ""),
-      ((.tokens // [{}])[-1].p // "") ] | @tsv
+      ((.tokens // [{}])[-1].p // ""),
+      (.provider // "glm") ] | @tsv
   ' "$CACHE_FILE" 2>/dev/null)"
   [ -z "$_parsed" ] && return 1
-  IFS=$'\t' read -r _level _n _short_p _long_p <<< "$_parsed"
+  IFS=$'\t' read -r _level _n _short_p _long_p _prov <<< "$_parsed"
   [ -z "$_short_p" ] && return 1
+  local _label="GLM"; [ "$_prov" = "kimi" ] && _label="KIMI"
   if [ "${_n:-0}" -ge 2 ] 2>/dev/null; then
-    _glm_part="$(_smoke)GLM${c_reset} $(_level_color "$_short_p")5h:${_short_p}%${c_reset} $(_level_color "$_long_p")wk:${_long_p}%${c_reset}"
+    _glm_part="$(_smoke)${_label}${c_reset} $(_level_color "$_short_p")5h:${_short_p}%${c_reset} $(_level_color "$_long_p")wk:${_long_p}%${c_reset}"
   else
-    _glm_part="$(_smoke)GLM${c_reset} $(_level_color "$_short_p")${_short_p}%${c_reset}"
+    _glm_part="$(_smoke)${_label}${c_reset} $(_level_color "$_short_p")${_short_p}%${c_reset}"
   fi
   return 0
 }
 
-# 渲染 GLM 区
+# 渲染限额区（provider 与当前域名识别不符时同步重取一次——切换 provider 是一次性事件，可接受一次性阻塞）
 _glm_part=""
+_read_glm_env
+_provider="$(_detect_provider)"
+_provider_label="GLM"; [ "$_provider" = "kimi" ] && _provider_label="KIMI"
 if [ -f "$CACHE_FILE" ]; then
   _c_ts="$(jq -r '.ts // 0' "$CACHE_FILE" 2>/dev/null)"
   _c_ok="$(jq -r '.ok // 0' "$CACHE_FILE" 2>/dev/null)"
-  _ttl="$CACHE_TTL_OK"; [ "$_c_ok" = "0" ] && _ttl="$CACHE_TTL_FAIL"
-  _age="$(($_now - ${_c_ts:-0}))"
-  # 过期：仍输出旧缓存，同时后台刷新（不阻塞）
-  [ "$_age" -ge "$_ttl" ] && _refresh_bg
-  _render_glm_cache || { _glm_part="$(_smoke)GLM …${c_reset}"; _refresh_bg; }
+  _c_provider="$(jq -r '.provider // "glm"' "$CACHE_FILE" 2>/dev/null)"
+  if [ "$_c_provider" != "$_provider" ]; then
+    # 缓存是另一个 provider 的数据：同步重取（一次性）；
+    # 仅当缓存已换成本 provider 才渲染，否则显示 … + 后台刷新（不展示错配数据）
+    _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
+    [ "$(jq -r '.provider // "glm"' "$CACHE_FILE" 2>/dev/null)" = "$_provider" ] && _render_glm_cache
+    [ -z "$_glm_part" ] && { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
+  else
+    _ttl="$CACHE_TTL_OK"; [ "$_c_ok" = "0" ] && _ttl="$CACHE_TTL_FAIL"
+    _age="$(($_now - ${_c_ts:-0}))"
+    # 过期：仍输出旧缓存，同时后台刷新（不阻塞）
+    [ "$_age" -ge "$_ttl" ] && _refresh_bg
+    _render_glm_cache || { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
+  fi
 else
   # 冷启动：无缓存，同步获取一次（一次性阻塞 ≤ GLM_FIRST_TIMEOUT），之后靠缓存 / 后台刷新
   _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
-  _render_glm_cache || { _glm_part="$(_smoke)GLM …${c_reset}"; _refresh_bg; }
+  _render_glm_cache || { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
 fi
 
 # 高峰期倍率提示追加到 GLM 区尾部（独立于 quota 数据成败）
