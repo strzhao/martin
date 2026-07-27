@@ -160,38 +160,37 @@ def _human_size(num_bytes: int | str) -> str:
 # ─── source 0: 教父 BT 站（opencli adapter，需要 Chrome 登录态） ────────────
 
 
-def search_jiaofu(query: str, timeout: int = 60) -> tuple[list[Result], SearchDiagnostic]:
-    """通过 opencli jiaofu adapter 调教父站。中文影视首选源。"""
-    diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.OK, detail="")
+def _call_jiaofu_once(query: str, timeout: int) -> tuple[list[Result] | None, SearchDiagnostic | None]:
+    """单次 opencli jiaofu 搜索调用。返回 (results, None) 成功，(None, diag) 失败。"""
     if not shutil.which("opencli"):
-        diag.status = SourceStatus.NOT_AVAILABLE
-        diag.detail = "opencli 未安装（需要 Chrome 登录态才能调教父站）"
-        return [], diag
-    real_timeout = max(int(timeout), 60)
+        diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.NOT_AVAILABLE,
+                                detail="opencli 未安装（需要 Chrome 登录态才能调教父站）")
+        return None, diag
+    real_timeout = max(int(timeout), 90)
     try:
         proc = subprocess.run(
-            ["opencli", "jiaofu", "search", query, "--limit", "50", "-f", "json"],
+            ["opencli", "jiaofu", "search", query, "--limit", "50", "-f", "json",
+             "--window", "background", "--site-session", "persistent"],
             capture_output=True, text=True, timeout=real_timeout,
         )
     except subprocess.TimeoutExpired:
-        diag.status = SourceStatus.TIMEOUT
-        diag.detail = f"opencli 搜索超时（>{real_timeout}s）"
-        return [], diag
+        diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.TIMEOUT,
+                                detail=f"opencli 搜索超时（>{real_timeout}s）")
+        return None, diag
     if proc.returncode != 0:
-        diag.status = SourceStatus.NETWORK_ERROR
-        detail = proc.stderr.strip()[:200] if proc.stderr else ""
-        diag.detail = f"opencli 非零退出码 {proc.returncode}" + (f": {detail}" if detail else "")
-        return [], diag
+        diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.NETWORK_ERROR,
+                                detail=f"opencli 非零退出码 {proc.returncode}: {proc.stderr[:200]}")
+        return None, diag
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
-        diag.status = SourceStatus.NETWORK_ERROR
-        diag.detail = "opencli 返回非 JSON（可能登录态失效）"
-        return [], diag
+        diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.NETWORK_ERROR,
+                                detail="opencli 返回非 JSON（风控拦截或登录态失效）")
+        return None, diag
     if not isinstance(data, list):
-        diag.status = SourceStatus.NETWORK_ERROR
-        diag.detail = "opencli 返回格式异常（非列表）"
-        return [], diag
+        diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.NETWORK_ERROR,
+                                detail="opencli 返回格式异常（非列表）")
+        return None, diag
     results: list[Result] = []
     for it in data:
         magnet = it.get("magnet")
@@ -204,11 +203,44 @@ def search_jiaofu(query: str, timeout: int = 60) -> tuple[list[Result], SearchDi
             magnet=magnet,
             source="jiaofu",
         ))
-    diag.result_count = len(results)
     if not results:
-        diag.status = SourceStatus.NO_RESULTS
-        diag.detail = f"jiaofu 无匹配「{query}」的结果"
-    return results, diag
+        diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.NO_RESULTS,
+                                detail=f"jiaofu 无匹配「{query}」的结果")
+        return None, diag
+    return results, None
+
+
+def search_jiaofu(query: str, timeout: int = 60) -> tuple[list[Result], SearchDiagnostic]:
+    """通过 opencli jiaofu adapter 调教父站。中文影视首选源。
+    风控重试：首次失败后等待 5s 重试 1 次，再失败等 8s 重试最后一次。
+    """
+    RETRY_DELAYS = [5, 8]  # 首次重试等 5s，第二次等 8s
+    diag = SearchDiagnostic(source="jiaofu", status=SourceStatus.OK, detail="")
+
+    if not shutil.which("opencli"):
+        diag.status = SourceStatus.NOT_AVAILABLE
+        diag.detail = "opencli 未安装（需要 Chrome 登录态才能调教父站）"
+        return [], diag
+
+    last_diag = None
+    for attempt in range(1 + len(RETRY_DELAYS)):
+        if attempt > 0:
+            delay = RETRY_DELAYS[attempt - 1]
+            diag.detail = f"风控重试 {attempt}/{len(RETRY_DELAYS)}（等待 {delay}s）"
+            time.sleep(delay)
+
+        results, err_diag = _call_jiaofu_once(query, timeout)
+        if results is not None:
+            diag.result_count = len(results)
+            if attempt > 0:
+                diag.detail = f"重试 {attempt} 次后成功，{len(results)} 结果"
+            return results, diag
+        last_diag = err_diag
+
+    # 全部重试都失败，返回最后一次的错误
+    diag.status = last_diag.status if last_diag else SourceStatus.NETWORK_ERROR
+    diag.detail = (last_diag.detail if last_diag else "未知错误") + "（已重试上限）"
+    return [], diag
 
 
 # ─── source 1: YTS ───────────────────────────────────────────────────────────
