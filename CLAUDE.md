@@ -13,6 +13,14 @@
 
 一句话：**根因进框架，个案走兜底。**
 
+## harness 工程原则
+
+开发/修改 hermes 任何子系统（agent loop / permission / compact / hook / streaming / mcp / skill / memory 等）前，**先读 [`harness-engineering-principles.md`](harness-engineering-principles.md)** —— 提炼自 `learn-everything` 14-artifact harness 教程（以 Claude Code 为参照系）。核心四条：**① 正交架构**（新子系统不改旧的，接入前问"能否零改动")；**② 模型不可靠**（安全/隐私/cardinality 机制层强制，不靠 prompt 自律）；**③ 软契约**（约束写 prompt/类型，不 runtime throw；仅数据损坏/安全才硬约束）；**④ context 经济是 KPI**（cache 命中 + 双轨注入 stable-prompt/dynamic-attachment + 双层去重 LRU/Session-Set）。文档含 10 条通用原则 + 27 条反模式 + 14 子系统速查表。配合 [[hermes-contribution-followups]] 的 sweeper 红线食用。
+
+## hermes 开源共建
+
+参与 `NousResearch/hermes-agent` 共建时，**先读 [`hermes-contribution.md`](hermes-contribution.md)** —— 沉淀了被合入 PR 画像、kshitijk4poor（唯一高频外部共建者）打法、salvage 停滞 PR 流程、当前 salvage 候选清单、sweeper 红线、邮件时滞坑。核心结论：PR 不被合通常不是因为"太小"，而是**无 issue 支撑 / 领域冷门 / 影响面窄**；最优路径是 **salvage 停滞 PR**（维护者优先合推进 backlog 的人）。具体 PR 进度见记忆 [[hermes-contribution-followups]]。
+
 ## Hermes Agent 环境
 
 - **版本**: v0.12.0
