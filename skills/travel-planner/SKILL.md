@@ -6,14 +6,6 @@ category: domain
 
 # Travel Planner — 多源周边游攻略生成器
 
-## 依赖 Skill
-
-本 skill 依赖以下 skill，执行到对应步骤时必须先加载：
-
-| 步骤 | 依赖 Skill | 用途 |
-|------|-----------|------|
-| 步骤 6 | `tunnel-wechat-collaboration` | 将本地 HTTP 服务暴露到公网，生成微信可访问的 URL |
-
 ## 步骤 0：确定起点 + 出行方式（最高优先级）
 
 **默认起点**：用户家 — 龙湖春江天玺（景宸天玺名城），坐标 `120.241, 30.210`，最近地铁 7 号线兴议站。用户未指定则默认小区出发；用户指定则按用户位置。第一个 timeline item 必为「从起点出发」的交通项。
@@ -72,32 +64,39 @@ Schema 参考 `references/trip-data-schema.md`。写出后立即 `python3 script
 
 ### 多路线支持
 
-server.js 支持 `/route2` 和 `/route3`。生成多条对比路线时：
-- trip_data.json → trip.html（路线1）
-- trip_data2.json → 手动 `cp output/trip.html output/trip2.html`（在 inject 后）
-- trip_data3.json → 同理
+生成多条对比路线时，每条用独立输出文件（见步骤 6 的 inject 第二参数），再各自部署成独立 drop：
+- trip_data.json  → inject → output/<目的地1>.html
+- trip_data2.json → inject → output/<目的地2>.html
+- trip_data3.json → inject → output/<目的地3>.html
 
-## 步骤 6：生成 HTML + 暴露
+## 步骤 6：生成 HTML + 远端部署
 
 ```bash
+# 1. 校验 + 注入（每条路线一份独立输出文件）
 python3 scripts/lint.py output/trip_data.json
-python3 scripts/inject.py output/trip_data.json
-# 多条路线：inject 每条后 cp trip.html → trip2.html / trip3.html
-node scripts/server.js  # 端口 3456
+python3 scripts/inject.py output/trip_data.json output/shaoxing.html
+# 多路线：对 trip_data2/3.json 各跑一次 inject，输出到不同文件
+
+# 2. 部署到远端 drops（fire-and-forget — 部署完即可关机断网，URL 持久）
+tunnel deploy output/shaoxing.html --name travel-shaoxing
+# → https://d.stringzhao.life/travel-shaoxing
 ```
 
-### Tunnel 暴露（降级策略）
+部署要点：
 
-1. 加载 `tunnel-wechat-collaboration` skill
-2. `killall frpc; cd tunnel-cli && bash bin/tunnel expose 3456 <subdomain>`
-3. **新子域名 SSL 证书不覆盖**（常见失败原因）→ 见 tunnel skill 已知问题
+- **slug 约定**：`travel-<目的地拼音>`（如 `travel-shaoxing` / `travel-qiandao`）。drops 全局唯一、持久常驻。
+- **slug 冲突**（HTTP 409）：换名（加日期 `travel-shaoxing-260808`）或先 `tunnel rm <slug>` 再传。
+- **首次失败排查**：401 = deploy token 不匹配 → 跑 `tunnel drops init` 并按提示把 token 同步到 VPS `.env.production` 的 `DEPLOY_TOKEN`；413 = 超 10 MiB（攻略 HTML 通常 ~25KB，基本不触发）。
+- **管理**：`tunnel list` 看全部 drops、`tunnel rm <slug>` 下线。
+- 微信里直接发 `https://d.stringzhao.life/<slug>`，手机浏览器 / 微信内置浏览器均可打开（模板自包含、移动优先 620px）。
 
-**降级优先级**：
-1. `MEDIA:<filepath>` 微信发送 HTML 文件（首选 — 手机上可直接打开）
+**本地预览**（不想部署时）：`open output/trip.html`（单文件自包含，可直接打开）。
+
+### 部署失败降级
+
+1. `MEDIA:<filepath>` 微信发送 HTML 文件（手机上可直接打开）
 2. `open output/trip.html` 本地查看
 3. 纯文本路线总结
-
-不要反复尝试新子域名。
 
 ## 步骤 7：更新用户记忆
 
@@ -109,4 +108,4 @@ node scripts/server.js  # 端口 3456
 |------|------|
 | AMAP_KEY 未设置 | wttr.in + delegate_task 3路搜索 + OSM坐标 |
 | OSM 坐标稀疏 | 合理估算 + 标注近似 |
-| tunnel 不可用 | MEDIA 微信发送 HTML → 本地查看 → 纯文本 |
+| tunnel deploy 不可用 | `MEDIA:<filepath>` 微信发 HTML（手机直接打开）→ `open` 本地查看 → 纯文本路线总结 |
