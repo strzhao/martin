@@ -106,3 +106,6 @@
 | `restaurants[]` | array | ✅ | 餐厅矩阵 |
 | `restaurants[].confidence` | string | ✅ | 置信度 high/medium/low |
 | `timeline[].navi_url` | string | ❌ | 高德导航链接 |
+| `trip.subtitle` | string | ❌ | 副标题，渲染于 header 主标题下方（适合写出行人员、日期范围等补充说明） |
+| `timeline[].day` | string | ❌ | 多日行程的日分组标签（如 `8/19（周三）· 市区休闲日`）；相邻 item 的 day 值变化时渲染日分隔条，单日行程不提供此字段 |
+| `timeline[].day_weather` | string | ❌ | 当日天气摘要胶囊（如 `🌧 小雨 30°/26°`），随日分隔条一同渲染，取每组首个 item 的值 |

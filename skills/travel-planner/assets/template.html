@@ -2,11 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>周边游攻略</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅行攻略</title>
 <style>
 :root {
   --bg: #F7F6F1;
@@ -14,31 +11,37 @@
   --card-hover: #f3f2ef;
   --text: #1A1A18;
   --text-secondary: #595957;
-  --muted: #8F8F8D;
+  --muted: #8F8F8D;            /* 烟 Smoke —— 仅装饰用途，不用于正文 */
+  --muted-dark: #6E6E6C;       /* 浅说明文字（对比度合格） */
   --accent: #3A7D68;
   --accent-hover: #52A688;
   --accent-soft: #E8F2EE;
   --amber: #D4920A;
+  --amber-dark: #8A5F03;       /* 琥 深色文字版（徽章用，对比度合格） */
+  --amber-soft: #F8EDD6;
   --red: #D94F3D;
+  --red-soft: #FAE3DF;
   --sky: #3B87CC;
-  --sky-soft: #eaf3fb;
+  --sky-soft: #EAF3FB;
   --border: #EBEBEA;
-  --hairline: #f0efec;
-  --shadow-sm: 0 1px 3px rgba(58,125,104,.06);
-  --shadow-md: 0 4px 16px rgba(58,125,104,.08);
-  --radius-sm: 8px;
-  --radius: 14px;
-  --radius-lg: 20px;
+  --hairline: #F0EFEC;
+  --shadow-sm: 0 0.06rem 0.17rem rgba(58,125,104,.06);
+  --shadow-md: 0 0.22rem 0.89rem rgba(58,125,104,.08);
+  --radius-sm: 0.44rem;
+  --radius: 0.78rem;
+  --radius-lg: 1.11rem;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html { font-size: 18px; }
 body {
   font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.65;
+  font-size: 1rem;
+  line-height: 1.75;
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
-  max-width: 620px;
+  max-width: 34.4rem;
   margin: 0 auto;
 }
 
@@ -46,7 +49,7 @@ body {
 header {
   background: var(--accent);
   color: #fff;
-  padding: 28px 20px 32px;
+  padding: 1.56rem 1.11rem 1.78rem;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -59,453 +62,488 @@ header::after {
   pointer-events: none;
 }
 header h1 {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 32px;
+  font-family: "Songti SC","Noto Serif SC",serif;
+  font-size: 1.7rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  margin-bottom: 10px;
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
   text-wrap: balance;
+  position: relative;
+}
+header .subtitle {
+  font-size: 1rem;
+  line-height: 1.6;
+  opacity: .92;
+  margin-bottom: 0.56rem;
+  position: relative;
 }
 header .meta {
-  font-size: 14px;
-  opacity: .8;
+  font-size: 0.85rem;
+  opacity: .88;
   display: flex;
   justify-content: center;
-  gap: 14px;
+  gap: 0.78rem;
   flex-wrap: wrap;
-  font-family: 'Outfit', -apple-system, sans-serif;
   font-weight: 500;
-  letter-spacing: 0.01em;
+  position: relative;
 }
-header .meta span { display: inline-flex; align-items: center; gap: 5px; }
+header .meta span { display: inline-flex; align-items: center; }
 
 /* === 天气卡片 === */
 .weather-card {
-  margin: -16px 14px 18px;
+  margin: -0.9rem 0.8rem 1rem;
   background: var(--card-bg);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
-  padding: 16px 18px;
+  padding: 0.9rem 1rem;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 0.8rem;
   position: relative;
   z-index: 1;
-  border: 1px solid var(--hairline);
-  transition: box-shadow .2s;
+  border: 0.055rem solid var(--hairline);
 }
-.weather-card .icon { font-size: 44px; line-height: 1; }
+.weather-card .icon { font-size: 2.4rem; line-height: 1; }
 .weather-card .info { flex: 1; }
-.weather-card .temp {
-  font-family: 'Outfit', sans-serif;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.weather-card .desc { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.weather-card .temp { font-size: 1.3rem; font-weight: 700; line-height: 1.4; }
+.weather-card .desc { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.15rem; line-height: 1.6; }
 
 /* === 地图 === */
 .map-section {
-  margin: 0 14px 18px;
+  margin: 0 0.8rem 1rem;
   background: var(--card-bg);
   border-radius: var(--radius);
   overflow: hidden;
-  border: 1px solid var(--hairline);
+  border: 0.055rem solid var(--hairline);
   box-shadow: var(--shadow-sm);
 }
 .map-section img { width: 100%; display: block; }
 .map-section a {
-  display: block;
-  text-align: center;
-  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.56rem;
+  padding: 0.4rem 0.8rem;
   background: var(--sky);
   color: #fff;
   text-decoration: none;
-  font-size: 15px;
+  font-size: 1.05rem;
   font-weight: 600;
-  transition: background .2s;
 }
 .map-section a:hover { background: #2d73b0; }
 
 /* === 预算切换 === */
 .budget-bar {
-  margin: 0 14px 18px;
+  margin: 0 0.8rem 1rem;
   display: flex;
-  gap: 6px;
+  gap: 0.5rem;
 }
 .budget-bar button {
   flex: 1;
-  padding: 10px 6px;
-  border: 1px solid var(--border);
+  min-height: 2.56rem;
+  padding: 0.35rem 0.3rem;
+  border: 0.055rem solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card-bg);
-  font-size: 14px;
+  font-size: 1rem;
   cursor: pointer;
-  transition: all .2s;
   font-weight: 600;
   color: var(--text-secondary);
+  font-family: inherit;
 }
-.budget-bar button:hover {
-  background: var(--card-hover);
-  border-color: var(--accent);
-}
+.budget-bar button:hover { background: var(--card-hover); border-color: var(--accent); }
 .budget-bar button.active-budget {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 0.055rem var(--accent);
+}
+.budget-static {
+  margin: 0 0.8rem 1rem;
+  min-height: 2.56rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg);
+  border: 0.055rem solid var(--hairline);
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* === 分区标题 === */
+.section-title {
+  margin: 0 0.8rem 0.55rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--muted-dark);
+  letter-spacing: 0.05em;
 }
 
 /* === 时间线 === */
-.timeline {
-  margin: 0 14px 18px;
-  position: relative;
-}
+.timeline { margin: 0 0.8rem 1.2rem; position: relative; }
 .timeline::before {
   content: '';
   position: absolute;
-  left: 22px;
-  top: 4px;
-  bottom: 4px;
-  width: 1.5px;
+  left: 1.4rem;
+  top: 0.3rem;
+  bottom: 0.3rem;
+  width: 0.11rem;
   background: var(--border);
-  border-radius: 1px;
+  border-radius: 0.06rem;
 }
 .timeline-item {
   position: relative;
-  padding-left: 56px;
-  margin-bottom: 20px;
+  padding-left: 3.2rem;
+  margin-bottom: 1.5rem;
 }
 .timeline-item:last-child { margin-bottom: 0; }
 .timeline-item .dot {
   position: absolute;
-  left: 13px;
-  top: 2px;
-  width: 20px;
-  height: 20px;
+  left: 0.79rem;
+  top: 0.15rem;
+  width: 1.34rem;
+  height: 1.34rem;
   border-radius: 50%;
   background: var(--card-bg);
-  border: 2px solid var(--accent);
+  border: 0.11rem solid var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 0.75rem;
   z-index: 1;
-  box-shadow: 0 0 0 4px var(--bg);
+  box-shadow: 0 0 0 0.22rem var(--bg);
 }
 .timeline-item.transport .dot { border-color: var(--sky); }
 .timeline-item.sight .dot { border-color: var(--accent); }
 .timeline-item.break .dot { border-color: var(--amber); }
 .timeline-item .time-label {
-  font-family: 'Outfit', sans-serif;
-  font-size: 14px;
+  font-size: 1rem;
   color: var(--accent);
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  margin-bottom: 4px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.15rem;
 }
 .timeline-item .item-title {
-  font-size: 18px;
+  font-size: 1.12rem;
   font-weight: 700;
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  line-height: 1.5;
+  margin-bottom: 0.15rem;
   text-wrap: balance;
 }
+.timeline-item .item-sub {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+.timeline-item .item-sub .star { color: var(--amber); font-weight: 700; }
+.timeline-item .item-sub .price { font-weight: 600; }
 .timeline-item .item-meta {
-  font-size: 14px;
-  color: var(--muted);
-  margin-bottom: 6px;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+  line-height: 1.75;
+}
+.timeline-item .item-address { color: var(--muted-dark); }
+
+/* 「进行中」高亮 */
+.timeline-item.active-now {
+  background: var(--accent-soft);
+  border-left: 0.17rem solid var(--accent);
+  border-radius: 0.5rem;
+  margin-left: -0.75rem;
+  padding-left: 3.95rem;
+  padding-right: 0.5rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.timeline-item.active-now .dot { left: 1.54rem; }
+.now-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 0.8rem;
+  padding: 0.05rem 0.5rem;
+  vertical-align: 0.1rem;
+}
+
+/* 多日分隔条 */
+.day-divider {
+  position: relative;
+  z-index: 1;
+  margin: 1.3rem 0 1rem;
+  padding: 0.6rem 0.9rem;
+  background: linear-gradient(90deg, #E8F2EE, #F7F6F1);
+  border-left: 0.17rem solid var(--accent);
+  border-radius: 0 0.5rem 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.day-divider:first-child { margin-top: 0; }
+.day-badge {
+  font-family: "Songti SC","Noto Serif SC",serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+.day-weather {
+  font-size: 0.8rem;
+  color: var(--muted-dark);
+  background: rgba(255,255,255,.85);
+  padding: 0.12rem 0.6rem;
+  border-radius: 0.9rem;
+}
+
+/* === 特性胶囊 === */
+.feature-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.45rem;
+}
+.feature-tag {
+  font-size: 0.8rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0.08rem 0.5rem;
+  border-radius: 0.9rem;
+  font-weight: 500;
 }
 
 /* === 聚合卡片 === */
 .agg-card {
   background: var(--card-bg);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--hairline);
-  padding: 10px 12px;
-  margin-top: 8px;
+  border: 0.055rem solid var(--hairline);
+  padding: 0.55rem 0.7rem;
+  margin-top: 0.5rem;
 }
 .agg-card .source-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 5px 0;
-  border-bottom: 1px solid var(--hairline);
-  font-size: 14px;
-  line-height: 1.5;
+  gap: 0.45rem;
+  padding: 0.3rem 0;
+  border-bottom: 0.055rem solid var(--hairline);
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 .agg-card .source-row:last-child { border-bottom: none; }
 .agg-card .source-icon {
-  font-size: 15px;
-  min-width: 20px;
+  font-size: 0.9rem;
+  min-width: 1.1rem;
   text-align: center;
-  opacity: .8;
+  color: var(--muted);
 }
 .agg-card .source-content { flex: 1; }
 .agg-card .source-stats {
-  font-family: 'Outfit', sans-serif;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 0.82rem;
+  color: var(--muted-dark);
   white-space: nowrap;
 }
 
-/* === 链接行 === */
+/* === 主操作：大号导航按钮 === */
+.navi-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.56rem;
+  margin-top: 0.6rem;
+  padding: 0.3rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 0.6rem;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+.navi-btn:hover { background: var(--accent-hover); }
+.navi-btn:active { transform: scale(0.98); }
+
+/* === 链接胶囊行 === */
 .link-row {
   display: flex;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
   flex-wrap: wrap;
 }
 .link-row a {
-  font-size: 13px;
-  padding: 5px 12px;
-  border-radius: 20px;
+  font-size: 0.85rem;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 1rem;
+  border-radius: 1.2rem;
   text-decoration: none;
   font-weight: 600;
-  transition: all .2s;
-  letter-spacing: 0.02em;
 }
-.link-row a:hover { transform: translateY(-1px); }
 .link-row a:active { transform: scale(0.97); }
 .link-dianping { background: var(--accent-soft); color: var(--accent); }
-.link-dianping:hover { background: #d6ede4; }
 .link-bilibili { background: #fde8ee; color: #d44a6e; }
-.link-bilibili:hover { background: #fddae4; }
 .link-xhs { background: #ffe8e8; color: #d43939; }
-.link-xhs:hover { background: #ffdbdb; }
-.link-navi { background: var(--sky-soft); color: var(--sky); }
-.link-navi:hover { background: #d7e9f7; }
 
-/* === 餐厅表格 === */
-.table-wrap {
-  margin: 0 14px 18px;
+/* === 餐厅卡片流 === */
+.restaurant-list {
+  margin: 0 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.rest-card {
   background: var(--card-bg);
+  border: 0.055rem solid var(--hairline);
   border-radius: var(--radius);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  border: 1px solid var(--hairline);
   box-shadow: var(--shadow-sm);
+  padding: 0.9rem 1rem;
 }
-.table-wrap table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-  min-width: 400px;
+.rest-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
 }
-.table-wrap th {
-  background: #f3f2ef;
-  padding: 10px 10px;
-  text-align: left;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border);
+.rest-name { font-size: 1.1rem; font-weight: 700; line-height: 1.5; }
+.badge-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+.badge {
+  font-size: 0.82rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 1rem;
+  font-weight: 600;
   white-space: nowrap;
 }
-.table-wrap td { padding: 10px 10px; border-bottom: 1px solid var(--hairline); }
-.table-wrap tr:hover td { background: var(--card-hover); }
-.table-wrap tr:last-child td { border-bottom: none; }
-.table-wrap .conf-high { color: var(--green); font-weight: 700; }
-.table-wrap .conf-medium { color: var(--accent); }
+.badge-score { background: var(--amber-soft); color: var(--amber-dark); }
+.badge-price { background: #f3f2ef; color: var(--text-secondary); }
+.badge-conf-high { background: var(--accent-soft); color: var(--accent); }
+.badge-conf-medium { background: var(--amber-soft); color: var(--amber-dark); }
+.badge-conf-low { background: var(--red-soft); color: var(--red); }
+.rest-meta { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.35rem; }
+.rest-address { font-size: 0.9rem; color: var(--muted-dark); margin-top: 0.15rem; }
 
 /* === 页脚 === */
 footer {
-  margin: 24px 14px 32px;
-  padding: 14px 0 0;
+  margin: 1.4rem 0.8rem 6.5rem;
+  padding-top: 0.9rem;
   text-align: center;
-  font-size: 13px;
-  color: var(--muted);
-  border-top: 1px solid var(--hairline);
+  font-size: 0.82rem;
+  color: var(--muted-dark);
+  border-top: 0.055rem solid var(--hairline);
+  line-height: 1.8;
 }
-footer div + div { margin-top: 4px; }
+
+/* === 浮动按钮 === */
+.float-btn {
+  position: fixed;
+  right: 0.9rem;
+  z-index: 60;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0.22rem 0.67rem rgba(26,26,24,.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.1;
+}
+.float-btn:hover { background: var(--accent-hover); }
+.float-btn:active { transform: scale(0.95); }
+#font-switch { bottom: 1.1rem; }
+#font-switch .aa { font-size: 1.05rem; font-weight: 700; }
+#font-switch .ft-label { font-size: 0.72rem; opacity: .92; }
+#back-top { bottom: 4.5rem; font-size: 1.3rem; display: none; }
 
 /* === 响应式 === */
-@media (min-width: 640px) {
-  body { padding: 0 0 40px; }
+@media (min-width: 35.6rem) {
+  body { padding: 0 0 2.2rem; }
   header { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 }
-
-/* === 预算切换动画 === */
-[data-budget-level] { transition: opacity .3s; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1 id="trip-title">周边游攻略</h1>
-  <div class="meta">
-    <span id="trip-date"></span>
-    <span id="trip-weather"></span>
-    <span id="trip-transport"></span>
-    <span id="trip-budget-summary"></span>
-  </div>
+  <h1 id="trip-title">旅行攻略</h1>
+  <div class="subtitle" id="trip-subtitle" style="display:none"></div>
+  <div class="meta" id="trip-meta"></div>
 </header>
 
-<div id="weather-card" class="weather-card"></div>
+<div id="weather-card" class="weather-card" style="display:none"></div>
 
-<div id="map-section" class="map-section"></div>
+<div id="map-section" class="map-section" style="display:none"></div>
 
-<div id="budget-bar" class="budget-bar"></div>
+<div id="budget-bar" style="display:none"></div>
 
+<div class="section-title" id="timeline-section-title" style="display:none">📅 行程安排</div>
 <div id="timeline" class="timeline"></div>
 
-<div class="table-wrap">
-  <table>
-    <thead><tr>
-      <th>餐厅</th><th>评分</th><th>人均</th><th>置信度</th><th>链接</th>
-    </tr></thead>
-    <tbody id="restaurant-table"></tbody>
-  </table>
-</div>
+<div class="section-title" id="restaurant-section-title" style="display:none">🍜 餐厅总览</div>
+<div id="restaurant-list" class="restaurant-list"></div>
 
 <footer>
-  <div>Sources &middot; <span id="source-list"></span></div>
-  <div>Generated by travel-planner &middot; <span id="gen-time"></span></div>
+  <div id="footer-sources" style="display:none">信息来源 &middot; <span id="source-list"></span></div>
+  <div id="gen-time"></div>
 </footer>
+
+<button id="back-top" class="float-btn" onclick="scrollTop()" aria-label="回到顶部">&#8593;</button>
+<button id="font-switch" class="float-btn" onclick="cycleFontSize()" aria-label="切换字号"><span class="aa">Aa</span><span class="ft-label" id="font-label">标准</span></button>
 
 <script>
 var TRIP_DATA = __TRIP_DATA__;
 var currentBudget = 'economy';
 
-function render() {
-  var d = TRIP_DATA;
-  var t = d.trip;
-  var budgetKey = currentBudget;
+/* ---------- 小工具 ---------- */
+function $(id) { return document.getElementById(id); }
 
-  document.getElementById('trip-title').textContent = t.title;
-  document.getElementById('trip-date').innerHTML = t.date;
-  document.getElementById('trip-weather').innerHTML =
-    (t.weather.condition || '') + ' ' + t.weather.temp_high + '&deg; / ' + t.weather.temp_low + '&deg;';
-  document.getElementById('trip-transport').innerHTML =
-    (t.transport.origin || '') + ' &rarr; ' + (t.transport.destination || '') + ' &middot; ' + (t.transport.distance_km || '') + 'km / ' + (t.transport.duration_min || '') + 'min';
-  document.getElementById('trip-budget-summary').innerHTML =
-    '&yen;' + getBudgetFoodPrice(t.budget, budgetKey) + '/person';
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-  // Weather card
-  var wc = document.getElementById('weather-card');
-  wc.innerHTML =
-    '<div class="icon">' + getWeatherIcon(t.weather.condition) + '</div>' +
-    '<div class="info">' +
-      '<div class="temp">' + t.weather.condition + ' &middot; ' + t.weather.temp_high + '&deg;C / ' + t.weather.temp_low + '&deg;C</div>' +
-      '<div class="desc">' + (t.weather.wind || '') + (t.weather.tip ? ' &middot; ' + t.weather.tip : '') + '</div>' +
-    '</div>';
+function fmtNow() {
+  var n = new Date();
+  return n.getFullYear() + '-' + pad2(n.getMonth() + 1) + '-' + pad2(n.getDate()) +
+    ' ' + pad2(n.getHours()) + ':' + pad2(n.getMinutes());
+}
 
-  // Map
-  var rm = d.route_map || {};
-  document.getElementById('map-section').innerHTML =
-    (rm.static_url ? '<img src="' + rm.static_url + '" alt="Route Map" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
-    (rm.navi_url ? '<a href="' + rm.navi_url + '" target="_blank">打开高德地图导航 ↗</a>' : '');
-
-  // Budget switcher
-  var bg = t.budget;
-  var budgetLabels = [
-    '经济版 ¥' + (bg.food_per_person_tight || bg.economy || ''),
-    '标准版 ¥' + (bg.food_per_person_comfort || bg.standard || ''),
-    '品质版 ¥' + (bg.food_per_person_premium || bg.premium || '')
-  ];
-  var keys = ['economy', 'standard', 'premium'];
-  var btns = '';
-  for (var i = 0; i < keys.length; i++) {
-    btns += '<button class="' + (i === 0 ? 'active-budget' : '') + '" onclick="switchBudget(\'' + keys[i] + '\')">' +
-      budgetLabels[i] + '</button>';
+function fmtDuration(min) {
+  var m = parseInt(min, 10);
+  if (isNaN(m) || m <= 0) return '';
+  if (m >= 60) {
+    var h = Math.floor(m / 60);
+    var r = m % 60;
+    return h + '小时' + (r ? r + '分钟' : '');
   }
-  document.getElementById('budget-bar').innerHTML = btns;
+  return m + '分钟';
+}
 
-  // Timeline
-  var tl = d.timeline || [];
-  var html = '';
-  for (var i = 0; i < tl.length; i++) {
-    var item = tl[i];
-    var aggHtml = '';
-    if (item.aggregation) {
-      aggHtml = '<div class="agg-card">';
-      var ag = item.aggregation;
-      if (ag.primary && ag.primary.dianping_score) {
-        aggHtml += '<div class="source-row"><span class="source-icon">&starf;</span><span class="source-content">' +
-          ag.primary.name + ' &middot; Score ' + ag.primary.dianping_score + ' &middot; ' + ag.primary.dianping_reviews + ' reviews</span></div>';
-      }
-      if (ag.dianping && ag.dianping.score) {
-        aggHtml += '<div class="source-row"><span class="source-icon">&starf;</span><span class="source-content">点评：' +
-          ag.dianping.score + ' (' + ag.dianping.taste + ' taste / ' + ag.dianping.environment + ' vibe / ' + ag.dianping.service + ' service) &middot; ' +
-          (ag.dianping.reviews || '') + ' reviews</span></div>';
-      }
-      if (ag.bilibili_quotes && ag.bilibili_quotes.length) {
-        aggHtml += '<div class="source-row"><span class="source-icon">&#9654;</span><span class="source-content">' +
-          ag.bilibili_quotes.map(function(q) { return '&ldquo;' + q + '&rdquo;'; }).join(' ') + '</span>' +
-          '<span class="source-stats">' + (ag.bilibili_views ? (ag.bilibili_views/10000).toFixed(0) + 'k views' : '') + '</span></div>';
-      }
-      if (ag.alternatives && ag.alternatives.length) {
-        aggHtml += '<div class="source-row"><span class="source-icon">&diams;</span><span class="source-content">Also: ' +
-          ag.alternatives.map(function(a) { return a.name + ' (' + a.dianping_score + ')'; }).join(', ') + '</span></div>';
-      }
-      if (ag.xhs_likes) {
-        aggHtml += '<div class="source-row"><span class="source-icon">&sect;</span><span class="source-content">小红书：' + ag.xhs_likes + ' 推荐</span></div>';
-      }
-      aggHtml += '</div>';
-    }
+/* 评价数格式化：12000 → 1.2万条评价；485 → 485条评价 */
+function fmtReviews(n) {
+  if (n === null || n === undefined || n === '') return '';
+  var num = parseFloat(n);
+  if (isNaN(num)) return '';
+  if (num >= 10000) return (Math.round(num / 1000) / 10) + '万条评价';
+  return num + '条评价';
+}
 
-    var linksHtml = '';
-    if (item.links && Object.keys(item.links).length > 0) {
-      linksHtml = '<div class="link-row">';
-      if (item.links.amap_navi || item.navi_url) linksHtml += '<a class="link-navi" href="' + (item.links.amap_navi || item.navi_url) + '" target="_blank">导航</a>';
-      if (item.links.dianping) linksHtml += '<a class="link-dianping" href="' + item.links.dianping + '" target="_blank">点评</a>';
-      if (item.links.dianping_wang) linksHtml += '<a class="link-dianping" href="' + item.links.dianping_wang + '" target="_blank">点评</a>';
-      if (item.links.bilibili) linksHtml += '<a class="link-bilibili" href="' + item.links.bilibili + '" target="_blank">B站</a>';
-      if (item.links.xhs) linksHtml += '<a class="link-xhs" href="' + item.links.xhs + '" target="_blank">小红书</a>';
-      linksHtml += '</div>';
-    }
-
-    var ratingStr = '';
-    if (item.rating && item.rating.amap) {
-      ratingStr = ' &middot; <span style="color:var(--green)">&starf; ' + item.rating.amap + '</span>';
-    }
-    var tierPrice = getTierPrice(item);
-    var priceStr = tierPrice ? ' &middot; <span style="font-weight:500">&yen;' + tierPrice + '/person</span>' : (item.price_per_person ? ' &middot; <span style="font-weight:500">&yen;' + item.price_per_person + '/person</span>' : '');
-
-    var tierName = getTierName(item);
-    var displayTitle = tierName ? (item.title + ' &rarr; ' + tierName) : item.title;
-
-    html += '<div class="timeline-item ' + (item.type || '') + '">' +
-      '<div class="dot">' + (item.icon || '●') + '</div>' +
-      '<div class="time-label">' + item.time + '</div>' +
-      '<div class="item-title">' + displayTitle + '<span style="font-size:14px;color:var(--muted);font-weight:400">' + ratingStr + priceStr + '</span></div>' +
-      (item.description ? '<div class="item-meta">' + item.description + '</div>' : '') +
-      (item.address ? '<div class="item-meta" style="font-size:11px">' + item.address + '</div>' : '') +
-      aggHtml + linksHtml +
-      '</div>';
-  }
-  document.getElementById('timeline').innerHTML = html;
-
-  // Restaurant table
-  var restaurants = d.restaurants || [];
-  var tbody = '';
-  for (var i = 0; i < restaurants.length; i++) {
-    var r = restaurants[i];
-    var links = '';
-    if (r.links) {
-      if (r.links.dianping) links += '<a href="' + r.links.dianping + '" target="_blank" style="color:var(--accent);text-decoration:none;margin-right:6px;font-weight:600">点评</a>';
-      if (r.links.bilibili) links += '<a href="' + r.links.bilibili + '" target="_blank" style="color:#d44a6e;text-decoration:none;margin-right:6px;font-weight:600">B</a>';
-      if (r.links.xhs) links += '<a href="' + r.links.xhs + '" target="_blank" style="color:#d43939;text-decoration:none;font-weight:600">小红书</a>';
-    }
-    var confClass = r.confidence === 'high' ? 'conf-high' : (r.confidence === 'medium' ? 'conf-medium' : '');
-    var confLabel = r.confidence === 'high' ? '高' : (r.confidence === 'medium' ? '中' : '低');
-    var ratingStr2 = r.rating_amap ? '&starf;' + r.rating_amap : (r.dianping_score ? '&starf;' + r.dianping_score : '-');
-    tbody += '<tr>' +
-      '<td><strong>' + r.name + '</strong><br><span style="font-size:13px;color:var(--muted)">' + (r.district || r.type || '') + '</span></td>' +
-      '<td>' + ratingStr2 + '</td>' +
-      '<td>&yen;' + (r.price_per_person || '-') + '</td>' +
-      '<td class="' + confClass + '">' + confLabel + '</td>' +
-      '<td>' + links + '</td>' +
-      '</tr>';
-  }
-  document.getElementById('restaurant-table').innerHTML = tbody;
-
-  // Footer
-  document.getElementById('source-list').textContent = (d.sources || []).join(' &middot; ');
-  document.getElementById('gen-time').textContent = new Date().toISOString().slice(0, 16).replace('T', ' ');
+/* 播放量格式化：3200727 → 320万次播放 */
+function fmtViews(n) {
+  var num = parseFloat(n);
+  if (isNaN(num) || !num) return '';
+  return Math.round(num / 10000) + '万次播放';
 }
 
 function getWeatherIcon(condition) {
@@ -518,17 +556,27 @@ function getWeatherIcon(condition) {
   return '🌤';
 }
 
-function switchBudget(level) {
-  var btns = document.querySelectorAll('#budget-bar button');
-  var levels = ['economy', 'standard', 'premium'];
-  for (var i = 0; i < btns.length; i++) {
-    btns[i].classList.toggle('active-budget', levels[i] === level);
+/* ---------- 预算（三档 / 单一 / 无） ---------- */
+function getBudgetTiers(bg) {
+  if (!bg) return null;
+  var tight = (bg.food_per_person_tight != null && bg.food_per_person_tight !== '') ? bg.food_per_person_tight : bg.economy;
+  var comfort = (bg.food_per_person_comfort != null && bg.food_per_person_comfort !== '') ? bg.food_per_person_comfort : bg.standard;
+  var premium = (bg.food_per_person_premium != null && bg.food_per_person_premium !== '') ? bg.food_per_person_premium : bg.premium;
+  if (tight != null && tight !== '' && comfort != null && comfort !== '' && premium != null && premium !== '') {
+    return [tight, comfort, premium];
   }
-  currentBudget = level;
-  render();
+  return null;
+}
+
+function getSingleBudget(bg) {
+  if (!bg) return '';
+  if (bg.food_per_person != null && bg.food_per_person !== '') return bg.food_per_person;
+  if (bg.per_person_total != null && bg.per_person_total !== '') return bg.per_person_total;
+  return '';
 }
 
 function getBudgetFoodPrice(budget, level) {
+  if (!budget) return '';
   if (level === 'economy') return budget.food_per_person_tight || budget.economy || '';
   if (level === 'standard') return budget.food_per_person_comfort || budget.standard || '';
   if (level === 'premium') return budget.food_per_person_premium || budget.premium || '';
@@ -541,15 +589,373 @@ function getTierProp(item, prop) {
   return tier ? tier[prop] : null;
 }
 
-function getTierPrice(item) {
-  return getTierProp(item, 'price');
+function aggRow(icon, content) {
+  return '<div class="source-row"><span class="source-icon">' + icon + '</span>' +
+    '<span class="source-content">' + content + '</span></div>';
 }
 
-function getTierName(item) {
-  return getTierProp(item, 'name');
+/* ---------- 主渲染 ---------- */
+function render() {
+  var d = TRIP_DATA || {};
+  var t = d.trip || {};
+  var w = t.weather || {};
+  var tr = t.transport || {};
+  var bg = t.budget || {};
+
+  // 标题
+  if (t.title) {
+    $('trip-title').textContent = t.title;
+    document.title = t.title;
+  }
+
+  // 副标题（可选）
+  var subEl = $('trip-subtitle');
+  if (t.subtitle) {
+    subEl.textContent = t.subtitle;
+    subEl.style.display = '';
+  } else {
+    subEl.style.display = 'none';
+  }
+
+  // header meta：字段缺失则跳过对应 span
+  var tiers = getBudgetTiers(bg);
+  var singleBudget = getSingleBudget(bg);
+  var metaHtml = '';
+  if (t.date) metaHtml += '<span>' + t.date + '</span>';
+  var wSpan = '';
+  if (w.condition) wSpan += w.condition;
+  if (w.temp_high != null && w.temp_low != null) {
+    wSpan += (wSpan ? ' ' : '') + w.temp_high + '&deg; / ' + w.temp_low + '&deg;';
+  }
+  if (wSpan) metaHtml += '<span>' + wSpan + '</span>';
+  var od = '';
+  if (tr.origin && tr.destination) od = tr.origin + ' &rarr; ' + tr.destination;
+  else if (tr.origin || tr.destination) od = tr.origin || tr.destination;
+  var dd = '';
+  if (tr.distance_km) dd += tr.distance_km + 'km';
+  var dur = fmtDuration(tr.duration_min);
+  if (dur) dd += (dd ? ' / ' : '') + dur;
+  var trSpan = od + (od && dd ? ' &middot; ' : '') + dd;
+  if (trSpan) metaHtml += '<span>' + trSpan + '</span>';
+  var budgetPrice = tiers ? getBudgetFoodPrice(bg, currentBudget) : singleBudget;
+  if (budgetPrice !== '' && budgetPrice != null) {
+    var bLabel = (!tiers && bg.per_person_total != null && bg.food_per_person == null) ? '人均 &yen;' : '餐饮人均 &yen;';
+    metaHtml += '<span>' + bLabel + budgetPrice + '</span>';
+  }
+  $('trip-meta').innerHTML = metaHtml;
+
+  // 天气卡片（缺天气则整体隐藏）
+  var wc = $('weather-card');
+  if (w.condition || w.temp_high != null) {
+    wc.style.display = '';
+    var tempLine = '';
+    if (w.condition) tempLine += w.condition;
+    if (w.temp_high != null && w.temp_low != null) {
+      tempLine += (tempLine ? ' &middot; ' : '') + w.temp_high + '&deg;C / ' + w.temp_low + '&deg;C';
+    }
+    var descParts = [];
+    if (w.wind) descParts.push(w.wind);
+    if (w.tip) descParts.push(w.tip);
+    if (w.note) descParts.push(w.note);
+    wc.innerHTML =
+      '<div class="icon">' + getWeatherIcon(w.condition) + '</div>' +
+      '<div class="info">' +
+        '<div class="temp">' + tempLine + '</div>' +
+        (descParts.length ? '<div class="desc">' + descParts.join(' &middot; ') + '</div>' : '') +
+      '</div>';
+  } else {
+    wc.style.display = 'none';
+  }
+
+  // 地图区（static_url 与 navi_url 都空则整体隐藏）
+  var rm = d.route_map || {};
+  var mapEl = $('map-section');
+  if (rm.static_url || rm.navi_url) {
+    mapEl.style.display = '';
+    mapEl.innerHTML =
+      (rm.static_url ? '<img src="' + rm.static_url + '" alt="路线图" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+      (rm.navi_url ? '<a href="' + rm.navi_url + '" target="_blank" rel="noopener">打开高德地图导航 ↗</a>' : '');
+  } else {
+    mapEl.style.display = 'none';
+  }
+
+  // 预算区：三档按钮组 / 单一静态文本 / 整体隐藏
+  var bb = $('budget-bar');
+  if (tiers) {
+    bb.className = 'budget-bar';
+    bb.style.display = '';
+    var keys = ['economy', 'standard', 'premium'];
+    var names = ['经济版', '标准版', '品质版'];
+    var btns = '';
+    for (var i = 0; i < keys.length; i++) {
+      btns += '<button class="' + (keys[i] === currentBudget ? 'active-budget' : '') +
+        '" onclick="switchBudget(\'' + keys[i] + '\')">' + names[i] + ' &yen;' + tiers[i] + '</button>';
+    }
+    bb.innerHTML = btns;
+  } else if (singleBudget !== '') {
+    bb.className = 'budget-static';
+    bb.style.display = '';
+    var sLabel = (bg.per_person_total != null && bg.food_per_person == null) ? '人均 &yen;' : '餐饮人均 &yen;';
+    bb.innerHTML = sLabel + singleBudget;
+  } else {
+    bb.style.display = 'none';
+    bb.innerHTML = '';
+  }
+
+  // 时间线（支持多日分组：item.day 变化时渲染日分隔条）
+  var tl = d.timeline || [];
+  var tlTitle = $('timeline-section-title');
+  var tlEl = $('timeline');
+  if (!tl.length) {
+    tlTitle.style.display = 'none';
+    tlEl.innerHTML = '';
+  } else {
+    tlTitle.style.display = '';
+    var html = '';
+    var lastDay = null;
+    for (var i = 0; i < tl.length; i++) {
+      var item = tl[i];
+
+      var itemDay = item.day || '';
+      if (itemDay && itemDay !== lastDay) {
+        lastDay = itemDay;
+        html += '<div class="day-divider"><span class="day-badge">' + itemDay + '</span>' +
+          (item.day_weather ? '<span class="day-weather">' + item.day_weather + '</span>' : '') +
+          '</div>';
+      }
+
+      // 聚合口碑卡：各字段缺失时跳过对应行
+      var aggHtml = '';
+      if (item.aggregation) {
+        var ag = item.aggregation;
+        var rows = '';
+        if (ag.primary && ag.primary.dianping_score) {
+          var pv = fmtReviews(ag.primary.dianping_reviews);
+          rows += aggRow('&starf;', (ag.primary.name || '') + ' &middot; 评分 ' + ag.primary.dianping_score +
+            (pv ? ' &middot; ' + pv : ''));
+        }
+        if (ag.dianping && ag.dianping.score) {
+          var dp = ag.dianping;
+          var subs = [];
+          if (dp.taste != null) subs.push('口味 ' + dp.taste);
+          if (dp.environment != null) subs.push('环境 ' + dp.environment);
+          if (dp.service != null) subs.push('服务 ' + dp.service);
+          var dpLine = '点评：' + dp.score + (subs.length ? '（' + subs.join(' / ') + '）' : '');
+          var dr = fmtReviews(dp.reviews);
+          if (dr) dpLine += ' &middot; ' + dr;
+          rows += aggRow('&starf;', dpLine);
+        }
+        if (ag.bilibili_quotes && ag.bilibili_quotes.length) {
+          var quotes = ag.bilibili_quotes.map(function (q) { return '&ldquo;' + q + '&rdquo;'; }).join(' ');
+          var views = fmtViews(ag.bilibili_views);
+          rows += '<div class="source-row"><span class="source-icon">&#9654;</span>' +
+            '<span class="source-content">' + quotes + '</span>' +
+            (views ? '<span class="source-stats">' + views + '</span>' : '') + '</div>';
+        }
+        if (ag.alternatives && ag.alternatives.length) {
+          rows += aggRow('&diams;', '备选：' + ag.alternatives.map(function (a) {
+            return a.name + (a.dianping_score ? '（' + a.dianping_score + '）' : '');
+          }).join('、'));
+        }
+        if (ag.xhs_likes) {
+          rows += aggRow('&sect;', '小红书：' + ag.xhs_likes + ' 人推荐');
+        }
+        if (rows) aggHtml = '<div class="agg-card">' + rows + '</div>';
+      }
+
+      // 主操作：大号导航按钮（navi_url 或 links.amap_navi）+ 平台链接胶囊
+      var links = item.links || {};
+      var naviUrl = links.amap_navi || item.navi_url || '';
+      var actionHtml = '';
+      if (naviUrl) {
+        actionHtml += '<a class="navi-btn" href="' + naviUrl + '" target="_blank" rel="noopener">🧭 导航去这里</a>';
+      }
+      var pills = '';
+      if (links.dianping) pills += '<a class="link-dianping" href="' + links.dianping + '" target="_blank" rel="noopener">点评</a>';
+      if (links.dianping_wang) pills += '<a class="link-dianping" href="' + links.dianping_wang + '" target="_blank" rel="noopener">点评</a>';
+      if (links.bilibili) pills += '<a class="link-bilibili" href="' + links.bilibili + '" target="_blank" rel="noopener">B站</a>';
+      if (links.xhs) pills += '<a class="link-xhs" href="' + links.xhs + '" target="_blank" rel="noopener">小红书</a>';
+      if (pills) actionHtml += '<div class="link-row">' + pills + '</div>';
+
+      // 评分 + 人均（标题下一行）
+      var subParts = [];
+      if (item.rating && item.rating.amap) subParts.push('<span class="star">&starf; ' + item.rating.amap + '</span>');
+      var ppp = getTierProp(item, 'price') || item.price_per_person;
+      if (ppp) subParts.push('<span class="price">人均 &yen;' + ppp + '</span>');
+
+      var tierName = getTierProp(item, 'name');
+      var displayTitle = tierName ? (item.title + ' &rarr; ' + tierName) : item.title;
+
+      // 特性胶囊（如「有大桌」「有宝宝椅」）
+      var featHtml = '';
+      if (item.features && item.features.length) {
+        featHtml = '<div class="feature-row">' + item.features.map(function (f) {
+          return '<span class="feature-tag">' + f + '</span>';
+        }).join('') + '</div>';
+      }
+
+      html += '<div class="timeline-item ' + (item.type || '') + '">' +
+        '<div class="dot">' + (item.icon || '●') + '</div>' +
+        '<div class="time-label">' + (item.time || '') + '</div>' +
+        '<div class="item-title">' + displayTitle + '</div>' +
+        (subParts.length ? '<div class="item-sub">' + subParts.join(' &middot; ') + '</div>' : '') +
+        (item.description ? '<div class="item-meta">' + item.description + '</div>' : '') +
+        (item.address ? '<div class="item-meta item-address">📍 ' + item.address + '</div>' : '') +
+        featHtml + aggHtml + actionHtml +
+        '</div>';
+    }
+    tlEl.innerHTML = html;
+  }
+
+  // 餐厅区：纵向卡片流（空数组则连标题整体隐藏）
+  var restaurants = d.restaurants || [];
+  var rTitle = $('restaurant-section-title');
+  var rList = $('restaurant-list');
+  if (!restaurants.length) {
+    rTitle.style.display = 'none';
+    rList.style.display = 'none';
+    rList.innerHTML = '';
+  } else {
+    rTitle.style.display = '';
+    rList.style.display = '';
+    var cards = '';
+    for (var j = 0; j < restaurants.length; j++) {
+      var r = restaurants[j];
+
+      var confBadge = '';
+      if (r.confidence === 'high') confBadge = '<span class="badge badge-conf-high">置信度高</span>';
+      else if (r.confidence === 'medium') confBadge = '<span class="badge badge-conf-medium">置信度中</span>';
+      else if (r.confidence === 'low') confBadge = '<span class="badge badge-conf-low">置信度低</span>';
+
+      var badges = '';
+      var score = r.rating_amap || r.dianping_score;
+      if (score) badges += '<span class="badge badge-score">&starf; ' + score + '</span>';
+      if (r.price_per_person) badges += '<span class="badge badge-price">人均 &yen;' + r.price_per_person + '</span>';
+      var rReviews = fmtReviews(r.dianping_reviews);
+      if (rReviews) badges += '<span class="badge badge-price">' + rReviews + '</span>';
+
+      var dtParts = [];
+      if (r.district) dtParts.push(r.district);
+      if (r.type) dtParts.push(r.type);
+
+      var rFeat = '';
+      if (r.features && r.features.length) {
+        rFeat = '<div class="feature-row">' + r.features.map(function (f) {
+          return '<span class="feature-tag">' + f + '</span>';
+        }).join('') + '</div>';
+      }
+
+      var rl = r.links || {};
+      var rLinks = '';
+      if (rl.dianping) rLinks += '<a class="link-dianping" href="' + rl.dianping + '" target="_blank" rel="noopener">点评</a>';
+      if (rl.bilibili) rLinks += '<a class="link-bilibili" href="' + rl.bilibili + '" target="_blank" rel="noopener">B站</a>';
+      if (rl.xhs) rLinks += '<a class="link-xhs" href="' + rl.xhs + '" target="_blank" rel="noopener">小红书</a>';
+
+      cards += '<div class="rest-card">' +
+        '<div class="rest-head"><div class="rest-name">' + r.name + '</div>' + confBadge + '</div>' +
+        (badges ? '<div class="badge-row">' + badges + '</div>' : '') +
+        (dtParts.length ? '<div class="rest-meta">' + dtParts.join(' &middot; ') + '</div>' : '') +
+        (r.address ? '<div class="rest-address">📍 ' + r.address + '</div>' : '') +
+        rFeat +
+        (rLinks ? '<div class="link-row">' + rLinks + '</div>' : '') +
+        '</div>';
+    }
+    rList.innerHTML = cards;
+  }
+
+  // 页脚
+  var src = d.sources || [];
+  var srcRow = $('footer-sources');
+  if (src.length) {
+    srcRow.style.display = '';
+    $('source-list').textContent = src.join(' · ');
+  } else {
+    srcRow.style.display = 'none';
+  }
+  $('gen-time').textContent = '旅行助手生成于 ' + fmtNow();
 }
 
-document.addEventListener('DOMContentLoaded', render);
+function switchBudget(level) {
+  currentBudget = level;
+  render();
+  highlightActiveItem(false);
+}
+
+/* ---------- 「进行中」高亮（全防御式：任何异常静默不启用） ---------- */
+function highlightActiveItem(shouldScroll) {
+  try {
+    var t = (TRIP_DATA && TRIP_DATA.trip) || {};
+    var ts = Date.parse(t.date);
+    if (isNaN(ts)) return;
+    var tripDate = new Date(ts);
+    var now = new Date();
+    if (tripDate.getFullYear() !== now.getFullYear() ||
+        tripDate.getMonth() !== now.getMonth() ||
+        tripDate.getDate() !== now.getDate()) return;
+    var tl = TRIP_DATA.timeline || [];
+    var nowMin = now.getHours() * 60 + now.getMinutes();
+    var activeIdx = -1;
+    for (var i = 0; i < tl.length; i++) {
+      var tm = tl[i].time || '';
+      if (!/^\d{1,2}:\d{2}$/.test(tm)) continue;
+      var parts = tm.split(':');
+      var m = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+      if (m <= nowMin) activeIdx = i;
+    }
+    if (activeIdx < 0) return;
+    var items = document.querySelectorAll('#timeline .timeline-item');
+    var elx = items[activeIdx];
+    if (!elx) return;
+    elx.classList.add('active-now');
+    var label = elx.querySelector('.time-label');
+    if (label) {
+      var badge = document.createElement('span');
+      badge.className = 'now-badge';
+      badge.textContent = '进行中';
+      label.appendChild(badge);
+    }
+    if (shouldScroll && elx.scrollIntoView) {
+      elx.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  } catch (e) { /* 静默降级：任何异常都不影响页面 */ }
+}
+
+/* ---------- 字号三档切换（标准 18px / 大字 20.5px / 特大 23px，localStorage 持久化） ---------- */
+var FONT_SIZES = [18, 20.5, 23];
+var FONT_LABELS = ['标准', '大字', '特大'];
+var fontIdx = 0;
+try {
+  fontIdx = parseInt(localStorage.getItem('tp-font-idx') || '0', 10);
+  if (isNaN(fontIdx) || fontIdx < 0 || fontIdx >= FONT_SIZES.length) fontIdx = 0;
+} catch (e) { fontIdx = 0; }
+
+function applyFontSize() {
+  document.documentElement.style.fontSize = FONT_SIZES[fontIdx] + 'px';
+  var lb = $('font-label');
+  if (lb) lb.textContent = FONT_LABELS[fontIdx];
+  try { localStorage.setItem('tp-font-idx', String(fontIdx)); } catch (e) {}
+}
+
+function cycleFontSize() {
+  fontIdx = (fontIdx + 1) % FONT_SIZES.length;
+  applyFontSize();
+}
+applyFontSize();
+
+/* ---------- 回到顶部（滚动超过 600px 显示） ---------- */
+window.addEventListener('scroll', function () {
+  var btn = $('back-top');
+  if (btn) btn.style.display = (window.scrollY > 600) ? 'flex' : 'none';
+});
+function scrollTop() {
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  catch (e) { window.scrollTo(0, 0); }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  render();
+  highlightActiveItem(true);
+});
 </script>
 </body>
 </html>
