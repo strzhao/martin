@@ -30,9 +30,10 @@
   --radius-sm: 0.44rem;
   --radius: 0.78rem;
   --radius-lg: 1.11rem;
+  --serif: "Songti SC","Noto Serif SC",serif;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html { font-size: 18px; }
+html { font-size: 18px; scroll-behavior: smooth; }
 body {
   font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   background: var(--bg);
@@ -45,15 +46,17 @@ body {
   margin: 0 auto;
 }
 
-/* === 头部 === */
+/* === 封面（杂志风，按天气切换渐变） === */
 header {
-  background: var(--accent);
   color: #fff;
-  padding: 1.56rem 1.11rem 1.78rem;
+  padding: 2.2rem 1.11rem 2.4rem;
   text-align: center;
   position: relative;
   overflow: hidden;
 }
+header.cover-default { background: linear-gradient(135deg, #3A7D68 0%, #2C5F4F 100%); }
+header.cover-sunny   { background: linear-gradient(135deg, #D4920A 0%, #E8B94A 100%); }
+header.cover-rainy   { background: linear-gradient(135deg, #3B87CC 0%, #6B9DC7 100%); }
 header::after {
   content: '';
   position: absolute;
@@ -62,33 +65,39 @@ header::after {
   pointer-events: none;
 }
 header h1 {
-  font-family: "Songti SC","Noto Serif SC",serif;
-  font-size: 1.7rem;
+  font-family: var(--serif);
+  font-size: 2rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.4;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.55rem;
   text-wrap: balance;
   position: relative;
 }
 header .subtitle {
-  font-size: 1rem;
+  font-size: 0.98rem;
   line-height: 1.6;
   opacity: .92;
-  margin-bottom: 0.56rem;
+  margin-bottom: 0.7rem;
   position: relative;
 }
 header .meta {
   font-size: 0.85rem;
-  opacity: .88;
   display: flex;
   justify-content: center;
-  gap: 0.78rem;
+  gap: 0.45rem;
   flex-wrap: wrap;
   font-weight: 500;
   position: relative;
 }
-header .meta span { display: inline-flex; align-items: center; }
+header .meta span {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255,255,255,.18);
+  border-radius: 1rem;
+  padding: 0.16rem 0.7rem;
+  line-height: 1.5;
+}
 
 /* === 天气卡片 === */
 .weather-card {
@@ -133,31 +142,33 @@ header .meta span { display: inline-flex; align-items: center; }
 }
 .map-section a:hover { background: #2d73b0; }
 
-/* === 预算切换 === */
+/* === 预算切换（分段控件风，逻辑不变） === */
 .budget-bar {
   margin: 0 0.8rem 1rem;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.25rem;
+  background: #EFEEEA;
+  border-radius: 0.9rem;
+  padding: 0.25rem;
 }
 .budget-bar button {
   flex: 1;
   min-height: 2.56rem;
   padding: 0.35rem 0.3rem;
-  border: 0.055rem solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card-bg);
-  font-size: 1rem;
+  border: none;
+  border-radius: 0.68rem;
+  background: transparent;
+  font-size: 0.95rem;
   cursor: pointer;
   font-weight: 600;
   color: var(--text-secondary);
   font-family: inherit;
 }
-.budget-bar button:hover { background: var(--card-hover); border-color: var(--accent); }
+.budget-bar button:hover { color: var(--accent); }
 .budget-bar button.active-budget {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--card-bg);
   color: var(--accent);
-  box-shadow: 0 0 0 0.055rem var(--accent);
+  box-shadow: var(--shadow-sm);
 }
 .budget-static {
   margin: 0 0.8rem 1rem;
@@ -173,7 +184,65 @@ header .meta span { display: inline-flex; align-items: center; }
   color: var(--text-secondary);
 }
 
-/* === 分区标题 === */
+/* === 「进行中」卡（仅当天行程出现） === */
+.now-card {
+  margin: 0 0.8rem 1rem;
+  background: var(--card-bg);
+  border: 0.055rem solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 0.75rem 0.9rem 0.9rem;
+}
+.now-main { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.now-tag {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 0.8rem;
+  padding: 0.08rem 0.55rem;
+}
+.now-time { font-size: 1.05rem; font-weight: 700; color: var(--accent); }
+.now-title { font-size: 1rem; font-weight: 600; }
+.now-next { font-size: 0.88rem; color: var(--muted-dark); margin-top: 0.3rem; }
+
+/* === sticky 日锚点条（≥2 天时出现） === */
+.day-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.45rem 0.8rem;
+  margin-bottom: 0.9rem;
+  background: var(--bg);
+  border-bottom: 0.055rem solid var(--hairline);
+  box-shadow: 0 0.11rem 0.33rem rgba(26,26,24,.04);
+}
+.day-nav a {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.45rem;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  background: var(--card-bg);
+  border: 0.055rem solid var(--border);
+  border-radius: 1.2rem;
+  white-space: nowrap;
+}
+.day-nav a.active-day {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* === 分区标题（单日退化样式） === */
 .section-title {
   margin: 0 0.8rem 0.55rem;
   font-size: 0.9rem;
@@ -181,9 +250,66 @@ header .meta span { display: inline-flex; align-items: center; }
   color: var(--muted-dark);
   letter-spacing: 0.05em;
 }
+/* 章节式大标题（餐厅总览：hairline + 衬线标题，无 Day 圆徽） */
+.chapter-title {
+  margin: 2.6rem 0.8rem 1rem;
+  padding-top: 1.5rem;
+  border-top: 0.055rem solid var(--hairline);
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+/* === 日章节 === */
+.day-chapter {
+  margin-top: 2.6rem;
+  padding-top: 1.5rem;
+  border-top: 0.055rem solid var(--hairline);
+  scroll-margin-top: 3.5rem;
+}
+.day-chapter:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.day-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0.8rem 1.1rem;
+  flex-wrap: wrap;
+}
+.day-num {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--serif);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.15;
+  box-shadow: var(--shadow-sm);
+}
+.day-num .dn-label { font-size: 0.5rem; letter-spacing: 0.14em; opacity: .88; }
+.day-num .dn-num { font-size: 1.1rem; font-weight: 700; }
+.day-head-text { flex: 1; min-width: 8rem; }
+.day-title { font-size: 1.1rem; font-weight: 700; line-height: 1.45; }
+.day-theme { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.08rem; }
+.day-weather {
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.15rem 0.65rem;
+  border-radius: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 /* === 时间线 === */
 .timeline { margin: 0 0.8rem 1.2rem; position: relative; }
+.day-chapter .timeline { margin-bottom: 0; }
 .timeline::before {
   content: '';
   position: absolute;
@@ -200,25 +326,27 @@ header .meta span { display: inline-flex; align-items: center; }
   margin-bottom: 1.5rem;
 }
 .timeline-item:last-child { margin-bottom: 0; }
-.timeline-item .dot {
+/* 类型图标方块：2.4rem 见方、类型色 12% 底（inset 染色 + 外圈底色盖住轴线） */
+.timeline-item .type-icon {
   position: absolute;
-  left: 0.79rem;
-  top: 0.15rem;
-  width: 1.34rem;
-  height: 1.34rem;
-  border-radius: 50%;
-  background: var(--card-bg);
-  border: 0.11rem solid var(--accent);
+  left: 0.26rem;
+  top: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.7rem;
+  background: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 1.4rem;
+  line-height: 1;
   z-index: 1;
-  box-shadow: 0 0 0 0.22rem var(--bg);
+  box-shadow: inset 0 0 0 3rem rgba(58,125,104,.12), 0 0 0 0.22rem var(--bg);
 }
-.timeline-item.transport .dot { border-color: var(--sky); }
-.timeline-item.sight .dot { border-color: var(--accent); }
-.timeline-item.break .dot { border-color: var(--amber); }
+.timeline-item.transport .type-icon { box-shadow: inset 0 0 0 3rem rgba(59,135,204,.12), 0 0 0 0.22rem var(--bg); }
+.timeline-item.food .type-icon      { box-shadow: inset 0 0 0 3rem rgba(212,146,10,.12), 0 0 0 0.22rem var(--bg); }
+.timeline-item.sight .type-icon     { box-shadow: inset 0 0 0 3rem rgba(58,125,104,.12), 0 0 0 0.22rem var(--bg); }
+.timeline-item.break .type-icon     { box-shadow: inset 0 0 0 3rem rgba(143,143,141,.14), 0 0 0 0.22rem var(--bg); }
 .timeline-item .time-label {
   font-size: 1rem;
   color: var(--accent);
@@ -226,6 +354,10 @@ header .meta span { display: inline-flex; align-items: center; }
   letter-spacing: 0.02em;
   margin-bottom: 0.15rem;
 }
+.timeline-item.transport .time-label { color: var(--sky); }
+.timeline-item.food .time-label      { color: var(--amber-dark); }
+.timeline-item.sight .time-label     { color: var(--accent); }
+.timeline-item.break .time-label     { color: var(--muted-dark); }
 .timeline-item .item-title {
   font-size: 1.12rem;
   font-weight: 700;
@@ -233,20 +365,19 @@ header .meta span { display: inline-flex; align-items: center; }
   margin-bottom: 0.15rem;
   text-wrap: balance;
 }
-.timeline-item .item-sub {
+.timeline-item .item-desc {
   font-size: 0.9rem;
   color: var(--text-secondary);
-  margin-bottom: 0.25rem;
-}
-.timeline-item .item-sub .star { color: var(--amber); font-weight: 700; }
-.timeline-item .item-sub .price { font-weight: 600; }
-.timeline-item .item-meta {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.35rem;
   line-height: 1.75;
+  margin-top: 0.2rem;
 }
-.timeline-item .item-address { color: var(--muted-dark); }
+.timeline-item .item-address {
+  font-size: 0.85rem;
+  color: var(--muted-dark);
+  margin-top: 0.3rem;
+  line-height: 1.7;
+}
+.timeline-item .badge, .timeline-item .feature-tag { font-size: 0.78rem; }
 
 /* 「进行中」高亮 */
 .timeline-item.active-now {
@@ -259,7 +390,7 @@ header .meta span { display: inline-flex; align-items: center; }
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
 }
-.timeline-item.active-now .dot { left: 1.54rem; }
+.timeline-item.active-now .type-icon { left: 1.01rem; }
 .now-badge {
   display: inline-block;
   margin-left: 0.4rem;
@@ -272,36 +403,25 @@ header .meta span { display: inline-flex; align-items: center; }
   vertical-align: 0.1rem;
 }
 
-/* 多日分隔条 */
-.day-divider {
-  position: relative;
-  z-index: 1;
-  margin: 1.3rem 0 1rem;
-  padding: 0.6rem 0.9rem;
-  background: linear-gradient(90deg, #E8F2EE, #F7F6F1);
-  border-left: 0.17rem solid var(--accent);
-  border-radius: 0 0.5rem 0.5rem 0;
+/* === 徽章行（人均/评分/特性胶囊） === */
+.badge-row {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
+  margin-top: 0.4rem;
 }
-.day-divider:first-child { margin-top: 0; }
-.day-badge {
-  font-family: "Songti SC","Noto Serif SC",serif;
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--accent);
+.badge {
+  font-size: 0.82rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.day-weather {
-  font-size: 0.8rem;
-  color: var(--muted-dark);
-  background: rgba(255,255,255,.85);
-  padding: 0.12rem 0.6rem;
-  border-radius: 0.9rem;
-}
-
-/* === 特性胶囊 === */
+.badge-score { background: var(--amber-soft); color: var(--amber-dark); }
+.badge-price { background: #f3f2ef; color: var(--text-secondary); }
+.badge-conf-high { background: var(--accent-soft); color: var(--accent); }
+.badge-conf-medium { background: var(--amber-soft); color: var(--amber-dark); }
+.badge-conf-low { background: var(--red-soft); color: var(--red); }
 .feature-row {
   display: flex;
   gap: 0.35rem;
@@ -316,6 +436,28 @@ header .meta span { display: inline-flex; align-items: center; }
   border-radius: 0.9rem;
   font-weight: 500;
 }
+
+/* === 证据折叠（为什么推荐） === */
+details.evidence { margin-top: 0.55rem; }
+details.evidence summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted-dark);
+}
+details.evidence summary::-webkit-details-marker { display: none; }
+details.evidence summary::after {
+  content: '\25BE';
+  color: var(--muted);
+  transition: transform .18s ease;
+}
+details.evidence[open] summary::after { transform: rotate(180deg); }
+details.evidence .agg-card { margin-top: 0.1rem; }
 
 /* === 聚合卡片 === */
 .agg-card {
@@ -410,30 +552,12 @@ header .meta span { display: inline-flex; align-items: center; }
   gap: 0.6rem;
 }
 .rest-name { font-size: 1.1rem; font-weight: 700; line-height: 1.5; }
-.badge-row {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  margin-top: 0.4rem;
-}
-.badge {
-  font-size: 0.82rem;
-  padding: 0.1rem 0.55rem;
-  border-radius: 1rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.badge-score { background: var(--amber-soft); color: var(--amber-dark); }
-.badge-price { background: #f3f2ef; color: var(--text-secondary); }
-.badge-conf-high { background: var(--accent-soft); color: var(--accent); }
-.badge-conf-medium { background: var(--amber-soft); color: var(--amber-dark); }
-.badge-conf-low { background: var(--red-soft); color: var(--red); }
 .rest-meta { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.35rem; }
 .rest-address { font-size: 0.9rem; color: var(--muted-dark); margin-top: 0.15rem; }
 
 /* === 页脚 === */
 footer {
-  margin: 1.4rem 0.8rem 6.5rem;
+  margin: 2.2rem 0.8rem 6.5rem;
   padding-top: 0.9rem;
   text-align: center;
   font-size: 0.82rem;
@@ -478,7 +602,7 @@ footer {
 </head>
 <body>
 
-<header>
+<header id="cover" class="cover-default">
   <h1 id="trip-title">旅行攻略</h1>
   <div class="subtitle" id="trip-subtitle" style="display:none"></div>
   <div class="meta" id="trip-meta"></div>
@@ -490,10 +614,14 @@ footer {
 
 <div id="budget-bar" style="display:none"></div>
 
-<div class="section-title" id="timeline-section-title" style="display:none">📅 行程安排</div>
-<div id="timeline" class="timeline"></div>
+<div id="now-card" class="now-card" style="display:none"></div>
 
-<div class="section-title" id="restaurant-section-title" style="display:none">🍜 餐厅总览</div>
+<nav id="day-nav" class="day-nav" style="display:none" aria-label="日期导航"></nav>
+
+<div class="section-title" id="timeline-section-title" style="display:none">📅 行程安排</div>
+<div id="timeline"></div>
+
+<div class="section-title chapter-title" id="restaurant-section-title" style="display:none">🍜 餐厅总览</div>
 <div id="restaurant-list" class="restaurant-list"></div>
 
 <footer>
@@ -594,6 +722,141 @@ function aggRow(icon, content) {
     '<span class="source-content">' + content + '</span></div>';
 }
 
+/* ---------- 日章节工具 ---------- */
+/* day 文本按「·」防御式 split：前段=日期星期、后段=主题；无「·」整串作标题 */
+function splitDay(dayText) {
+  var s = String(dayText || '');
+  var idx = s.indexOf('·');
+  if (idx < 0) return { head: s.replace(/^\s+|\s+$/g, ''), theme: '' };
+  return {
+    head: s.slice(0, idx).replace(/^\s+|\s+$/g, ''),
+    theme: s.slice(idx + 1).replace(/^\s+|\s+$/g, '')
+  };
+}
+
+/* 锚点文案：DayN·日期（日期从前段提取 M/D，失败则只用 DayN） */
+function dayAnchorLabel(n, head) {
+  var datePart = '';
+  var m = /(\d{1,2}\/\d{1,2})/.exec(head || '');
+  if (m) datePart = m[1];
+  return 'Day' + n + (datePart ? '·' + datePart : '');
+}
+
+/* 按 item.day 连续分组 */
+function buildDayGroups(tl) {
+  var groups = [];
+  for (var i = 0; i < tl.length; i++) {
+    var item = tl[i];
+    var day = item.day || '';
+    var last = groups.length ? groups[groups.length - 1] : null;
+    if (last && day === last.day) {
+      last.items.push(item);
+    } else {
+      groups.push({ day: day, weather: item.day_weather || '', items: [item] });
+    }
+  }
+  return groups;
+}
+
+function uniqueDayCount(groups) {
+  var seen = {};
+  var n = 0;
+  for (var i = 0; i < groups.length; i++) {
+    var d = groups[i].day;
+    if (d && !seen[d]) { seen[d] = 1; n++; }
+  }
+  return n;
+}
+
+/* ---------- 行程项渲染 ---------- */
+function itemHtml(item) {
+  // 聚合口碑：各字段缺失时跳过对应行；整体折叠进「为什么推荐」
+  var aggHtml = '';
+  if (item.aggregation) {
+    var ag = item.aggregation;
+    var rows = '';
+    if (ag.primary && ag.primary.dianping_score) {
+      var pv = fmtReviews(ag.primary.dianping_reviews);
+      rows += aggRow('&starf;', (ag.primary.name || '') + ' &middot; 评分 ' + ag.primary.dianping_score +
+        (pv ? ' &middot; ' + pv : ''));
+    }
+    if (ag.dianping && ag.dianping.score) {
+      var dp = ag.dianping;
+      var subs = [];
+      if (dp.taste != null) subs.push('口味 ' + dp.taste);
+      if (dp.environment != null) subs.push('环境 ' + dp.environment);
+      if (dp.service != null) subs.push('服务 ' + dp.service);
+      var dpLine = '点评：' + dp.score + (subs.length ? '（' + subs.join(' / ') + '）' : '');
+      var dr = fmtReviews(dp.reviews);
+      if (dr) dpLine += ' &middot; ' + dr;
+      rows += aggRow('&starf;', dpLine);
+    }
+    if (ag.bilibili_quotes && ag.bilibili_quotes.length) {
+      var quotes = ag.bilibili_quotes.map(function (q) { return '&ldquo;' + q + '&rdquo;'; }).join(' ');
+      var views = fmtViews(ag.bilibili_views);
+      rows += '<div class="source-row"><span class="source-icon">&#9654;</span>' +
+        '<span class="source-content">' + quotes + '</span>' +
+        (views ? '<span class="source-stats">' + views + '</span>' : '') + '</div>';
+    }
+    if (ag.alternatives && ag.alternatives.length) {
+      rows += aggRow('&diams;', '备选：' + ag.alternatives.map(function (a) {
+        return a.name + (a.dianping_score ? '（' + a.dianping_score + '）' : '');
+      }).join('、'));
+    }
+    if (ag.xhs_likes) {
+      rows += aggRow('&sect;', '小红书：' + ag.xhs_likes + ' 人推荐');
+    }
+    if (rows) {
+      aggHtml = '<details class="evidence"><summary>为什么推荐</summary>' +
+        '<div class="agg-card">' + rows + '</div></details>';
+    }
+  }
+
+  // 主操作：大号导航按钮（navi_url 或 links.amap_navi）+ 平台链接胶囊
+  var links = item.links || {};
+  var naviUrl = links.amap_navi || item.navi_url || '';
+  var actionHtml = '';
+  if (naviUrl) {
+    actionHtml += '<a class="navi-btn" href="' + naviUrl + '" target="_blank" rel="noopener">🧭 导航去这里</a>';
+  }
+  var pills = '';
+  if (links.dianping) pills += '<a class="link-dianping" href="' + links.dianping + '" target="_blank" rel="noopener">点评</a>';
+  if (links.dianping_wang) pills += '<a class="link-dianping" href="' + links.dianping_wang + '" target="_blank" rel="noopener">点评</a>';
+  if (links.bilibili) pills += '<a class="link-bilibili" href="' + links.bilibili + '" target="_blank" rel="noopener">B站</a>';
+  if (links.xhs) pills += '<a class="link-xhs" href="' + links.xhs + '" target="_blank" rel="noopener">小红书</a>';
+  if (pills) actionHtml += '<div class="link-row">' + pills + '</div>';
+
+  // 徽章行：人均¥X / ★评分 / features 胶囊
+  var badges = '';
+  var ppp = getTierProp(item, 'price') || item.price_per_person;
+  if (ppp) badges += '<span class="badge badge-price">人均 &yen;' + ppp + '</span>';
+  if (item.rating && item.rating.amap) badges += '<span class="badge badge-score">&starf; ' + item.rating.amap + '</span>';
+  if (item.features && item.features.length) {
+    for (var i = 0; i < item.features.length; i++) {
+      badges += '<span class="feature-tag">' + item.features[i] + '</span>';
+    }
+  }
+
+  var tierName = getTierProp(item, 'name');
+  var displayTitle = tierName ? (item.title + ' &rarr; ' + tierName) : item.title;
+
+  return '<div class="timeline-item ' + (item.type || '') + '">' +
+    '<div class="type-icon">' + (item.icon || '●') + '</div>' +
+    '<div class="time-label">' + (item.time || '') + '</div>' +
+    '<div class="item-title">' + displayTitle + '</div>' +
+    (item.description ? '<div class="item-desc">' + item.description + '</div>' : '') +
+    (badges ? '<div class="badge-row">' + badges + '</div>' : '') +
+    (item.address ? '<div class="item-address">📍 ' + item.address + '</div>' : '') +
+    actionHtml + aggHtml +
+    '</div>';
+}
+
+function itemsHtml(items) {
+  var html = '';
+  for (var i = 0; i < items.length; i++) html += itemHtml(items[i]);
+  return html;
+}
+
 /* ---------- 主渲染 ---------- */
 function render() {
   var d = TRIP_DATA || {};
@@ -617,7 +880,14 @@ function render() {
     subEl.style.display = 'none';
   }
 
-  // header meta：字段缺失则跳过对应 span
+  // 封面渐变：按天气 condition 映射（含晴→暖琥 / 含雨→天蓝灰 / 其他→苔绿）
+  var cond = w.condition || '';
+  var coverClass = 'cover-default';
+  if (cond.indexOf('晴') >= 0) coverClass = 'cover-sunny';
+  else if (cond.indexOf('雨') >= 0) coverClass = 'cover-rainy';
+  $('cover').className = coverClass;
+
+  // 封面徽章行：日期范围 / 天气摘要 / 交通摘要 / 餐饮人均，缺失字段跳过
   var tiers = getBudgetTiers(bg);
   var singleBudget = getSingleBudget(bg);
   var metaHtml = '';
@@ -635,7 +905,9 @@ function render() {
   if (tr.distance_km) dd += tr.distance_km + 'km';
   var dur = fmtDuration(tr.duration_min);
   if (dur) dd += (dd ? ' / ' : '') + dur;
-  var trSpan = od + (od && dd ? ' &middot; ' : '') + dd;
+  var trSpan = tr.mode ? tr.mode : '';
+  if (od) trSpan += (trSpan ? ' &middot; ' : '') + od;
+  if (dd) trSpan += (trSpan ? ' &middot; ' : '') + dd;
   if (trSpan) metaHtml += '<span>' + trSpan + '</span>';
   var budgetPrice = tiers ? getBudgetFoodPrice(bg, currentBudget) : singleBudget;
   if (budgetPrice !== '' && budgetPrice != null) {
@@ -679,7 +951,7 @@ function render() {
     mapEl.style.display = 'none';
   }
 
-  // 预算区：三档按钮组 / 单一静态文本 / 整体隐藏
+  // 预算区：三档分段控件 / 单一静态文本 / 整体隐藏
   var bb = $('budget-bar');
   if (tiers) {
     bb.className = 'budget-bar';
@@ -702,110 +974,69 @@ function render() {
     bb.innerHTML = '';
   }
 
-  // 时间线（支持多日分组：item.day 变化时渲染日分隔条）
+  // 时间线：≥2 个不同 day 渲染日章节 + 锚点条；否则退化为「📅 行程安排」+ 单时间流
   var tl = d.timeline || [];
   var tlTitle = $('timeline-section-title');
   var tlEl = $('timeline');
+  var nav = $('day-nav');
   if (!tl.length) {
     tlTitle.style.display = 'none';
     tlEl.innerHTML = '';
+    nav.style.display = 'none';
+    nav.innerHTML = '';
   } else {
-    tlTitle.style.display = '';
+    var groups = buildDayGroups(tl);
+    var multiDay = uniqueDayCount(groups) >= 2;
+    tlTitle.style.display = multiDay ? 'none' : '';
     var html = '';
-    var lastDay = null;
-    for (var i = 0; i < tl.length; i++) {
-      var item = tl[i];
-
-      var itemDay = item.day || '';
-      if (itemDay && itemDay !== lastDay) {
-        lastDay = itemDay;
-        html += '<div class="day-divider"><span class="day-badge">' + itemDay + '</span>' +
-          (item.day_weather ? '<span class="day-weather">' + item.day_weather + '</span>' : '') +
-          '</div>';
+    var navHtml = '';
+    if (!multiDay) {
+      html = '<div class="timeline">' + itemsHtml(tl) + '</div>';
+    } else {
+      var seenDay = {};
+      var daySeq = 0;
+      for (var gi = 0; gi < groups.length; gi++) {
+        var g = groups[gi];
+        if (!g.day) {
+          // 无 day 的分组（防御）：渲染为无章节头的普通时间流
+          html += '<div class="timeline">' + itemsHtml(g.items) + '</div>';
+          continue;
+        }
+        var n = 0;
+        if (seenDay[g.day]) {
+          n = 0; // 同一 day 非连续重复出现：只保留首个章节的锚点
+        } else {
+          daySeq++;
+          seenDay[g.day] = daySeq;
+          n = daySeq;
+        }
+        var parts = splitDay(g.day);
+        html += '<section class="day-chapter"' + (n ? ' id="day-' + n + '"' : '') + '>' +
+          '<div class="day-head">' +
+            '<span class="day-num"><span class="dn-label">DAY</span><span class="dn-num">' + (n || '') + '</span></span>' +
+            '<div class="day-head-text">' +
+              '<div class="day-title">' + (parts.head || g.day) + '</div>' +
+              (parts.theme ? '<div class="day-theme">' + parts.theme + '</div>' : '') +
+            '</div>' +
+            (g.weather ? '<span class="day-weather">' + g.weather + '</span>' : '') +
+          '</div>' +
+          '<div class="timeline">' + itemsHtml(g.items) + '</div>' +
+          '</section>';
+        if (n) navHtml += '<a href="#day-' + n + '">' + dayAnchorLabel(n, parts.head) + '</a>';
       }
-
-      // 聚合口碑卡：各字段缺失时跳过对应行
-      var aggHtml = '';
-      if (item.aggregation) {
-        var ag = item.aggregation;
-        var rows = '';
-        if (ag.primary && ag.primary.dianping_score) {
-          var pv = fmtReviews(ag.primary.dianping_reviews);
-          rows += aggRow('&starf;', (ag.primary.name || '') + ' &middot; 评分 ' + ag.primary.dianping_score +
-            (pv ? ' &middot; ' + pv : ''));
-        }
-        if (ag.dianping && ag.dianping.score) {
-          var dp = ag.dianping;
-          var subs = [];
-          if (dp.taste != null) subs.push('口味 ' + dp.taste);
-          if (dp.environment != null) subs.push('环境 ' + dp.environment);
-          if (dp.service != null) subs.push('服务 ' + dp.service);
-          var dpLine = '点评：' + dp.score + (subs.length ? '（' + subs.join(' / ') + '）' : '');
-          var dr = fmtReviews(dp.reviews);
-          if (dr) dpLine += ' &middot; ' + dr;
-          rows += aggRow('&starf;', dpLine);
-        }
-        if (ag.bilibili_quotes && ag.bilibili_quotes.length) {
-          var quotes = ag.bilibili_quotes.map(function (q) { return '&ldquo;' + q + '&rdquo;'; }).join(' ');
-          var views = fmtViews(ag.bilibili_views);
-          rows += '<div class="source-row"><span class="source-icon">&#9654;</span>' +
-            '<span class="source-content">' + quotes + '</span>' +
-            (views ? '<span class="source-stats">' + views + '</span>' : '') + '</div>';
-        }
-        if (ag.alternatives && ag.alternatives.length) {
-          rows += aggRow('&diams;', '备选：' + ag.alternatives.map(function (a) {
-            return a.name + (a.dianping_score ? '（' + a.dianping_score + '）' : '');
-          }).join('、'));
-        }
-        if (ag.xhs_likes) {
-          rows += aggRow('&sect;', '小红书：' + ag.xhs_likes + ' 人推荐');
-        }
-        if (rows) aggHtml = '<div class="agg-card">' + rows + '</div>';
-      }
-
-      // 主操作：大号导航按钮（navi_url 或 links.amap_navi）+ 平台链接胶囊
-      var links = item.links || {};
-      var naviUrl = links.amap_navi || item.navi_url || '';
-      var actionHtml = '';
-      if (naviUrl) {
-        actionHtml += '<a class="navi-btn" href="' + naviUrl + '" target="_blank" rel="noopener">🧭 导航去这里</a>';
-      }
-      var pills = '';
-      if (links.dianping) pills += '<a class="link-dianping" href="' + links.dianping + '" target="_blank" rel="noopener">点评</a>';
-      if (links.dianping_wang) pills += '<a class="link-dianping" href="' + links.dianping_wang + '" target="_blank" rel="noopener">点评</a>';
-      if (links.bilibili) pills += '<a class="link-bilibili" href="' + links.bilibili + '" target="_blank" rel="noopener">B站</a>';
-      if (links.xhs) pills += '<a class="link-xhs" href="' + links.xhs + '" target="_blank" rel="noopener">小红书</a>';
-      if (pills) actionHtml += '<div class="link-row">' + pills + '</div>';
-
-      // 评分 + 人均（标题下一行）
-      var subParts = [];
-      if (item.rating && item.rating.amap) subParts.push('<span class="star">&starf; ' + item.rating.amap + '</span>');
-      var ppp = getTierProp(item, 'price') || item.price_per_person;
-      if (ppp) subParts.push('<span class="price">人均 &yen;' + ppp + '</span>');
-
-      var tierName = getTierProp(item, 'name');
-      var displayTitle = tierName ? (item.title + ' &rarr; ' + tierName) : item.title;
-
-      // 特性胶囊（如「有大桌」「有宝宝椅」）
-      var featHtml = '';
-      if (item.features && item.features.length) {
-        featHtml = '<div class="feature-row">' + item.features.map(function (f) {
-          return '<span class="feature-tag">' + f + '</span>';
-        }).join('') + '</div>';
-      }
-
-      html += '<div class="timeline-item ' + (item.type || '') + '">' +
-        '<div class="dot">' + (item.icon || '●') + '</div>' +
-        '<div class="time-label">' + (item.time || '') + '</div>' +
-        '<div class="item-title">' + displayTitle + '</div>' +
-        (subParts.length ? '<div class="item-sub">' + subParts.join(' &middot; ') + '</div>' : '') +
-        (item.description ? '<div class="item-meta">' + item.description + '</div>' : '') +
-        (item.address ? '<div class="item-meta item-address">📍 ' + item.address + '</div>' : '') +
-        featHtml + aggHtml + actionHtml +
-        '</div>';
     }
     tlEl.innerHTML = html;
+    if (navHtml) {
+      nav.innerHTML = navHtml;
+      nav.style.display = '';
+    } else {
+      nav.style.display = 'none';
+      nav.innerHTML = '';
+    }
   }
+
+  // 「进行中」卡（仅 trip.date 为今天时出现；任何异常静默）
+  renderNowCard();
 
   // 餐厅区：纵向卡片流（空数组则连标题整体隐藏）
   var restaurants = d.restaurants || [];
@@ -816,6 +1047,7 @@ function render() {
     rList.style.display = 'none';
     rList.innerHTML = '';
   } else {
+    rTitle.textContent = '🍜 餐厅总览 · ' + restaurants.length + ' 家';
     rTitle.style.display = '';
     rList.style.display = '';
     var cards = '';
@@ -873,6 +1105,9 @@ function render() {
     srcRow.style.display = 'none';
   }
   $('gen-time').textContent = '旅行助手生成于 ' + fmtNow();
+
+  // scroll-spy（纯增强：无 IntersectionObserver 静默跳过，锚点本身仍可用）
+  initScrollSpy();
 }
 
 function switchBudget(level) {
@@ -881,30 +1116,75 @@ function switchBudget(level) {
   highlightActiveItem(false);
 }
 
-/* ---------- 「进行中」高亮（全防御式：任何异常静默不启用） ---------- */
-function highlightActiveItem(shouldScroll) {
+/* ---------- 「进行中」定位（全防御式：任何异常返回 null） ---------- */
+function findNowProgress() {
   try {
     var t = (TRIP_DATA && TRIP_DATA.trip) || {};
     var ts = Date.parse(t.date);
-    if (isNaN(ts)) return;
+    if (isNaN(ts)) return null;
     var tripDate = new Date(ts);
     var now = new Date();
     if (tripDate.getFullYear() !== now.getFullYear() ||
         tripDate.getMonth() !== now.getMonth() ||
-        tripDate.getDate() !== now.getDate()) return;
+        tripDate.getDate() !== now.getDate()) return null;
     var tl = TRIP_DATA.timeline || [];
     var nowMin = now.getHours() * 60 + now.getMinutes();
     var activeIdx = -1;
+    var nextIdx = -1;
     for (var i = 0; i < tl.length; i++) {
       var tm = tl[i].time || '';
       if (!/^\d{1,2}:\d{2}$/.test(tm)) continue;
       var parts = tm.split(':');
       var m = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
       if (m <= nowMin) activeIdx = i;
+      else if (nextIdx < 0) nextIdx = i;
     }
-    if (activeIdx < 0) return;
+    if (activeIdx < 0) return null;
+    return { active: activeIdx, next: nextIdx };
+  } catch (e) { return null; }
+}
+
+/* 「进行中」卡：当前项 + 下一站 + 导航（当前或下一站有 navi 时） */
+function renderNowCard() {
+  try {
+    var card = $('now-card');
+    if (!card) return;
+    var prog = findNowProgress();
+    if (!prog) {
+      card.style.display = 'none';
+      card.innerHTML = '';
+      return;
+    }
+    var tl = (TRIP_DATA && TRIP_DATA.timeline) || [];
+    var cur = tl[prog.active] || {};
+    var nxt = (prog.next >= 0) ? tl[prog.next] : null;
+    var curLinks = cur.links || {};
+    var navi = curLinks.amap_navi || cur.navi_url || '';
+    if (!navi && nxt) {
+      var nxtLinks = nxt.links || {};
+      navi = nxtLinks.amap_navi || nxt.navi_url || '';
+    }
+    var html = '<div class="now-main"><span class="now-tag">进行中</span>' +
+      '<span class="now-time">' + (cur.time || '') + '</span>' +
+      '<span class="now-title">' + (cur.title || '') + '</span></div>';
+    if (nxt) {
+      html += '<div class="now-next">下一站 · ' + (nxt.time || '') + ' ' + (nxt.title || '') + '</div>';
+    }
+    if (navi) {
+      html += '<a class="navi-btn" href="' + navi + '" target="_blank" rel="noopener">🧭 导航</a>';
+    }
+    card.innerHTML = html;
+    card.style.display = '';
+  } catch (e) { /* 静默降级 */ }
+}
+
+/* ---------- 「进行中」高亮（章内 item 高亮 + 自动滚动，全防御式） ---------- */
+function highlightActiveItem(shouldScroll) {
+  try {
+    var prog = findNowProgress();
+    if (!prog) return;
     var items = document.querySelectorAll('#timeline .timeline-item');
-    var elx = items[activeIdx];
+    var elx = items[prog.active];
     if (!elx) return;
     elx.classList.add('active-now');
     var label = elx.querySelector('.time-label');
@@ -918,6 +1198,44 @@ function highlightActiveItem(shouldScroll) {
       elx.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (e) { /* 静默降级：任何异常都不影响页面 */ }
+}
+
+/* ---------- scroll-spy：当前章节锚点高亮（纯增强，挂了不影响锚点跳转） ---------- */
+var spyObserver = null;
+function initScrollSpy() {
+  try {
+    if (spyObserver && spyObserver.disconnect) { spyObserver.disconnect(); spyObserver = null; }
+    if (!('IntersectionObserver' in window)) return;
+    var nav = $('day-nav');
+    if (!nav || nav.style.display === 'none') return;
+    var links = nav.querySelectorAll('a');
+    if (!links.length) return;
+    var map = {};
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      if (href.charAt(0) === '#') map[href.slice(1)] = links[i];
+    }
+    var sections = document.querySelectorAll('.day-chapter[id]');
+    if (!sections.length) return;
+    var currentId = null;
+    var setActive = function (id) {
+      if (id === currentId || !map[id]) return;
+      currentId = id;
+      for (var k in map) {
+        if (map.hasOwnProperty(k)) {
+          if (k === id) map[k].classList.add('active-day');
+          else map[k].classList.remove('active-day');
+        }
+      }
+    };
+    spyObserver = new IntersectionObserver(function (entries) {
+      for (var j = 0; j < entries.length; j++) {
+        var en = entries[j];
+        if (en.isIntersecting && en.target && en.target.id) setActive(en.target.id);
+      }
+    }, { rootMargin: '-63px 0px -65% 0px', threshold: 0 });
+    for (var s = 0; s < sections.length; s++) spyObserver.observe(sections[s]);
+  } catch (e) { /* 静默降级 */ }
 }
 
 /* ---------- 字号三档切换（标准 18px / 大字 20.5px / 特大 23px，localStorage 持久化） ---------- */
