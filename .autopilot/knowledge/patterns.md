@@ -176,3 +176,92 @@ async function apiFetch(path: string, options: { method?: string; body?: unknown
 
 关联 [[2026-07-17]]（同 PR 注入点教训，本次是迭代流程）+ [[hermes-contribution-followups]]（sweeper 红线）。
 ```
+
+## [2026-08-14] FTS5 跨引擎索引不一致：engine-version 门控检测 + 测试 fabrication 两个坑
+<!-- tags: hermes, sqlite, fts5, contribution, testing, fabrication, state-db -->
+
+**场景**：hermes #86027——SQLite 升级（3.46.1→3.5x）后 legacy inline FTS5 trigram 表被判 `malformed inverted index`，但 MATCH/触发器写全正常 → 启动零报错、malformed 静默携带。根因：content 含嵌入 NUL 时 trigram tokenizer 跨引擎行为变更，**任一引擎只认自己写的索引**（对称验证：老引擎也拒新引擎写的同内容索引）。
+
+**解法模式**：`state_meta` 存上次验证通过的 `sqlite3.sqlite_version`（`fts_integrity_engine`），引擎变更时才对每个 fts 表跑 FTS5 `'integrity-check'` 特殊命令，失败→`'rebuild'`（普通 inline 表也可用，从 `%_content` 影子重分词）+复核。门控永不炸打开（整体吞 `sqlite3.Error` 转日志）；无验证能力的宿主（探针 None / 无 FTS5）不盖 marker——不替同引擎 capable 宿主背书。
+
+**fabrication 两坑（CI 无老引擎时怎么造这个状态）**：
+1. ❌ 删 `%_content` 影子行——能让 `'integrity-check'` 炸，但 `'rebuild'` 从 `%_content` 重分词 → 该行永久丢失（MATCH 2→1），"修复后命中数保持"断言必挂。红蓝两队独立收敛到同一结论。
+2. ✅ DEADBEEF 覆写 `%_data` 块——索引坏但内容在，`'rebuild'` 完整复原。另：破坏操作须与触发器写入分事务提交，否则 commit 本身在 fts5 一致性检查里炸。
+
+**教训**：修 FTS5 索引类问题先做"repair 命令从哪重分词"的语义实验（orphan 行实验：drop 触发器插孤儿行再 `'rebuild'`，孤儿仍缺失=从影子表而非业务表重建），直接决定测试 fabrication 与修复方案选型。
+
+---
+
+## [2026-08-15] hermes 开源贡献：认领 issue 方向前先搜 referencing PRs + 共享线程池 idle 复用破坏 patch 窗口 + 上游无 format 门别全文件重排
+<!-- tags: hermes, contribution, pytest, test-isolation, thread-pool, mock, ruff, CI -->
+
+**场景**：#83993（cron 投递可观测性）公开认领方向 1+2 后开工，才发现 PR #84006（早认领 3 天）已实质覆盖同领域 → 转向互补缺口（修完成通知谎报）交付 PR #86622。过程中踩两个工程坑：
+
+**坑 1 — 认领前不搜 referencing PRs**：与 [08-03 GottZ 教训]（cron 只查 issue state 不查 comments 漏掉跨 PR 收敛评论）同构的第三变体：**查 issue 活动必须三件套——issue comments + `gh pr list --search "<N> in:body"`（谁在 body 里 closes/salvages 它）+ 关联 PR 的 review**。本案 #84006 在 issue 里零评论、只靠 body 里 `Closes #83993` 关联，漏看即重复认领。
+
+**坑 2 — 共享 DaemonThreadPoolExecutor 的 idle 线程复用改变 mock 可见窗口**：新测试文件先跑 → 向进程级共享 executor（`tools/async_delegation._executor`，跨测试不重置）提交过 worker → idle token 残留 → 后续文件的 dispatch 复用 idle 线程（submit 瞬返、主线程不放开 GIL）→ 邻居测试 patch 退出后线程才 lazy import 绑到**真实函数** → mock 被绕过、断言超时。而邻居单独跑能过是因为首次 submit 时 `Thread.start()` 阻塞调用方直至新线程 bootstrap，worker 得以在 patch 窗口内绑定 mock——**上游测试隐式依赖这个世界**。修复：autouse `_clean_state` fixture 调官方 `tools.async_delegation._reset_for_tests()`（拆 executor + 清 records），镜像 `tests/tools/test_async_delegation.py` 既有模式。**诊断抓手：顺序敏感 = 100% 确定性复现，用最小单进程实验（两轮同参数 dispatch）隔离出唯一必要条件（idle token 存在）**。
+
+**坑 3 — 上游 CI 没有 format 门**：lint.yml 的 blocking 门仅 `ruff check .`（PLW1514），ruff+ty diff 是 advisory（--exit-zero）。全文件 `ruff format` 重排（261 行 diff 里 236 行格式噪音）纯属自找 sweeper「scope 不聚焦」。**贡献前先读目标 repo 的 CI workflow 分清 blocking/advisory；改大文件时 diff 精确收敛到语义改动（本案 +24/-5）**。
+
+**证据**：PR #86622（commit d33bec590d）；#84006 协调评论 issuecomment-5300182324；坑 2 根因实验输出（round1 fresh spawn True / round2 idle reuse False + 同源 RuntimeError）。
+
+关联 [[hermes-contribution-followups]]（贡献进度）+ [2026-07-19]（PR 迭代 rebase 教训，本案是其开工前变体）。
+
+---
+
+## [2026-08-16] macOS headless 浏览器 QA 产证链路（无 playwright 时的 probe 注入法）
+<!-- tags: testing, headless, edge, chrome, qa, html, screenshot, autopilot -->
+
+**场景**：travel-planner 模板重写 QA 需真浏览器渲染证据（computed 字号/触控高度/DOM 计数/截图），本机无 playwright/puppeteer/jsdom。纯 Chrome CLI 踩三坑后的可用链路：
+
+**坑 1 — Chrome 151 headless 在已有运行实例下挂起**（即使独立 --user-data-dir）；换 **Edge headless**（同 Chromium CLI）+ 稳定 flags：`--no-first-run --no-default-browser-check --disable-background-networking --disable-component-update --disable-sync --mute-audio`（疑似首跑联网组件更新卡死）。
+
+**坑 2 — Edge dump-dom 输出完整 DOM 后进程不退出**（macOS 已知 Chromium 类 bug）：`timeout -s KILL 20` 包裹，**以 stdout 以 `</html>` 结尾为成功哨兵**，rc 非零也接受。
+
+**坑 3 — headless 最小窗宽 ~492px**，`--window-size=375` 被 clamp → 375px 移动视口验证全成假象（截图是 492 布局的左裁剪，文字"溢出"是伪缺陷）。解法 **iframe wrapper**：`iframe{width:375px;height:100vh}` 内视口真实 375（媒体查询按 iframe 宽生效），需 `--allow-file-access-from-files` 才能让 wrapper JS 读 contentDocument。精确裁剪：wrapper `display:flex;justify-content:center` + 窗口 501 宽 + `sips -c H 375` 中心裁剪（sips `--cropOffset` 会被忽略退化为居中，故用居中布局对齐）。
+
+**probe 注入法**（无框架获取 computed/ACT 证据）：产物 HTML 的 `<head>` 后注入 error collector（`window.__qaErrors` + localStorage 预置/清除），`</body>` 前注入探针（DOMContentLoaded + setTimeout 60ms 后把 computed font-size/getBoundingClientRect/节点计数/click ACT 序列写进 `display:none <pre id="qa-probe">`），dump-dom 后正则提取 JSON。localStorage 跨 run 污染用每次独立 user-data-dir 隔离。
+
+关联：QA artifact 实例见 `.autopilot/runtime/requirements/20260816-看下-travell-skill-里的-ht/qa/harness.py`。
+
+---
+
+## [2026-08-16] skill 产物副本的现场微调会分叉——模板能力必须回流 assets/ 源头
+<!-- tags: skill, travel-planner, template, workflow, autopilot -->
+
+**场景**：8/13 三亚行程把 `assets/template.html` 复制到 `output/sanya-template.html` 现场改出多日分组 day-divider 功能，但未回流权威模板；inject.py 只读 assets/ → 下一次多日行程会静默丢失该能力。8/16 模板重写时 diff 两副本才发现并合并回流。
+
+**教训/How to apply**：
+- skill 模板类微调**只改 `assets/` 源头**；`output/` 是一次性产物，改它等于改影子。
+- 给这类 skill（travel-planner / restaurant-recommender 同架构）加功能前，先 `diff assets/template.html output/*-template.html` 查未回流分叉；schema 文档同步补字段（day/day_weather/subtitle 本次已补）。
+
+**travel-planner 模板 backlog**（2026-08-16 QA 遗留，下次大改顺手处理）：① render 字符串拼接无 HTML 转义（数据自产风险低，加 10 行 escapeHtml）；② inject.py `json.dumps` 结果直接 replace 进 `<script>`，数据含 `</script>` 会闭合突破（治本：`json.dumps(...).replace('</','<\\/')`）；③ 预算按钮组缺 aria-pressed。
+
+---
+
+## [2026-08-17] 模板裸元素选择器 × JS 渲染语义标签 = 样式碰撞（header 白-on-白案例）
+<!-- tags: css, html, template, travel-planner, autopilot, debugging -->
+
+**场景**：travel-planner 杂志章节风重写，封面用裸元素选择器 `header { color:#fff; padding… }` + `header::after` 噪点纹理；蓝队给日章节头用了语义化 `<header class="day-head">` → 继承封面白字，章节日期白-on-白不可见，直到 375px 截图目视才暴露（DOM/probe 数值全绿发现不了）。
+
+**解法**：渲染组件改 `<div class="day-head">`（脱离裸选择器命中面）。
+
+**教训/How to apply**：
+- 单文件模板里**组件样式全 class 化**，裸元素选择器只用于真正的全局唯一元素；或约定 JS 渲染的重复组件一律 div+class，不用语义化标签（语义让位于碰撞风险，除非裸选择器同步 class 化）。
+- 排查同类问题先 `grep -nE "^(header|footer|nav|section|article)[ ,{.:]"` 列出所有裸元素选择器，再对照 JS 渲染的标签清单求交。
+- **computed 数值探测发现不了"白字白底"类视觉 bug**（color/background 各自合法）——截图目视（或对比度计算）是必要补充，这就是 P6 视觉谓词的价值。
+
+---
+
+## [2026-08-17] Sage 色板正文文字用 dark 变体：浅色仅徽章底/大色块（WCAG 大字阈值边界）
+<!-- tags: color, sage, accessibility, css, travel-planner, autopilot -->
+
+**场景**：杂志章节风类型色系统，food 时间标签用 `--amber` #D4920A（米白底实测 2.45:1）、break 用 `--muted` #8F8F8D（2.99:1）被 qa-reviewer 判 Major——18px bold 未达到 WCAG「大字」阈值（18.66px bold / 24px regular），按正文需 4.5:1。
+
+**规则**（Sage 色板文字用法）：
+- 正文/标签文字（<18.66px bold）：用 dark 变体——`--amber-dark` #8A5F03（5.22:1）、`--muted-dark` #6E6E6C（4.72:1）、`--accent` #3A7D68（4.50:1 边界可用）
+- 浅色 `--amber`/`--muted` 仅用于：徽章/胶囊底色（配 dark 文字）、大号装饰（≥24px）、图标底色块（12% 透明度染色不算文字）
+- `--sky` #3B87CC（3.51:1）仅大字/图标可用，正文避免
+- **改色必算对比度**（WebAIM contrast checker 或算式），别信"看起来清楚"——老人阅读场景 4.5:1 是底线不是加分项
+
+关联 [[2026-08-16] skill 产物副本的现场微调会分叉]（同模板迭代史）。
