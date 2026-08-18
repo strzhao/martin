@@ -21,6 +21,8 @@
 
 参与 `NousResearch/hermes-agent` 共建时，**先读 [`hermes-contribution.md`](hermes-contribution.md)** —— 沉淀了被合入 PR 画像、kshitijk4poor（唯一高频外部共建者）打法、salvage 停滞 PR 流程、当前 salvage 候选清单、sweeper 红线、邮件时滞坑。核心结论：PR 不被合通常不是因为"太小"，而是**无 issue 支撑 / 领域冷门 / 影响面窄**；最优路径是 **salvage 停滞 PR**（维护者优先合推进 backlog 的人）。具体 PR 进度见记忆 [[hermes-contribution-followups]]。
 
+**commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
+
 ## Hermes Agent 环境
 
 - **版本**: v0.12.0
