@@ -20,6 +20,7 @@
 - [2026-08-16] skill 产物副本现场微调会分叉：模板能力必须回流 assets/ 源头（三亚 day-divider 案例）+ travel-planner 模板 backlog | tags: skill, travel-planner, template, workflow | → patterns.md
 - [2026-08-17] 模板裸元素选择器 × JS 渲染语义标签 = 样式碰撞（header 白-on-白案例）：组件样式全 class 化 | tags: css, html, template, debugging | → patterns.md
 - [2026-08-17] Sage 色板正文文字用 dark 变体（amber-dark/muted-dark），浅色仅徽章底/大色块；WCAG 大字阈值边界 | tags: color, sage, accessibility, css | → patterns.md
+- [2026-08-20] batch-sync 撞上游 open PR：case-collision 幻影 modified 被 auto-commit（#86183 dirty 事故）：open-PR 防御检查 + 幻影 M 先查根因 + 跨机元数据定位 + server-side 退 ref 最小修复 | tags: git, batch-sync, case-collision, multi-machine, hermes, incident | → patterns.md
 
 ## Domain Knowledge
 - [Hermes Agent 安装与配置](domains/hermes-agent.md) — 在 macOS ARM64 上安装 Hermes Agent 的关键决策和踩坑记录

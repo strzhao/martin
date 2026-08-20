@@ -265,3 +265,22 @@ async function apiFetch(path: string, options: { method?: string; body?: unknown
 - **改色必算对比度**（WebAIM contrast checker 或算式），别信"看起来清楚"——老人阅读场景 4.5:1 是底线不是加分项
 
 关联 [[2026-08-16] skill 产物副本的现场微调会分叉]（同模板迭代史）。
+
+---
+
+## [2026-08-20] batch-sync 会话撞上游 open PR：case-collision 幻影 modified 被 auto-commit（#86183 事故）
+<!-- tags: git, batch-sync, case-collision, multi-machine, hermes, contribution, incident -->
+
+**场景**：Mac Studio（旧名 agents-Mac-mini.local）上 ad-hoc Claude Code 批量同步会话（10 subagent 扫 `~/workspace` 全部仓库），把 hermes-agent fork 分支的「幻影 modified」机械提交成 `1c68b13d1e` 并 push，撞进上游正开着 review 的 PR #86183；上游随后删除 case-colliding 文件，PR 卡 `mergeable_state: dirty`。应急修复 = server-side 退 ref（`gh api -X PATCH .../git/refs/heads/<br> -f sha=<干净节点> -F force=true`），治本在产污机器（清 clone + 全局红线）。
+
+**病理链**：上游同时跟踪大小写仅异文件（`agent@Agents-` / `agent@agents-Mac-mini.local`，55db6187e5 引入）→ APFS 大小写不敏感 clone 双文件物理合一 → git status 永真幻影 M → batch-sync 例程视为"未提交改动"机械提交。**幻影 modified 是 git + FS 的假象，不是任何人的编辑**。
+
+**教训/How to apply**：
+- 任何 auto-commit/push 前必做 open-PR 防御：`gh pr list --repo <upstream> --head <branch> --state open` 非空 → 跳过并告警，绝不 auto-push。已落 Mac Studio 全局 `~/.claude/CLAUDE.md`。
+- `git status` 恒定 M 且 diff 内容莫名（改的是没碰过的文件）→ 先怀疑 case-collision / skip-worktree 假象，查 `git ls-files | grep -i <path>` 找大小写重复，别提交。上游 693c0e1c62 的删除是标准处置。
+- **判断污染来源看 commit 元数据**：author/committer 邮箱 + hostname 特征（文件名 `@agents-Mac-mini.local`）+ 时间关联（63s 连推两仓）即可跨机锁定，无需登嫌疑机器。
+- **"maintainer 直接往你 PR 分支推 commit" 是信号不是事故**：`maintainer_can_modify` 默认开，rebase 后 author 保留/committer 变己，说明维护者在真实跟进（本案 andrexibiza）。
+- server-side 退 ref 是最小修复面：不动其余 commit、不触发本地 rebase、review 结论（对旧 head 说的"No new issues"）原样有效；事后留说明评论把病理讲清（comment 5358019817）。
+- 跨机 handoff 用「martin push 操作单 + ai-todo 任务树（主任务+子任务+验收清单）」双轨：远端 AI 按 handoff 文件执行、进度回写 ai-todo，发起方用 GitHub API 交叉验证对侧报告（本例 4 项全部核实）。
+
+关联 [[2026-08-15] 认领 issue 前搜 referencing PRs]（同 hermes 贡献链）+ hermes-contribution.md（sweeper 红线：scope 外改动必被挑）。
