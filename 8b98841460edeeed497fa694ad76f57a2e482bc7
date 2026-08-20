@@ -1,0 +1,29 @@
+.autopilot/handoff/2026-08-20-mac-mini-batch-sync-contamination.md
+  80c28fb983d7b3b0 1-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "8b98841460edeeed497fa694ad76f57a2e482bc7",
+  "prompts": {
+    "80c28fb983d7b3b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62a9be17-2bf1-4770-b48a-f9b4cea9f1f4",
+        "model": "glm-5.3"
+      },
+      "human_author": "赵桂雄",
+      "messages": [],
+      "total_additions": 130,
+      "total_deletions": 0,
+      "accepted_lines": 130,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        ".autopilot/handoff/2026-08-20-mac-mini-batch-sync-contamination.md": {
+          "additions": 130,
+          "accepted_lines": 130
+        }
+      }
+    }
+  }
+}
