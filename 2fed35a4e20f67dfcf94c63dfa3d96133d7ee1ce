@@ -1,0 +1,29 @@
+.autopilot/knowledge/patterns.md
+  80c28fb983d7b3b0 268-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "2fed35a4e20f67dfcf94c63dfa3d96133d7ee1ce",
+  "prompts": {
+    "80c28fb983d7b3b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62a9be17-2bf1-4770-b48a-f9b4cea9f1f4",
+        "model": "glm-5.3"
+      },
+      "human_author": "赵桂雄",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 0,
+      "accepted_lines": 19,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        ".autopilot/knowledge/patterns.md": {
+          "additions": 19,
+          "accepted_lines": 19
+        }
+      }
+    }
+  }
+}
