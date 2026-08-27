@@ -67,3 +67,11 @@
 - `test_data_valid.json` + `test_data_invalid.json` 作为 lint.py 的 fixture 数据
 - `test_lint.py` / `test_inject.py` / `test_server.py` 作为红队验收测试的标准三板斧
 - 新 skill 使用独立端口（3457 vs 3456）避免与 travel-planner 冲突
+
+<!-- tags: hermes, observability, sqlite, config-chain, events-sink, dogfood -->
+## [2026-08-23] hermes 事件落库(T1)架构四决策(全部实证驱动)
+①**懒启动 atexit 而非 gateway 挂接**:信息隔离的验收谓词冻结「import 即用免初始化」契约,倒逼推翻"仅 gateway 进程落库"原设计——删掉 gateway/run.py 挂接反而 diff 更小,任何进程统一语义。②**新 telemetry DB 不设 journal_mode**:本机 SQLite 3.50.4 落 #70055 WAL-reset 门控窗口,`apply_wal_with_fallback` 对全新 DB 强制 delete(venv 复现);接受框架策略走 busy_timeout,勿硬设 WAL 与门控打架(门控前提本身存疑:teknium1 A/B 证 3.53 照样复现,潜在上游议题)。③**telemetry.* 消费链分叉坑**:`telemetry.shared_metrics.enabled` 走 raw yaml reader(缺失=禁用),新键默认值必须生效就得走 `load_config_readonly()`(含 DEFAULT_CONFIG 合并)——同一配置段两种读法语义相反。④**检查器/spy 类 SQLite 连接**:显式 `check_same_thread=False` + 失败缓存不重试 + WARNING 单行化(exc_info 的 traceback 文本会污染"无未捕获异常"类验收断言,traceback 降 DEBUG)。
+
+<!-- tags: hermes, weixin, token, forensics, dogfood, context-token -->
+## [2026-08-24] weixin context token v2:issued_at 落盘 + 双 dict 职责分离
+T2 给 ContextTokenStore 引入 v2 文件格式({user_id: {"token": str, "issued_at": epoch}}):①`_issued_at`(权威锚点,仅 v2 文件条目与 set() 填充)与 `_set_at`(运行时 age,v1 用 mtime 回填)职责分离——杜绝 mtime 值伪装 issued_at;②未知 issued_at 落盘**省略键不写 null**;③v1/v2/混合逐条 isinstance 判别;④回滚到 v1 读侧时 dict 条目被跳过 → token 缓存清空,靠下一条入站消息自愈(部署协议须知)。TTL 取证从此不再依赖文件 mtime(08-23 事故的 22.5-33.8h 手工三方 join 根因之一被消灭)。

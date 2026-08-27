@@ -22,5 +22,15 @@
 - [2026-08-17] Sage 色板正文文字用 dark 变体（amber-dark/muted-dark），浅色仅徽章底/大色块；WCAG 大字阈值边界 | tags: color, sage, accessibility, css | → patterns.md
 - [2026-08-20] batch-sync 撞上游 open PR：case-collision 幻影 modified 被 auto-commit（#86183 dirty 事故）：open-PR 防御检查 + 幻影 M 先查根因 + 跨机元数据定位 + server-side 退 ref 最小修复 | tags: git, batch-sync, case-collision, multi-machine, hermes, incident | → patterns.md
 
+- [2026-08-23] pytest 点号文件名 × tests/__init__.py 包导入 = 收集必炸 | tags: pytest, naming, test-collection, hermes, acceptance-tests | → patterns.md
+- [2026-08-23] CPython sqlite3 跨线程 close vs write_txn = SIGSEGV(非异常) | tags: sqlite3, threading, sigsegv, close-race, hermes, upstream-pr | → patterns.md
+
+- [2026-08-24] 单进程全仓 pytest sweep 跨文件 env 污染(WEIXIN_ACCOUNT_ID import 期写入) | tags: pytest, cross-file-pollution, env-leak, hermes | → patterns.md
+- [2026-08-24] 取证日志镜像原则:观测结论与控制流判定同源 | tags: logging, classification, forensic | → patterns.md
+
+- [2026-08-24] scheduler in-flight 超时分类:#38922 cancel() 返回值语义与 fixture 驱动法 | tags: hermes, cron, future, test-fixture | → patterns.md
+
 ## Domain Knowledge
 - [Hermes Agent 安装与配置](domains/hermes-agent.md) — 在 macOS ARM64 上安装 Hermes Agent 的关键决策和踩坑记录
+- [2026-08-23] hermes 事件落库(T1)架构四决策(懒启动 atexit/不设 WAL/config 链分叉/check_same_thread) | tags: hermes, observability, sqlite, config-chain, events-sink | → decisions.md
+- [2026-08-24] weixin context token v2(issued_at 落盘+双 dict 分离+回滚自愈) | tags: hermes, weixin, token, forensics | → decisions.md

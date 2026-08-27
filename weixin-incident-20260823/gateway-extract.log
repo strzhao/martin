@@ -1,0 +1,78 @@
+2026-08-20 09:05:15,691 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 49, 'typing': 645}
+2026-08-20 09:05:15,695 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 49, 'typing': 645})
+2026-08-20 09:05:15,696 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 49, 'typing': 645})
+2026-08-20 09:05:15,702 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 36.3h ago)
+2026-08-20 09:05:15,702 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-20 09:05:15,950 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....3h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-20 09:05:15,952 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-20 09:05:16,149 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-20 09:05:16,150 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-20 09:05:16,151 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-20 09:13:22,861 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 50, 'typing': 645}
+2026-08-20 09:13:22,862 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 50, 'typing': 645})
+2026-08-20 09:13:22,862 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 50, 'typing': 645})
+2026-08-20 09:13:22,871 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 36.4h ago)
+2026-08-20 09:13:22,871 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-20 09:13:23,125 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....4h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-20 09:13:23,126 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-20 09:13:23,326 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-20 09:13:23,327 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-20 09:13:23,327 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-20 09:38:30,748 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 51, 'typing': 645}
+2026-08-20 09:38:30,749 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 51, 'typing': 645})
+2026-08-20 09:38:30,749 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 51, 'typing': 645})
+2026-08-20 09:38:30,755 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 36.9h ago)
+2026-08-20 09:38:30,756 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-20 09:38:31,039 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....9h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-20 09:38:31,041 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-20 09:38:31,265 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-20 09:38:31,266 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-20 09:38:31,266 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-20 10:21:43,552 INFO gateway.run: Watch pattern notification — injecting for weixin chat=o9cq805jvjvOuL_QHvAG-168LywA@im.wechat thread=None
+2026-08-20 10:22:33,939 INFO gateway.run: Queued follow-up for session agent:main:weixin:dm:o9cq805jvjvOuL_QHvAG-168LywA@im.wechat: final stream delivery not confirmed; sending first response before continuing.
+2026-08-20 10:22:47,102 INFO gateway.run: response ready: platform=weixin chat=o9cq805jvjvOuL_QHvAG-168LywA@im.wechat time=711.0s api_calls=2 response=265 chars
+2026-08-20 10:22:47,128 INFO gateway.platforms.base: [Weixin] Sending response (265 chars) to o9cq805jvjvOuL_QHvAG-168LywA@im.wechat
+2026-08-20 10:43:54,050 INFO gateway.run: response ready: platform=weixin chat=o9cq805jvjvOuL_QHvAG-168LywA@im.wechat time=278.0s api_calls=14 response=712 chars
+2026-08-20 10:43:54,055 INFO gateway.platforms.base: [Weixin] Sending response (712 chars) to o9cq805jvjvOuL_QHvAG-168LywA@im.wechat
+2026-08-22 09:05:08,374 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....8h) ilink_calls={'sendmessage': 64, 'typing': 1156}
+2026-08-22 09:05:08,377 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-22 09:05:08,575 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 65, 'typing': 1156}
+2026-08-22 09:05:08,576 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 65, 'typing': 1156})
+2026-08-22 09:05:08,577 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 65, 'typing': 1156})
+2026-08-22 09:05:08,584 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 33.8h ago)
+2026-08-22 09:05:08,584 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-22 09:05:08,864 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....8h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-22 09:05:08,865 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-22 09:05:09,099 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-22 09:05:09,100 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-22 09:05:09,102 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-23 09:05:36,288 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 69, 'typing': 1156}
+2026-08-23 09:05:36,291 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 69, 'typing': 1156})
+2026-08-23 09:05:36,292 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 69, 'typing': 1156})
+2026-08-23 09:05:36,298 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 57.8h ago)
+2026-08-23 09:05:36,298 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-23 09:05:36,569 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....8h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-23 09:05:36,571 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-23 09:05:36,821 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-23 09:05:36,822 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-23 09:05:36,824 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-23 09:09:41,604 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 70, 'typing': 1156}
+2026-08-23 09:09:41,606 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 70, 'typing': 1156})
+2026-08-23 09:09:41,607 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 70, 'typing': 1156})
+2026-08-23 09:09:41,612 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 57.9h ago)
+2026-08-23 09:09:41,612 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-23 09:09:41,878 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....9h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-23 09:09:41,879 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-23 09:09:42,104 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-23 09:09:42,106 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-23 09:09:42,106 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-23 09:32:26,375 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 71, 'typing': 1156}
+2026-08-23 09:32:26,376 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 71, 'typing': 1156})
+2026-08-23 09:32:26,377 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 71, 'typing': 1156})
+2026-08-23 09:32:26,383 INFO gateway.platforms.weixin: weixin: restored 1 context token(s) for e68a27a2 (file last written 58.3h ago)
+2026-08-23 09:32:26,383 INFO gateway.platforms.weixin: weixin: one-shot send to o9cq805j (live_adapter=present, delegating)
+2026-08-23 09:32:26,674 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=presen....3h) ilink_calls={'sendmessage': 1, 'typing': 0}
+2026-08-23 09:32:26,675 WARNING gateway.platforms.weixin: [Weixin] session expired for o9cq805j; retrying without context_token
+2026-08-23 09:32:26,875 WARNING gateway.platforms.weixin: [Weixin] sendmessage non-zero iLink response: to=o9cq805j ret=-2 errcode=None errmsg='prepare failed' context_token=*** ilink_calls={'sendmessage': 2, 'typing': 0}
+2026-08-23 09:32:26,876 WARNING gateway.platforms.weixin: [Weixin] rate-limit circuit OPENED: 1 event(s) in 30s window, cooldown 30s — sends fail fast until reset (ilink calls so far: {'sendmessage': 2, 'typing': 0})
+2026-08-23 09:32:26,877 ERROR gateway.platforms.weixin: [Weixin] send failed to=o9cq805j: iLink sendmessage rate limited; cooldown active for 30.0s (ilink calls so far: {'sendmessage': 2, 'typing': 0})

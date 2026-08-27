@@ -284,3 +284,27 @@ async function apiFetch(path: string, options: { method?: string; body?: unknown
 - 跨机 handoff 用「martin push 操作单 + ai-todo 任务树（主任务+子任务+验收清单）」双轨：远端 AI 按 handoff 文件执行、进度回写 ai-todo，发起方用 GitHub API 交叉验证对侧报告（本例 4 项全部核实）。
 
 关联 [[2026-08-15] 认领 issue 前搜 referencing PRs]（同 hermes 贡献链）+ hermes-contribution.md（sweeper 红线：scope 外改动必被挑）。
+
+<!-- tags: pytest, naming, test-collection, hermes, acceptance-tests -->
+## [2026-08-23] pytest 测试文件名含点号 × tests 目录带 __init__.py = 收集必炸
+`test_xxx.acceptance.py` 这类点号文件名在 tests 目录是包(有 `__init__.py`)时,pytest 按 dotted module name 导入 → `ModuleNotFoundError: 'tests.monitoring.test_xxx' is not a package`。两实例:本 autopilot 任务红队测试(改下划线修复)+ 上一 session qqbot 遗留 `test_qqbot_ffmpeg_drain.acceptance.test.py`(已入库于本地补丁 commit,**静默阻塞全仓 bare `pytest` 收集**,直到全仓 -k 跑法才暴露)。命名一律下划线;红队 prompt 模板的 `.acceptance.test.*` 惯例在 pytest 项目需换写为 `_acceptance.py` 后缀。
+
+<!-- tags: sqlite3, threading, sigsegv, close-race, hermes, upstream-pr -->
+## [2026-08-23] CPython sqlite3 跨线程 close vs write_txn 并发 = SIGSEGV(不是异常)
+一个线程 `Connection.close()` 与另一线程连接上在途 `execute()`(write_txn 内)并发是 CPython sqlite3 未定义行为——**直接段错误**,per-subscriber except / 任何 Python 异常处理都救不了(faulthandler 定位)。"flush 之后无并发写"的假设在 **flush 超时(如 2s)尾部**有真实击穿窗口(慢盘大批次可复现)。治法:写锁串行化——写事务持锁 + shutdown 关连接前持锁,保证 close 只作用于静默连接(正常路径零等待)。hermes events_sink `_write_lock` 是现成实现 + 定向回归测试(`test_telemetry_shutdown_races_dispatcher_writes_safely`,修复前必崩),可作上游 PR 素材。另:跨线程**复用**连接必须显式 `check_same_thread=False`,否则 ProgrammingError 会被 fire-and-forget 总线的 per-subscriber except **静默吞成零落库**。
+
+<!-- tags: pytest, cross-file-pollution, env-leak, hermes, sweeprun, false-alarm -->
+## [2026-08-24] 单进程全仓 pytest sweep 的跨文件环境污染:import 期 os.environ 写入
+collection 期 import 某些测试模块(如 hermes tests/run_agent/test_codex_app_server_integration.py 的 `import run_agent` 装载链)会把 `WEIXIN_ACCOUNT_ID` 等写入 os.environ 且不清理 → 同进程后续所有裸 `PlatformConfig()` 构造的 adapter 账号被污染,token store key 错位 → 表现为"单文件全绿、全仓 sweep 失败"的假回归。hermes 官方 runner `scripts/run_tests_parallel.py` 每文件一进程(tests/conftest.py 明文契约),故 CI 不暴露。排查法:受控组合二分复现 + git stash 基线对照;根治法:测试夹具钉死 account_id(蓝队 `_make_adapter` 显式 extra)或 fixture delenv。另:全仓 -k 大范围 keyword 会扫出 4+ 个环境依赖型预存失败(SSRF rebind/flux3),勿误归新变更。
+
+<!-- tags: logging, classification, forensic, mirror-principle, hermes -->
+## [2026-08-24] 取证日志的镜像原则:观测结论必须与控制流判定同源
+分类/决策日志行的输入必须与实际控制流判定严格同源(hermes 分类行用 `errmsg or msg` 而判定用 `errmsg` → msg-only 响应时日志结论 stale_session、控制流走限流——"结论≠真因"的镜像复发,恰是取证任务要消灭的形态)。规约:观测行入参直接引用判定表达式的同一取值;两处取值来源不同 = 潜在分叉,plan-review/qa 应对照检查。
+
+<!-- tags: hermes, cron, scheduler, timeout, future, test-fixture, concurrency -->
+## [2026-08-24] hermes scheduler in-flight 超时分类:#38922 future.cancel() 返回值语义与测试驱动法
+cron live 投递的 60s 超时分两类,判据是 `future.cancel()` 返回值:**True=协程从未派发(loop 堵塞)→ 必须回退 standalone(否则消息静默丢)**;**False=协程已在 loop 上运行(wire 上 in-flight,不可撤回)→ assume-delivered(回退=必重复)**。测试驱动陷阱:spy future 若 result() 抛 TimeoutError 但仍处 pending 态,cancel() 返回 True → 命中的是「未派发」分支而非「in-flight」——**fixture 必须显式 override cancel()→False** 才驱动 in-flight;且 inline 字面量 timeout=60 不可等,须用即抛 future。另:future 完成态(带异常)的 cancel() 也返回 False,是另一种 in-flight 等价驱动。
+
+<!-- tags: git, reset, incident, patch-stack, hermes, recovery, reflog -->
+## [2026-08-26] 补丁栈被 reset to origin/main 抹掉的完整恢复五步(08-26 00:49 实战)
+hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 hermes update 家族行为),网关随之跑回退代码致遥测停更 8.5h。恢复五步(全验证):①**立即 `git branch <anchor> <栈顶>` 锚定 dangling 防 GC**(reflog 可见 HEAD@{n}: reset: moving to origin/main 即此模式);②`git stash push --staged` 保存在跑任务的暂存;③`git reset --hard <栈顶>` 恢复;④stash pop 重放(跨基线 main.py 冲突风险低——接线 hunks 通常落在稳定区域);⑤**全量六任务套件 210 复验 + 网关重启 + 遥测再生验证(events.db max(ts) 前进 + T2/T3 格式行再现)**。预防:观测栈常驻分支锚定;升级一律走 fetch+rebase 流程,勿跑会 reset 的工具。

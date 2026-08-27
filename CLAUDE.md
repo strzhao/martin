@@ -23,9 +23,13 @@
 
 **commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
 
+## Hermes 可观测性消费（本地观测栈）
+
+操作/排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）前，**先读 [`hermes-observability-guide.md`](hermes-observability-guide.md)** —— 30 秒入口 `hermes forensics summary --hours 24`、症状→命令决策树、events.db 数据字典、日志路由表（含 cron→agent.log 上游单写坑：gateway.log 查不到 cron 日志 ≠ 没发生）。栈为本地补丁不入上游（`observability-stack` 分支锚定）；升级只走 fetch+rebase。
+
 ## Hermes Agent 环境
 
-- **版本**: v0.12.0
+- **版本**: v0.20.5（2026-08-23 rebase 到 origin/main@f293e7206b + 本地补丁栈，见记忆 [[hermes-upgrade-mechanism]]）
 - **安装路径**: `/Users/stringzhao/workspace/hermes-agent/`
 - **CLI 路径**: `/Users/stringzhao/.local/bin/hermes`
 - **用户数据目录**: `~/.hermes/`（config.yaml、sessions、skills、memories、cron、logs 等）
@@ -249,7 +253,7 @@ python scripts/transcribe.py audio.m4a --language en
 
 ## 注意事项
 
-- Hermes Agent v0.12.0 使用 OpenAI-compatible API，当前配置为 DeepSeek provider
+- Hermes Agent v0.20.5 使用 OpenAI-compatible API，当前配置为 DeepSeek provider
 - 配置文件 `~/.hermes/config.yaml` 格式为 YAML，修改后 `hermes` 会自动加载
 - API 密钥等敏感信息存放在 `~/.hermes/.env`，不要提交到版本控制
 - 会话数据（SQLite）在 `~/.hermes/sessions/`，支持 FTS5 全文搜索

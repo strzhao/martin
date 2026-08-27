@@ -4,3 +4,7 @@ __pycache__/
 node_modules/
 
 skills/travel-planner/output/
+.autopilot/project/
+
+# 取证包凭证快照（context token 明文/备份/cursor）——公有仓绝不入库
+weixin-incident-20260823/*.json
