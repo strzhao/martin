@@ -23,6 +23,10 @@
 
 **commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
 
+## 开源项目运营（oss-ops）
+
+运营 strzhao 名下开源项目组合（ai-todo 打样 → 组合铺开 → 内容引擎 → 发布脉冲）时，**先读 [`oss-ops.md`](oss-ops.md)** —— 沉淀了 L1/L2/L3 审批分层红线（**一切对外发布物一律 L2 起草+微信审批，L3 零自动化**）、渠道规则事实核查（Topics 自设 / dev.to API 可全自动 / awesome-claude-code 14 天门槛已满足）、9 仓组合台账与 ai-todo 打样 playbook。日常执行由 Hermes Agent 承担（每日巡检 cron + `~/.hermes/skills/github/oss-ops/` skill），打样质量件与 pre-flight 审视在 martin 侧（`/oss-preflight`）。动态进度见记忆 [[oss-ops-progress]]。
+
 ## Hermes 可观测性消费（本地观测栈）
 
 操作/排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）前，**先读 [`hermes-observability-guide.md`](hermes-observability-guide.md)** —— 30 秒入口 `hermes forensics summary --hours 24`、症状→命令决策树、events.db 数据字典、日志路由表（含 cron→agent.log 上游单写坑：gateway.log 查不到 cron 日志 ≠ 没发生）。栈为本地补丁不入上游（`observability-stack` 分支锚定）；升级只走 fetch+rebase。

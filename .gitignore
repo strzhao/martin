@@ -8,3 +8,7 @@ skills/travel-planner/output/
 
 # 取证包凭证快照（context token 明文/备份/cursor）——公有仓绝不入库
 weixin-incident-20260823/*.json
+
+# oss-ops 数据原石（stargazer 导出/盘点原始数据，防大文件误入库）
+oss-ops-data/
+.autopilot/project-archive-*/
