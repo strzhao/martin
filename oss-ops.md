@@ -33,7 +33,7 @@
 
 | 仓 | slug | ⭐ | 定位一句话 | 短板 | 批次 |
 |---|---|---|---|---|---|
-| ai-todo | strzhao/ai-todo | 4 | NL-first 任务管理：单输入框+预览执行+无限层级+项目空间（Next.js 16 + DeepSeek，线上 ai-todo.stringzhao.life） | **打样仓**：无 LICENSE/topics/issue 模板，README 纯中文无 GIF，package.json 无 description | C |
+| ai-todo | strzhao/ai-todo | 4 | NL-first 任务管理：单输入框+预览执行+无限层级+项目空间（Next.js 16 + DeepSeek，线上 ai-todo.stringzhao.life） | **打样仓**：无 LICENSE/topics/issue 模板，README 纯中文无 GIF，package.json 无 description；**陈年开放 PR#1**（2026-03，子任务 API 端点）待处置（首日巡检发现 08-28） | C |
 | ai-todo-cli | strzhao/ai-todo-cli | 0 | 给 AI agent 用的 todo CLI（全 JSON 输出、动态命令发现、`npx skills add`）v0.4.3 | README 已英文；无 LICENSE/模板 | C |
 | autopilot | strzhao/autopilot | **27** | Claude Code plugins（组合最大资产） | **仓不在本机需 clone**；未盘点 | D |
 | ai-news | strzhao/ai-news | 3 | AI 新闻消费层（首页+flomo 推送+点击统计） | README 纯 API 文档式 | D |
