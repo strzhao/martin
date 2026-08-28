@@ -54,12 +54,18 @@
 4. **GitHub 侧 gh CLI 零开发**：已登录 strzhao，scope 含 repo+workflow。`gh repo edit --description/--homepage/--add-topic`、`gh api repos/:o/:r/traffic/views|clones`、`/stargazers` 分页全够用。
 5. **收录/发布渠道现状**（2026-08-28 核）：GitHub20K **已死**（演变为 Postiz——但 Postiz 本身是个值得研究其打法的开源项目）；awesome-claude-code（hesreallyhim）收录标准 = 资源 ≥14 天（首 commit 起）+ 每 PR 只提一个资源；ai-todo-cli 2026-03-05 创建**已满足门槛**。Product Hunt 对 dev tool 仍有效但 ROI 降，DevHunt/Show HN 转化更好；dev.to **#showdev** 是首选首发标签。
 6. **竞品**（2026-08-28 核）：Taskosaur（对话式 AI PM）、TaskFlow AI（NL→日程）、AppFlowy AI。**ai-todo 差异化主轴 = 「给 AI agent 用的 todo」**（CLI 全 JSON 输出 + Claude Code skill + NL 单输入框）——内容定位主打 agent 赛道，不打泛 AI todo 红海。
+7. **国内渠道**（2026-08-29 核，用户拍板国内运营为一等轨）：
+   - **V2EX**：分享创造 / 独立开发者节点，主阵地（有节点发帖规则，鼓励分享与复盘类内容）
+   - **掘金**：中文技术内容平台，文章同步出口
+   - **少数派 Matrix**：投稿路径 = 注册 → 发 3 篇合规内容转正式作者 → Matrix 发布 → 编辑部精选上首页；应用推荐支持单篇推荐（编辑部整合合集）；ai-todo 工具类应用高匹配
+   - **Gitee 镜像**：官方 Push 方向自动镜像低成本；star 数据不互通、流量远低于 GitHub —— GitHub 主仓 + Gitee 国内加速入口、简介引导回主仓；阶段 D 后再评估
+   - 国内渠道发布一律 L2 审批流覆盖
 
 ## 5. ai-todo 打样 playbook（阶段 C，全部动作先攒 7 天 baseline）
 
-发布顺序（每步都是 L2 除标注）：O1 零成本 API 基建（description/homepage/topics ≤20：`todo, todo-app, task-management, ai, ai-agents, productivity, nextjs, deepseek, natural-language, claude-code, llm, self-hosted, developer-tools, agent-tools`）→ O2 MIT LICENSE（`Copyright (c) 2026 strzhao`）+ issue 模板（bug_report.yml/feature_request.yml 双语）+ CONTRIBUTING 精简版 → O3 英文 README（martin 侧 Claude Code 打样，中文迁 `README.zh-CN.md` 互链；结构：hero 一句话+badges+**≤10s GIF** → Why 三卖点 → Quickstart → **For AI agents 段前置**（CLI+skill）→ Features 截图 → 对比表（主轴 agent-first）→ Roadmap/License；`package.json` 补 description）→ O4 social preview（1280×640 PNG，**用 Sage 苍绿 #3A7D68 品牌色**，参照 `statusline-sage/COLORS.md`；API 不可达需用户手工上传）+ 删空残留目录 `ai-todo-cli/` → O5 oss-repo-lint 打分 ≥9/10 + 排 7 天效果验证 scheduled task。
+发布顺序（每步都是 L2 除标注）：O1 零成本 API 基建（description/homepage/topics ≤20：`todo, todo-app, task-management, ai, ai-agents, productivity, nextjs, deepseek, natural-language, claude-code, llm, self-hosted, developer-tools, agent-tools`）→ O2 MIT LICENSE（`Copyright (c) 2026 strzhao`）+ issue 模板（bug_report.yml/feature_request.yml 双语）+ CONTRIBUTING 精简版 → O3 **双语 README**（martin 侧 Claude Code 打样，**双头等**：`README.md` 英文完整版 + `README.zh-CN.md` 中文完整版对等非缩水，互链；**GIF 双语各配**——en 配英文操作、zh 配中文操作；结构：hero 一句话+badges+GIF → Why 三卖点 → Quickstart → **For AI agents 段前置**（CLI+skill）→ Features 截图 → 对比表（主轴 agent-first）→ Roadmap/License；`package.json` 补 description）→ O4 social preview（1280×640 PNG，**Sage 苍绿 #3A7D68 品牌色**，英文版/双语版两候选用户挑；API 不可达需用户手工上传）+ og-image 补 metadata + 删空残留目录 `ai-todo-cli/` → O5 oss-repo-lint 打分 ≥9/10 + 排 7 天效果验证 scheduled task。
 
-GIF 规范：≤10s、≤10MB、只录核心动线（输入 NL → 预览 diff → 确认执行），playwright 录屏或用户 Screen Studio 手录。
+GIF 规范：≤10s、≤10MB、只录核心动线（输入 NL → 预览 diff → 确认执行）。素材生产链路（2026-08-29 验证全通）：dev bypass（`AUTH_DEV_BYPASS=true`）免登录 + playwright 录屏 + ffmpeg palette 转 GIF（fps12/960 宽/128 色，成品 ~500KB）+ HTML→playwright 截图做 social preview；脚本沉淀在 `apps/web/scripts/`（demo-capture.mjs / capture-social.mjs / seed-demo.mjs）。**⚠ create 类操作预览 bug**（08-29 发现，详见 §9）：GIF 动线用 update 类（稳定路径）。
 
 ## 6. 组合铺开策略（阶段 D，Hermes 执行、martin 验收）
 
@@ -71,7 +77,10 @@ lint 工具 `oss-repo-lint`（martin/clis/，bash+gh）：LICENSE/README 长度+
 
 ## 7. 内容引擎（阶段 E，依赖用户工具 P1）
 
-首发平台 dev.to（免费 API + 算法推荐 + #showdev），社交渠道**引流到平台帖而非自建博客**（借平台算法放大，livecycle 验证过的打法）。首篇选题：「给 AI agent 用的 todo：为什么我把 todo CLI 重写成全 JSON 输出」——带真实数据（baseline 期间 star/issue 数字）。
+**双轨制**（2026-08-29 用户拍板：国内运营一等轨）：
+- **国际轨**：dev.to 首发（免费 API + 算法推荐 + #showdev），社交渠道引流到平台帖而非自建博客（借平台算法放大）。首篇选题：「给 AI agent 用的 todo：为什么我把 todo CLI 重写成全 JSON 输出」——带真实数据（baseline 期间 star/issue 数字）。
+- **中文轨**：V2EX 分享创造首发（中文独立 dev 主阵地）→ 掘金同步 → 少数派 Matrix 养号（3 篇转正后投应用推荐）。首篇题材与英文版同源不同稿（V2EX 语气更社区化，讲真实开发过程）。
+
 内容四象限轮换：直接介绍 / how-to 植入 / listicle（提名别人换互推——开源不是零和）/ building in public。
 **反 slop 写作红线**（发布前 `/oss-preflight` 审）：个人声音、具体数字、真实使用故事；禁五特征——模板腔、空洞形容词、无具体数据、套话 intro、总结腔。AI 参与写作可以，但**内容的事实底座必须真实**（真实数据/真实截图/真实使用记录），首帖建议用户最终过目。
 
@@ -84,7 +93,7 @@ lint 工具 `oss-repo-lint`（martin/clis/，bash+gh）：LICENSE/README 长度+
 
 ## 9. 事故与反模式（持续追加，不重写）
 
-（空——首条待打样/发布过程中沉淀）
+- **2026-08-29 · ai-todo create 类操作预览不渲染（产品 bug，打样中发现的反模式注记）**：dev 环境（Turbopack、bypass 用户）下，NL 解析返回 **create** 类 action 时预览卡（`AI 理解：N 项操作` + 全部执行按钮）不渲染、任务也不创建，输入框残留原句；**update** 类 action 全链路正常（预览+执行+落库）。已排除：服务端（parse-task 200 且 actions_count=1）、NLInput 链路（onResult 确被调）、ActionPreview 组件（对空数组安全、渲染无条件）、DOM 隐藏/闪现（MutationObserver 全程无插入）、dev server 劣化（重启复现）。未排除：React 渲染提交环节。线上版未验证（prod bypass 不生效无法免登录测）。**运营侧处置**：GIF 动线走 update 类（README 招牌动线之一，真实可用）；完整排除法报告见 `oss-ops-data/create-preview-bug-20260829.md`，待用户产品线定夺修复。
 
 ## 相关记忆
 
