@@ -10,7 +10,7 @@
 
 | 角色 | 职责 |
 |---|---|
-| **用户** | 只做产品 + 给 Hermes 造运营工具（P0 stargazer 分析器 / P1 dev.to 发布工具 / P2 审批硬化）；L3 动作（Show HN 首帖、KOL 私聊、付费投放）；L2 审批 |
+| **用户** | **CEO 角色：只做审批、项目发起、优化发起，不碰具体执行**。给 Hermes 造运营工具（P0 stargazer 分析器 / P1 dev.to 发布工具 / P2 审批硬化）；L2 审批（一切对外动作） |
 | **Hermes Agent** | 日常执行：每日巡检 cron、组合铺开、内容起草、release notes 草稿 |
 | **martin 侧 Claude Code** | 上下文工程、打样质量件（英文 README 等模板基准）、pre-flight 审视（`/oss-preflight`）、验收 |
 
@@ -23,11 +23,16 @@
 | 层 | 定义 | 动作清单 | 执行方 |
 |---|---|---|---|
 | **L1 全自动** | 只读 + 本地草稿 | stars/traffic/issue/stargazer 采集、日差分、日报、英文 README 及文章**草稿**、release notes 草稿、repo 内务分析 | Hermes cron 独立跑 |
-| **L2 起草+审批** | 一切**对外可见**变更 | README/LICENSE/topics 推送、issue/PR 评论、dev.to 文章、release 发布、awesome PR、social preview 变更 | Hermes/martin 起草 → pending 文件 → gateway 推微信 → 用户回「批/改/否」→ 执行 + approved.log 回执；48h 无回复自动搁置记入日报 |
-| **L3 仅人零自动化** | 合规/关系敏感 | Show HN 首帖（用户本人发）、KOL/人脉私聊要 star、付费投放、giveaway | 用户 |
+| **L2 起草+审批（无 L3，已合并）** | 一切**对外可见**动作，含发布 | README/LICENSE/topics 推送、issue/PR 评论、dev.to 文章、release 发布、awesome PR、social preview 变更、**Show HN 发帖、KOL/人脉私聊要 star、付费投放、giveaway**（原 L3 全部并入） | 见下方**两路执行** |
 
-**正例**：Hermes 写好 issue 回复草稿存 pending → 微信审批 → 批 → `gh issue comment` → approved.log。
-**反例（禁止）**：cron 里「顺手回复新 issue」「自动发布文章」；用小号互 star；批量 DM 求 star（playbook 里的 retargeting 战术属 L3，agent 不做）。
+**L2 两路执行（2026-08-29 修订二，用户拍板「合作运营」）**——审批确认方式分路，红线不分路：
+
+- **L2-A 异步路（Hermes，用户不在场）**：cron/巡检发起 → 草稿存 `~/.hermes/oss-ops/pending/` → gateway 推**微信**审批 → 用户回「批/改/否 #id」→ Hermes 执行 → 追加 approved.log。48h 无回复自动搁置记入日报。发布工具未就绪时 Hermes 主动找用户要授权/方式。
+- **L2-B 实时路（Claude Code/martin 会话，用户在场）**：用户在会话中发起或对草稿明确说「批/发/上」→ **会话内即时确认即执行**，不走微信、不等固定时间窗（含 baseline 等待期——用户可随时拍板提前上线，提前会破坏 P1 的 7 天对照，执行前一句话告知即可）。执行后**同样追加 approved.log**（标注 `realtime` 渠道），Hermes 次日日报对账可见。
+- 两路共用的不变项：一切对外动作必须有用户确认（异步=微信批复，实时=会话内明示）；preflight 质检不豁免；反 slop 红线不豁免；`/oss-preflight` 对高风险发布物仍前置。
+
+**正例**：Hermes 写好 issue 回复草稿存 pending → 微信审批 → 批 → `gh issue comment` → approved.log；用户在 Claude Code 会话说「把 O1 上了」→ martin 执行 `gh repo edit` → approved.log 标 realtime。
+**反例（禁止）**：cron 里「顺手回复新 issue」「自动发布文章」（未经审批）；Claude Code 会话中**未经用户明示**就推送/发布（实时路≠免审批，只是确认方式从微信变成当面）；用小号互 star；批量 DM 求 star（retargeting 战术同样走 L2 审批，审批前 agent 不做）。
 
 ## 3. 项目组合台账（2026-08-28 快照）
 
@@ -87,13 +92,13 @@ lint 工具 `oss-repo-lint`（martin/clis/，bash+gh）：LICENSE/README 长度+
 ## 8. 发布脉冲（阶段 F）
 
 - **release**（L2）：ai-todo v0.13 整合打样成果；notes 模板 = 新增/改进/修复三段 + GIF + 升级指引；发布前后 3 日 traffic 对比回写 memory。
-- **Show HN**（**L3，用户本人发**）：Hermes 只备支撑包——3 版 title+text 候选、FAQ 预案、发帖日值守监控（日报加密到小时级）。直接贴 GitHub repo 链接（HN 对 repo 链接友好），作者首评讲「为什么造它」。不分享直链求票（HN 反感）。
+- **Show HN**（**L2，原 L3 并入**：Hermes 起草+审批后**由 Hermes 执行发布**；发布工具未就绪时主动找用户要授权/方式）：Hermes 备支撑包——3 版 title+text 候选、FAQ 预案、发帖日值守监控（日报加密到小时级）。直接贴 GitHub repo 链接（HN 对 repo 链接友好），作者首评讲「为什么造它」。不分享直链求票（HN 反感）。
 - **awesome PR**（L2）：awesome-claude-code 提 ai-todo-cli（门槛已满足），严格按其 CONTRIBUTING 格式，每 PR 一个资源。
 - **Product Hunt / DevHunt**：待 Show HN 数据复盘后另议（追加记录于本节）。
 
 ## 9. 事故与反模式（持续追加，不重写）
 
-- **2026-08-29 · ai-todo create 类操作预览不渲染（产品 bug，打样中发现的反模式注记）**：dev 环境（Turbopack、bypass 用户）下，NL 解析返回 **create** 类 action 时预览卡（`AI 理解：N 项操作` + 全部执行按钮）不渲染、任务也不创建，输入框残留原句；**update** 类 action 全链路正常（预览+执行+落库）。已排除：服务端（parse-task 200 且 actions_count=1）、NLInput 链路（onResult 确被调）、ActionPreview 组件（对空数组安全、渲染无条件）、DOM 隐藏/闪现（MutationObserver 全程无插入）、dev server 劣化（重启复现）。未排除：React 渲染提交环节。线上版未验证（prod bypass 不生效无法免登录测）。**运营侧处置**：GIF 动线走 update 类（README 招牌动线之一，真实可用）；完整排除法报告见 `oss-ops-data/create-preview-bug-20260829.md`，待用户产品线定夺修复。
+- **2026-08-29 · ai-todo create 类操作预览不渲染（已结案：仅 dev 环境，线上无此 bug）**：dev 环境（Turbopack、bypass 用户）下 create 类 action 预览卡不渲染（update 类全正常）；排除法排查至 React 提交环节未定位根因。**用户 08-29 确认线上版无此 bug（create 正常）**——README 的 create 宣称成立，发布不受影响；GIF 保持 update 动线（招牌场景），create 版 GIF 可选补录（改 demo-capture.mjs 的 SCENE 句子即可）。完整报告存 `oss-ops-data/create-preview-bug-20260829.md`（dev-only 线索留产品线参考）。
 
 ## 相关记忆
 
