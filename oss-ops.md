@@ -83,6 +83,7 @@ opencli 使用要点（08-29 首战验证）：
    - **少数派 Matrix**：投稿路径 = 注册 → 发 3 篇合规内容转正式作者 → Matrix 发布 → 编辑部精选上首页；应用推荐支持单篇推荐（编辑部整合合集）；ai-todo 工具类应用高匹配
    - **Gitee 镜像**：官方 Push 方向自动镜像低成本；star 数据不互通、流量远低于 GitHub —— GitHub 主仓 + Gitee 国内加速入口、简介引导回主仓；阶段 D 后再评估
    - 国内渠道发布一律 L2 审批流覆盖
+8. **Reddit（2026-08-29 核，养号型渠道）**：ai-todo 目标 sub = r/ClaudeAI（精准）> r/SideProject（推广宽松）> r/selfhosted（需真实自托管叙事）。账号实况：`u/Grand-Hope4605` 账龄 1 年 ✅ 但 karma 1 零活跃——**低 karma 账号的推广帖会被 automod 过滤**。opencli reddit adapter 支持 comment/reply/upvote/search/subreddit-info（发布主题帖不在内，走 browser）。**红线：绝对禁止 AI 自动评论/自动发帖——Reddit 是全平台反 AI slop 最严的社区，账号是一次性资产**；AI 只做「找帖 + 起草」，每条评论人审（微信/会话）后才发（opencli 执行）。发 ai-todo 主题帖前置：comment karma ≥ 50 + 在目标 sub 有 2 周以上真实参与史。
 
 ## 5. ai-todo 打样 playbook（阶段 C，全部动作先攒 7 天 baseline）
 
@@ -105,6 +106,12 @@ lint 工具 `oss-repo-lint`（martin/clis/，bash+gh）：LICENSE/README 长度+
 - **中文轨**：V2EX 分享创造首发（中文独立 dev 主阵地）→ 掘金同步 → 少数派 Matrix 养号（3 篇转正后投应用推荐）。首篇题材与英文版同源不同稿（V2EX 语气更社区化，讲真实开发过程）。
 
 内容四象限轮换：直接介绍 / how-to 植入 / listicle（提名别人换互推——开源不是零和）/ building in public。
+
+**养号社区双线（2026-08-29 立，账号资产先行）**：
+- **Reddit**（见 §4.8）：r/ClaudeAI 等日常参与攒 karma，AI 找帖起草 + 人审后发；karma ≥ 50 才发 ai-todo 主题帖。
+- **少数派 Matrix**：3 篇转正选题全部来自用户真实在用的工具（事实底座厚）：①「我把任务管理丢给 AI agent」（ai-todo 使用向，本稿扩写）② M4 Max 本地 whisper 语音转写环境（效率受众高匹配）③ lmedia-cli Apple Silicon 本地生图/视频零 API 成本（数码受众）。转正后再投应用推荐。
+
+**六站渠道就绪状态（2026-08-29，动态表见 memory）**：dev.to（API 即发，等 api-key/登录）/ 掘金（browser 发，等登录）/ HN（支撑包已备 `write-article-workspace/show-hn-support-pack.md`，等登录+脉冲窗口）/ V2EX（稿就绪，等邀请码激活）/ Reddit（已登录，养号期）/ 少数派（等登录+转正三篇）。
 **反 slop 写作红线**（发布前 `/oss-preflight` 审）：个人声音、具体数字、真实使用故事；禁五特征——模板腔、空洞形容词、无具体数据、套话 intro、总结腔。AI 参与写作可以，但**内容的事实底座必须真实**（真实数据/真实截图/真实使用记录），首帖建议用户最终过目。
 
 ## 8. 发布脉冲（阶段 F）
