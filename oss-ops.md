@@ -16,6 +16,24 @@
 
 指挥层级：**策略在本文档（单点维护），进度在 memory `[[oss-ops-progress]]`，执行状态在 `.autopilot/project/`（dag.yaml）**。Hermes 侧运行手册在 `~/.hermes/skills/github/oss-ops/SKILL.md`（只带运行时必需品，知识不复制）。
 
+### 1.1 自动化优先原则（2026-08-29 用户拍板）
+
+**纯工作量、与效果判断无关的事，一律自动化给 AI；效果判断（选哪张图/何时发/批不批）留给人。** 运营动作按自动化层级选路：
+
+| 层 | 通道 | 适用 |
+|---|---|---|
+| 1 API | `gh` / dev.to REST / tunnel img | 一切有公开 API 的动作，永远首选 |
+| 2 Web UI 自动化 | **opencli**（`@jackwener/opencli`，Chrome Browser Bridge + 169 site adapters + browser 原生命令） | 无 API 但有网页界面的动作：site settings 类操作、平台后台、无 API 的发布渠道 |
+| 3 人手工 | 直接请用户 | 无 API 无 UI，或凭据输入（登录/2FA），或自动化被反自动化对抗击败的动作 |
+
+opencli 使用要点（08-29 首战验证）：
+- 前置：Chrome 需运行（`open -a "Google Chrome" -g` 可自动拉起），daemon 常驻（端口 19825），扩展连接后 `opencli profile list` 出 session 名，全部命令走 `opencli browser <session> <cmd>`
+- `github whoami` 的 logged_in 只验 cookie 存在性≠会话有效，实跑一跳 settings 页才算数；GitHub 对无效会话的 settings 返回 404 而非登录跳转
+- `browser find --css/--role/--text` 拿 ref → `click <ref>`；`eval` 可在页面上下文跑任意 JS（含 base64 内存构造 File 注入，绕开 file chooser）
+- **social preview 上传 runbook（08-29 实战打通，opencli 层 2 全自动）**：GitHub 无公开 API（GraphQL 只读），走 opencli：①`browser open <repo>/settings` ②eval 里 base64 → `File` → `DataTransfer` → 合成 **drop 事件**打到上传区（**必须 `bubbles: true`**——GitHub 用 document 级委托监听，打偏目标也能冒泡生效）③拖放流上传即生效，**没有 Save 步骤** ④验证别找 Save 按钮：看页面上出现 "Remove image"，或 GraphQL `repository.openGraphImageUrl` 变为 `repository-images.githubusercontent.com/...`（默认是 opengraph.githubassets.com 动态卡）。坑：`input.files+change/input` 合成事件免疫、直 POST `/settings/open-graph-image` 404、原生 chooser 不经真实 UI 点击不弹——这三路不通，别浪费时间。**教训：验证信号要选对（Remove image/API 字段），找错信号会把成功误报成失败靠人眼纠错。**
+
+
+
 ## 2. 审批分层红线（命题宪法，所有 agent/skill/cron 引用）
 
 **背景**：HN 官方 flag AI 生成/编辑内容（"violates the social contract that it takes more effort to write than read"，2026-08 核实）；Reddit 全面打击 AI slop；**账号声誉是一次性资产**，被封不可恢复。另：hermes 侧外发能力本身无审批门，L2 纪律靠 skill 约定，机制化强制是用户工具 P2（已知缺口）。
