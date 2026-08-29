@@ -12,3 +12,7 @@ weixin-incident-20260823/*.json
 # oss-ops 数据原石（stargazer 导出/盘点原始数据，防大文件误入库）
 oss-ops-data/
 .autopilot/project-archive-*/
+
+# write-article 语料（外部文章全文，版权留在本地）与草稿工作区
+.claude/skills/write-article/references/corpus/
+write-article-workspace/
