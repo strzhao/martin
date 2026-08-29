@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# oss-repo-lint — strzhao 开源仓门面打分器（oss-ops.md §6 定义，10 分制）
+# 用法: oss-repo-lint <owner/repo>...   无参数默认跑 oss-ops 9 核心仓
+# 依赖: gh（已登录）。只读操作，零风险。
+set -uo pipefail
+
+REPOS=("$@")
+if [ ${#REPOS[@]} -eq 0 ]; then
+  REPOS=(strzhao/ai-todo strzhao/ai-todo-cli strzhao/autopilot strzhao/ai-news \
+         strzhao/claude-code-buddy strzhao/learn-everything strzhao/relight \
+         strzhao/lmedia-cli strzhao/tunnel-cli)
+fi
+
+api() { gh api "$@" 2>/dev/null; }
+has() { [ -n "$1" ]; }
+
+lint_repo() {
+  local repo="$1" score=0 miss=""
+  local meta desc topics og readme
+  meta=$(api "repos/$repo") || { printf '%-28s ✗ repo 不可达\n' "$repo"; return; }
+  desc=$(jq -r '.description // ""' <<<"$meta")
+  topics=$(jq -r '.topics | length' <<<"$meta")
+  og=$(gh api graphql -f query="{ repository(owner: \"${repo%%/*}\", name: \"${repo##*/}\") { openGraphImageUrl } }" --jq '.data.repository.openGraphImageUrl' 2>/dev/null)
+  readme=$(api "repos/$repo/readme" --jq '.content' | base64 -d 2>/dev/null || true)
+
+  # 1. description 非空
+  has "$desc" && score=$((score+1)) || miss+="description "
+  # 2. topics ≥5
+  [ "${topics:-0}" -ge 5 ] && score=$((score+1)) || miss+="topics(${topics}) "
+  # 3. LICENSE 存在
+  api "repos/$repo/license" --jq '.license.spdx_id' >/dev/null 2>&1 && score=$((score+1)) || miss+="LICENSE "
+  # 4. README ≥1KB
+  [ "${#readme}" -ge 1000 ] && score=$((score+1)) || miss+="README短 "
+  # 5. README 有图（![]( / <img）
+  grep -qE '!\[|<img' <<<"$readme" && score=$((score+1)) || miss+="README无图 "
+  # 6. README 有安装/快速开始节
+  grep -qiE '^#+ .*(install|quick|getting started|快速|安装|开始)|npx |npm install|pip install|brew install|cargo install' <<<"$readme" && score=$((score+1)) || miss+="无安装节 "
+  # 7. issue 模板
+  api "repos/$repo/contents/.github/ISSUE_TEMPLATE" --jq 'length' >/dev/null 2>&1 && score=$((score+1)) || miss+="issue模板 "
+  # 8. CI（workflows 目录或 README 里 CI badge）
+  api "repos/$repo/contents/.github/workflows" --jq 'length' >/dev/null 2>&1 && score=$((score+1)) || miss+="CI "
+  # 9. social preview 自定义（repository-images = 用户上传；opengraph.githubassets = 默认动态卡）
+  [[ "$og" == *repository-images.githubusercontent.com* ]] && score=$((score+1)) || miss+="social-preview "
+  # 10. 双语/英文门面（README.zh* 存在，或 README 主语言为英文——粗判：无中文字符且 ≥1KB）
+  if api "repos/$repo/contents" --jq '.[].name' 2>/dev/null | grep -q '^README\.zh'; then
+    score=$((score+1))
+  elif grep -qP '[\x{4e00}-\x{9fff}]' <<<"$readme" 2>/dev/null; then
+    miss+="中文单语README "
+  else
+    score=$((score+1))
+  fi
+
+  printf '%-28s %d/10%s\n' "$repo" "$score" "${miss:+  ✗ $miss}"
+}
+
+echo "oss-repo-lint · $(date '+%Y-%m-%d %H:%M') · 10 项：desc/topics5+/LICENSE/README长度/图/安装节/issue模板/CI/socialPreview/双语或英文"
+for r in "${REPOS[@]}"; do lint_repo "$r"; done
