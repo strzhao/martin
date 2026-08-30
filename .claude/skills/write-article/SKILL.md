@@ -48,6 +48,8 @@ cat prompt.md | gcli api --provider kimi --model kimi-k2 -p - > draft.md
 | V2EX 分享创造 / 掘金 | `references/style-zh-v2ex.md` | `references/corpus/`（持续收集追加） |
 | dev.to / 英文 | `references/style-en-devto.md` | 待收集（见规范内说明） |
 
+**起草前必过 [`references/viewpoint-laws.md`](references/viewpoint-laws.md)（视角转换定律）**：同场景下发布者视角与读者视角差 100 倍（实证 2026-08-30）。核心：标题=读者痛点/目标而非产品名；开头降姿态（转述/亲测/踩坑）；产品藏手段位；诚实折扣必配；为收藏设计。**渠道语境例外**：发布类社区（V2EX 分享创造/dev.to showdev/Show HN）接受宣告体；内容消费社区（小红书/B站/知乎/掘金）必须读者视角。
+
 prompt 末尾固定要求：「只用素材里的真实事实，宁可留白也不要编造细节。直接输出标题+正文，不要解释。」
 
 改稿往返：把修改意见 + 原稿一起再调一次 kimi（它没有会话记忆，每次都是全量上下文）。

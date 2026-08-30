@@ -114,6 +114,8 @@ lint 工具 `oss-repo-lint`（martin/clis/，bash+gh）：LICENSE/README 长度+
 **六站渠道就绪状态（2026-08-29，动态表见 memory）**：dev.to（API 即发，等 api-key/登录）/ 掘金（browser 发，等登录）/ HN（支撑包已备 `write-article-workspace/show-hn-support-pack.md`，等登录+脉冲窗口）/ V2EX（稿就绪，等邀请码激活）/ Reddit（已登录，养号期）/ 少数派（等登录+转正三篇）。
 **反 slop 写作红线**（发布前 `/oss-preflight` 审）：个人声音、具体数字、真实使用故事；禁五特征——模板腔、空洞形容词、无具体数据、套话 intro、总结腔。AI 参与写作可以，但**内容的事实底座必须真实**（真实数据/真实截图/真实使用记录），首帖建议用户最终过目。
 
+**视角转换定律**（2026-08-30 实证，全文见 write-article skill `references/viewpoint-laws.md`）：同场景发布者视角 vs 读者视角差 100 倍（小红书实测：产品介绍体 87-104 赞 vs 痛点/教程体 1428-9841 赞）。内容消费社区（小红书/B站/知乎/掘金）一律读者视角——标题=读者痛点/目标、开头降姿态（转述/亲测/踩坑）、产品藏手段位、诚实折扣必配、为收藏设计、干货帖:产品帖 ≥2:1 交替攒账号信任；发布类社区（V2EX 分享创造/dev.to showdev/Show HN）接受宣告体。ai-todo 读者视角选题矩阵五条已备（见该文件）。
+
 ## 8. 发布脉冲（阶段 F）
 
 - **release**（L2）：ai-todo v0.13 整合打样成果；notes 模板 = 新增/改进/修复三段 + GIF + 升级指引；发布前后 3 日 traffic 对比回写 memory。
