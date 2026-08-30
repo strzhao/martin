@@ -34,6 +34,27 @@ opencli 使用要点（08-29 首战验证）：
 
 
 
+### 1.2 个人 IP 统一规范（2026-08-30 用户拍板，发文前先统一账号资产）
+
+**主定位**：让 AI agent 替我干活的独立开发者，把过程开源。（个人站签名另保留 "Build small tools, keep a wide life."）
+**命名**：全站统一 **strzhao**；ID 永不可改的平台用昵称/展示名/简介统一。**视觉**：Sage 苔绿 #3A7D68 品牌色系（设计资产 stringzhao-life/COLORS.md）+ 统一头像（方案待用户定）。
+**语气**：write-article 风格规范即 IP 语气——克制、具体、诚实折扣；平台间风格差异（emoji 等）按各站规范，人格不分叉。
+
+| 平台 | ID | 统一动作 | 简介文案 |
+|---|---|---|---|
+| GitHub | strzhao ✅ | bio 升级 + 建 profile README | `Agent-first tools, open source · stringzhao.life` |
+| 小红书（第 7 站） | StrZ（昵称可改） | 昵称→strzhao、补 bio | `开发者｜让 AI 替我干活｜开源工具作者｜stringzhao.life` |
+| V2EX | daniel21436（ID 永不可改） | 激活后改昵称 strzhao + 签名 | `agent-first tools · stringzhao.life` |
+| Reddit | Grand-Hope4605（ID 永不可改） | display name→strzhao | `Indie dev, agent-first tools, open source` |
+| 掘金 | 注册 strzhao | 登录时注册 | `让 AI agent 替我干活的独立开发者，开源过程全公开` |
+| dev.to | 注册 strzhao | 登录时注册 | `Indie dev building agent-first tools. Most of my productive time is inside Claude Code.` |
+| 少数派 | 注册 strzhao | 登录时注册 | 同掘金 |
+| Show HN | 注册 strzhao | 登录时注册 | （HN 无 bio） |
+
+**内容支柱**（四支柱，全站同源按平台变形）：① agent 工作流（hermes+ai-todo 每日自动跟进，真实在跑）② 开源工具（9 仓组合）③ 本地 AI 能力（M4 Max whisper/lmedia 零成本生产）④ building in public 复盘。小红书变体：① AI 工作流提效（打工人视角）② 工具安利 ③ 开发者日常——同一人格降维表达，不开新人格。
+**顺序纪律**：先统一账号资产（本表）→ 再发内容；「号比内容先行」。
+
+
 ## 2. 审批分层红线（命题宪法，所有 agent/skill/cron 引用）
 
 **背景**：HN 官方 flag AI 生成/编辑内容（"violates the social contract that it takes more effort to write than read"，2026-08 核实）；Reddit 全面打击 AI slop；**账号声誉是一次性资产**，被封不可恢复。另：hermes 侧外发能力本身无审批门，L2 纪律靠 skill 约定，机制化强制是用户工具 P2（已知缺口）。
