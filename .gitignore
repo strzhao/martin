@@ -14,5 +14,7 @@ oss-ops-data/
 .autopilot/project-archive-*/
 
 # write-article 语料（外部文章全文，版权留在本地）与草稿工作区
+# exemplars = 用户本人未发表稿（martin 是公开仓，绝不入库）
 .claude/skills/write-article/references/corpus/
+.claude/skills/write-article/references/exemplars/
 write-article-workspace/

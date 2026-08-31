@@ -25,7 +25,7 @@ description: 高质量文章流水线（中英双轨，kimi 主笔 + Claude 编�
 
 信息不够就问用户：「你想讲哪几个点？有没有自己真实的经历想放进去？有没有特别想吐槽的？」——一手经历只能从用户嘴里来，问出来的是真的，编出来的是事故。
 
-## ② 素材事实底座（防编造的核心）
+## ② 素材底座（事实层防编造 + 叙事层防教程体）
 
 写 `material.md`（模板见 `references/material-template.md`），规则：
 
@@ -33,24 +33,34 @@ description: 高质量文章流水线（中英双轨，kimi 主笔 + Claude 编�
 2. **一手经历必须标注** `[待补：用户填]`：为什么做这个东西、当时什么感受、具体某次使用场景——起草模型遇到这些位置就留白，终审时让用户填。**宁可整段留白，不可代编**。实测证据：kimi 在素材不足时会自己编「我在 Claude Code 里顺手说了一句话它真的写进去了」这种以假乱真的一手经历，读者无法分辨，作者翻车。
 3. 素材充足的标准：核心卖点有真实例子、有真实数据、有真实链接。缺哪个就去收集哪个（gh api / 日报 metrics / 跑一遍命令），收集不到就留白。
 4. **配图一律过图床**：本地截图/GIF 先 `tunnel img <path>` 拿公网 URL（stdout `✓ URL`，取第二列）再写进 markdown——各平台正文直接贴本地路径会挂。图床已验收（2026-08-29）：content-type 自动正确、`cache-control: immutable` 一年缓存、CORS 全开、657KB GIF 无压力、`tunnel img ls` 可查、`tunnel img rm <id>` 可删（rm 后 404 已验证）。**边界**：文章/社交内容用图床 URL；GitHub README 内的图用仓内相对路径（跟着 repo 走，fork 不断链）。
+5. **叙事层必填（2026-08-31 升级，防教程体的根）**：时间线（起点→第一个动作→转折/意外→现在→情绪锚点）+ 踩坑记录（现象→为什么难→怎么解）。**没有叙事层的素材底座不准进 ③**——只有事实层时模型只能按「合理结构」编大纲体，08-31 掘金稿被毙的根因就在这。采集协议：用户在场就口述（三五句起步，「然后呢？」追问）；不在场就从历史会话/issue/commit 挖；都挖不到就标缺口、宁可延期不起草。
 
 ## ③ kimi 起草
 
-按目标平台读对应风格规范，组装 prompt（风格规范全文 + 语料范文 2 篇 + 素材底座 + 任务要求），从 stdin 喂给 kimi：
+组装 prompt，**四件套按序拼接**（2026-08-31 升级）：
+
+```
+① 叙事风格核心全文（references/style-narrative-core.md，所有中文长文必带）
+② 平台惯例（references/style-zh-v2ex.md 等，只管渠道习惯：篇幅/emoji/链接放置）
+③ 作者风格范本（references/exemplars/，用户本人文章，few-shot——比任何平台语料权威）
+④ 素材底座（material.md 全文，含叙事层）
+```
+
+从 stdin 喂给 kimi：
 
 ```bash
 export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890
 cat prompt.md | gcli api --provider kimi --model kimi-k2 -p - > draft.md
 ```
 
-| 平台 | 风格规范 | 语料 |
+| 平台 | 平台惯例 | 说明 |
 |---|---|---|
-| V2EX 分享创造 / 掘金 | `references/style-zh-v2ex.md` | `references/corpus/`（持续收集追加） |
-| dev.to / 英文 | `references/style-en-devto.md` | 待收集（见规范内说明） |
+| V2EX 分享创造 / 掘金 | `references/style-zh-v2ex.md` | 掘金长文加叙事核心；V2EX 发布档短帖惯例为主 |
+| dev.to / 英文 | `references/style-en-devto.md` | 英文轨；叙事核心原则适用但签名词不适用 |
 
 **起草前必过 [`references/viewpoint-laws.md`](references/viewpoint-laws.md)（视角转换定律）**：同场景下发布者视角与读者视角差 100 倍（实证 2026-08-30）。核心：标题=读者痛点/目标而非产品名；开头降姿态（转述/亲测/踩坑）；产品藏手段位；诚实折扣必配；为收藏设计。**渠道语境例外**：发布类社区（V2EX 分享创造/dev.to showdev/Show HN）接受宣告体；内容消费社区（小红书/B站/知乎/掘金）必须读者视角。
 
-prompt 末尾固定要求：「只用素材里的真实事实，宁可留白也不要编造细节。直接输出标题+正文，不要解释。」
+prompt 末尾固定要求：「只用素材里的真实事实，叙事弧线只走素材叙事层的时间线，宁可留白也不要编造细节。直接输出标题+正文，不要解释。」
 
 改稿往返：把修改意见 + 原稿一起再调一次 kimi（它没有会话记忆，每次都是全量上下文）。
 
