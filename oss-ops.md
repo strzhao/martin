@@ -70,6 +70,8 @@ opencli 使用要点（08-29 首战验证）：
 - **L2-B 实时路（Claude Code/martin 会话，用户在场）**：用户在会话中发起或对草稿明确说「批/发/上」→ **会话内即时确认即执行**，不走微信、不等固定时间窗（含 baseline 等待期——用户可随时拍板提前上线，提前会破坏 P1 的 7 天对照，执行前一句话告知即可）。执行后**同样追加 approved.log**（标注 `realtime` 渠道），Hermes 次日日报对账可见。
 - 两路共用的不变项：一切对外动作必须有用户确认（异步=微信批复，实时=会话内明示）；preflight 质检不豁免；反 slop 红线不豁免；`/oss-preflight` 对高风险发布物仍前置。
 
+**审核定稿方式 v2（2026-08-31 用户拍板，两路共用）**：待审文档（稿件/发布物/pending）一律 `tunnel deploy <doc.md>` 上传拿公网 URL 再送审——`.md` 自动渲染为阅读页，随机 slug 不可猜；微信推「摘要+URL」（替代旧的前 500 字贴文），实时路会话给 URL（替代贴全文）。**审后即删纪律**：批准/否决/48h 搁置后立即 `tunnel rm <slug>`——未发布稿是私产，公网暴露窗口不超过审核期。
+
 **正例**：Hermes 写好 issue 回复草稿存 pending → 微信审批 → 批 → `gh issue comment` → approved.log；用户在 Claude Code 会话说「把 O1 上了」→ martin 执行 `gh repo edit` → approved.log 标 realtime。
 **反例（禁止）**：cron 里「顺手回复新 issue」「自动发布文章」（未经审批）；Claude Code 会话中**未经用户明示**就推送/发布（实时路≠免审批，只是确认方式从微信变成当面）；用小号互 star；批量 DM 求 star（retargeting 战术同样走 L2 审批，审批前 agent 不做）。
 
