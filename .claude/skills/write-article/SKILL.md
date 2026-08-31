@@ -1,6 +1,6 @@
 ---
 name: write-article
-description: 高质量文章流水线（中英双轨，kimi 主笔 + Claude 编排）。要写、改、精修任何对外发布的文章时务必使用：V2EX 分享创造帖、掘金文章、dev.to 英文首发、少数派投稿、开源项目介绍、building in public 复盘。触发词包括写文章、写稿、出稿、发帖、帮我写这篇、按我的风格写。即使用户只丢来一句"帮我把这个写成文章"或一份散乱素材，也应触发。核心机制：素材事实底座（防编造，2026-08-29 实测 kimi 会编造一手经历）+ kimi 起草（gcli api）+ 四层质检（L1 脚本扫描→L2 风格→L3 事实溯源→L4 活人感互评）。不用于纯内部记录或 git commit。
+description: 高质量文章流水线（中英双轨，Claude 编排 + claude -p/writer-blog-skill 起草 + kimi 互评）。要写、改、精修任何对外发布的文章时务必使用：V2EX 分享创造帖、掘金文章、dev.to 英文首发、少数派投稿、小红书笔记、开源项目介绍、building in public 复盘。触发词包括写文章、写稿、出稿、发帖、帮我写这篇、按我的风格写。即使用户只丢来一句"帮我把这个写成文章"或一份散乱素材，也应触发。核心机制：素材底座五层（事实/叙事/设计决策/产品理解/诉求证据，防编造防教程体）+ 产品深潜（多 subagent 并行懂产品）+ 角度决策（①.7）+ 四层质检（L1 脚本扫描→L2 风格→L3 事实溯源→L4 活人感 kimi 互评）+ 平台分级质量门槛。不用于纯内部记录或 git commit。
 ---
 
 # 文章写作流水线（write-article）
@@ -63,34 +63,29 @@ description: 高质量文章流水线（中英双轨，kimi 主笔 + Claude 编�
 4. **配图一律过图床**：本地截图/GIF 先 `tunnel img <path>` 拿公网 URL（stdout `✓ URL`，取第二列）再写进 markdown——各平台正文直接贴本地路径会挂。图床已验收（2026-08-29）：content-type 自动正确、`cache-control: immutable` 一年缓存、CORS 全开、657KB GIF 无压力、`tunnel img ls` 可查、`tunnel img rm <id>` 可删（rm 后 404 已验证）。**边界**：文章/社交内容用图床 URL；GitHub README 内的图用仓内相对路径（跟着 repo 走，fork 不断链）。
 5. **叙事层必填（2026-08-31 升级，防教程体的根）**：时间线（起点→第一个动作→转折/意外→现在→情绪锚点）+ 踩坑记录（现象→为什么难→怎么解）。**没有叙事层的素材底座不准进 ③**——只有事实层时模型只能按「合理结构」编大纲体，08-31 掘金稿被毙的根因就在这。采集协议：用户在场就口述（三五句起步，「然后呢？」追问）；不在场就从历史会话/issue/commit 挖；都挖不到就标缺口、宁可延期不起草。
 
-## ③ kimi 起草
+## ③ 起草（claude -p + 风格 skill 原生加载，2026-09-01 改）
 
-组装 prompt，**四件套按序拼接**（2026-08-31 升级）：
-
-```
-① 叙事风格核心全文（references/style-narrative-core.md，所有中文长文必带）
-② 平台惯例（references/style-zh-v2ex.md 等，只管渠道习惯：篇幅/emoji/链接放置）
-③ 作者风格范本（references/exemplars/，用户本人文章，few-shot——比任何平台语料权威）
-④ 素材底座（material.md 全文，含叙事层）
-```
-
-从 stdin 喂给 kimi：
+**起草走 `claude -p`，风格靠 skill 原生加载，喂纯内容摘要**——不拼巨型 prompt：
 
 ```bash
-export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890
-cat prompt.md | gcli api --provider kimi --model kimi-k2 -p - > draft.md
+claude -p "请使用 writer-blog-skill，根据此文件的内容要点写文章：<content-summary.md>
+要求：①只用要点里的事实，不编造 ②第一人称 ③直接输出标题+正文，不解释" \
+  --output-format text > draft.md
 ```
 
-| 平台 | 平台惯例 | 说明 |
+**为什么是这样（09-01 A/B 实证）**：同一内容摘要，「gcli api 一次性喂 36KB 四件套（叙事核心全文+范本全文+素材全文+任务书）」产出合规但僵硬；「claude -p 原生加载 writer-blog-skill + 4KB 纯内容摘要」一次成稿自然流畅——**同模型家族（claude -p 后端也是 kimi 系，`ANTHROPIC_BASE_URL=api.kimi.com/coding`），差距在交付方式：过量处方会把模型压进合规模式，风格要靠 skill 机制内化而不是粘贴规则**。
+
+分工修订：writer-blog-skill 管「怎么写」（风格 DNA）；我们的流水线管「写什么和能不能发」——素材底座五层（事实+叙事+设计决策+产品理解+诉求证据，深潜四/五路 agent 产出）压缩成**内容摘要**（纯事实零技巧）喂给起草；叙事核心/视角定律降级为 **L2/L4 质检判据**（不再进起草 prompt）；exemplars 留作风味校准参考，不塞 prompt。kimi（gcli）转任 L4 互评独立视角——不同模型/不同通道双保险。
+
+| 平台 | 起草风格 skill | 说明 |
 |---|---|---|
-| V2EX 分享创造 / 掘金 | `references/style-zh-v2ex.md` | 掘金长文加叙事核心；V2EX 发布档短帖惯例为主 |
-| dev.to / 英文 | `references/style-en-devto.md` | 英文轨；叙事核心原则适用但签名词不适用 |
+| 掘金 / 小红书 / 公众号 / V2EX 长文 | writer-skill:writer-blog-skill | 叙事体主力 |
+| dev.to / 英文 | writer-blog-skill + 英文任务书 | 英文轨待验证 |
+| 发布档短帖（V2EX 分享创造） | style-zh-v2ex.md 直接喂 | 短帖不需要叙事骨架 |
 
-**起草前必过 [`references/viewpoint-laws.md`](references/viewpoint-laws.md)（视角转换定律）**：同场景下发布者视角与读者视角差 100 倍（实证 2026-08-30）。核心：标题=读者痛点/目标而非产品名；开头降姿态（转述/亲测/踩坑）；产品藏手段位；诚实折扣必配；为收藏设计。**渠道语境例外**：发布类社区（V2EX 分享创造/dev.to showdev/Show HN）接受宣告体；内容消费社区（小红书/B站/知乎/掘金）必须读者视角。
+**起草前的硬前置**（不变）：① 选题 HKR → ①.5 产品深潜（未完成不起草）→ ①.7 角度决策（用户拍板）→ ② 素材底座五层齐 → 压成内容摘要。
 
-prompt 末尾固定要求：「只用素材里的真实事实，叙事弧线只走素材叙事层的时间线，宁可留白也不要编造细节。直接输出标题+正文，不要解释。」
-
-改稿往返：把修改意见 + 原稿一起再调一次 kimi（它没有会话记忆，每次都是全量上下文）。
+改稿往返：把修改意见 + 原稿 + 内容摘要一起再喂一次 claude -p（无会话记忆，每次全量上下文）。
 
 ## ④ 四层质检（顺序执行，层层拦截）
 
