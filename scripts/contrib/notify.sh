@@ -15,7 +15,16 @@
 #   - 审批推送（🟡 卡片）与告警分开计数；回执独立计数不占限额（审批卡=规范化模板，豁免 AI 整理）
 #   - hermes send 失败链：重试 1 次 → 事件保留 → 累计 3 败 osascript 本地通知兜底
 #   - notify_dry_run=true 时只打印完整消息体与目标，不触 hermes/tunnel（AI 摘要照常生成）
+#   - **审批交互路（approval_interactive=true，09-05 L2-A 短码批准）**：发卡前由机器稿生成人读页
+#     `<draft>.page.md`（① interactive fence：radio id:verdict 批准/否决/需修改 + text id:comment
+#     ② 中文 BLUF 头 ③ premises 证据表 ④ 机器稿 verbatim 附录；机器稿本体零改动），部署走
+#     `tunnel drops approve <page> --name <slug>`；slug=[a-z0-9]{10}、短码=[a-km-np-z2-9]{6}
+#     （去 0/o/1/l），短码经 ?key= 自动回填审批页名字栏；卡片渲染卡 v2 模板。
+#     **dry-run 登记语义**：NOTIFY_DRY_RUN=true 时跳过真实部署与发送，但 slug/code 生成与
+#     `rq.sh tunnel-deploy`（合成 url）照常——沙箱链依赖此登记。
+#     部署失败/开关非 true → 完整回退旧文本卡路（行为兼容）。
 #   - 测试沙箱：CONTRIB_DATA_DIR=<dir> 可把账本/配置整体指向临时目录
+#   - 命令 seam：TUNNEL_BIN / HERMES_BIN / OSASCRIPT_BIN / GATEWAY_PROBE_BIN / CLAUDE_BIN
 #
 # 用法:
 #   notify.sh event <class> --key K --summary S [--channel C]
@@ -35,6 +44,7 @@ RQ="$MARTIN/scripts/contrib/rq.sh"
 LOCK="${NOTIFY_LOCK:-/tmp/contrib-notify.lock}"
 # 命令 seam（默认值=现状硬编码；测试套件经此注入影子 stub，生产语义零改变）
 HERMES_BIN="${HERMES_BIN:-hermes}"
+TUNNEL_BIN="${TUNNEL_BIN:-tunnel}"
 NOTIFY_SEND_LAST="${NOTIFY_SEND_LAST:-/tmp/contrib-send-last.json}"
 OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 GATEWAY_PROBE_BIN="${GATEWAY_PROBE_BIN:-pgrep}"
@@ -374,10 +384,132 @@ PYEOF
 }
 
 # ---------------- approve（审批推送 🟡） ----------------
-_build_approval_card() { # <id> → stdout 卡片文本
+_build_approval_card() { # <id> → stdout 卡片文本（旧模板；approval_interactive 非 true 或降级时用）
   local id="$1"
   jq -r --arg id "$id" '.items[] | select(.id == $id) |
-    "🟡【L2 审批 #\(.id)】\(.disposition) 评论\n类型: \(.disposition)（lane=\(.lane)）\n目标: NousResearch/hermes-agent#\(.issue)\n概要: \(.title[0:80])\n质量: \(.score)/15（prio \(.priority)）；strategist+红队双审已过\n审阅: \(.tunnel.url // "见全文")\n全文: ~/workspace/martin/contrib-data/pending/\(.id).md\n回复「批 #\(.id)」/「改 #\(.id): 意见」/「否 #\(.id)」；48h 无回复自动搁置"' "$QUEUE"
+    "🟡【L2 审批 #\(.id)】\(.disposition) 评论\n类型: \(.disposition)（lane=\(.lane)）\n目标: NousResearch/hermes-agent#\(.issue)\n概要: \(.title[0:80])\n质量: \(.score)/15（prio \(.priority)）；\(if .lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过\n审阅: \(.tunnel.url // "见全文")\n全文: ~/workspace/martin/contrib-data/pending/\(.id).md\n回复「批 #\(.id)」/「改 #\(.id): 意见」/「否 #\(.id)」；48h 无回复自动搁置"' "$QUEUE"
+}
+
+# ---- 交互路（approval_interactive=true）：slug/短码/人读页/卡 v2 ----
+
+# 短码与 slug 采样（C4）：字符集均匀采样 —— urandom 字节拒绝采样（256 不被字符集长度整除时
+# 丢弃越界值，防取模偏置）；LC_ALL=C 固定字节语义。slug=[a-z0-9]{10}；短码=[a-km-np-z2-9]{6}（去 0/o/1/l）
+_sample_charset() { # <charset> <len> → stdout 采样串（失败 rc=1）
+  local cs="$1" n="$2" out="" byte guard=0
+  local range=$(( 256 / ${#cs} * ${#cs} ))
+  while (( ${#out} < n )); do
+    guard=$((guard + 1))
+    (( guard > 64 )) && { log "随机采样异常（/dev/urandom 不可读？）"; return 1; }
+    while IFS= read -r byte; do
+      [[ -n "$byte" ]] || continue
+      (( byte < range )) || continue
+      out+="${cs:$(( byte % ${#cs} )):1}"
+      (( ${#out} >= n )) && break
+    done < <(LC_ALL=C head -c 64 /dev/urandom 2>/dev/null | LC_ALL=C od -An -tu1 | LC_ALL=C tr -s ' ' '\n')
+  done
+  printf '%s' "$out"
+}
+gen_slug() { _sample_charset 'abcdefghijklmnopqrstuvwxyz0123456789' 10; }
+gen_code() { _sample_charset 'abcdefghijkmnpqrstuvwxyz23456789' 6; }
+
+# disposition 表述 / lane 审核轮次（卡 v2 两处硬编码修正的口径源；jq 内联副本与其保持同构）
+approval_disp_cn() {
+  case "$1" in
+    own-PR)          echo "own-PR 推进" ;;
+    review-evidence) echo "evidence 评审" ;;
+    probe-salvage)   echo "probe 取证" ;;
+    *)               echo "$1" ;;
+  esac
+}
+approval_rounds() {
+  [[ "$1" == "probe" ]] && echo "strategist 单轮" || echo "strategist+红队双审"
+}
+
+_build_approval_card_v2() { # <id> <page-url> <code> <deadline> <ttl> → stdout 卡 v2（C6 行序固定）
+  local id="$1" url="$2" code="$3" deadline="$4" ttl="$5"
+  jq -rn --slurpfile q "$QUEUE" --arg id "$id" --arg url "$url" --arg code "$code" \
+       --arg deadline "$deadline" --argjson ttl "$ttl" '
+    ($q[0].items[] | select(.id == $id)) as $it |
+    "🟡【L2 审批 #\($it.id)】\(if $it.disposition == "own-PR" then "own-PR 推进"
+       elif $it.disposition == "review-evidence" then "evidence 评审"
+       elif $it.disposition == "probe-salvage" then "probe 取证"
+       else $it.disposition end)",
+    "目标: NousResearch/hermes-agent#\($it.issue) · \($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)",
+    "概要: \($it.title[0:80])",
+    "✅ 点开即批（短码已自动填入）: \($url)?key=\($code)",
+    "⏱ \($deadline) 前有效（\($ttl)h），超时自动搁置",
+    "💬 微信备用: 批/否 #\($it.id)；改 #\($it.id): 意见"'
+}
+
+# _build_approval_page <id> <draft> <deadline> <ttl> → stdout 人读页 markdown
+# ① 顶部 interactive fence（C2 形状：radio id:verdict 三选项固定顺序 + text id:comment）
+# ② 中文 BLUF 头（rq 元数据）③ premises 证据表 ④ 机器稿全文 verbatim 附录（不包 fence，防草稿自身 fence 嵌套破坏）
+# 全程 jq 模板渲染，不走 bash 字符串内插（全角标点变量名盲区）；机器稿本体零改动（C8 逐字投递语义）
+_build_approval_page() {
+  local id="$1" draft="$2" deadline="$3" ttl="$4"
+  jq -rn --rawfile draftbody "$draft" --slurpfile q "$QUEUE" \
+       --arg id "$id" --arg deadline "$deadline" --argjson ttl "$ttl" '
+    ($q[0].items[] | select(.id == $id)) as $it |
+    [ "```interactive",
+      "id: verdict",
+      "type: radio",
+      "question: 是否批准执行该项（批准=正文逐字投递，见文末原文附录）？",
+      "options:",
+      "  - 批准",
+      "  - 否决",
+      "  - 需修改",
+      "```",
+      "",
+      "```interactive",
+      "id: comment",
+      "type: text",
+      "question: 意见（选填；选「需修改」时请写明修改点）",
+      "placeholder: 例：第 2 条 premise 请补 file:line 证据",
+      "```",
+      "",
+      "# L2 审批 #\($it.id) —— \(if $it.disposition == "own-PR" then "own-PR 推进"
+        elif $it.disposition == "review-evidence" then "evidence 评审"
+        elif $it.disposition == "probe-salvage" then "probe 取证"
+        else $it.disposition end)",
+      "",
+      "- 目标 issue: NousResearch/hermes-agent#\($it.issue)（\($it.title[0:80])）",
+      "- 质量分: \($it.score)/15 · 审核轮次: \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)",
+      "- 审批截止: \($deadline)（\($ttl)h，超时自动搁置）",
+      "- 提交前请确认名字栏已填卡片里的 6 位短码（微信链接会自动填入）",
+      "",
+      "## 决策依据（premises，\($it.premises | length) 条）",
+      "",
+      "| claim | evidence |",
+      "|---|---|",
+      ($it.premises[] |
+        "| \((.claim // "") | gsub("[\\|\n]"; " ") | .[0:160]) | \((.evidence // "") | gsub("[\\|\n]"; " ") | .[0:160]) |"),
+      "",
+      "---",
+      "",
+      "## 审批对象（机器稿原文，逐字附录）",
+      "",
+      $draftbody
+    ] | join("\n") + "\n"'
+}
+
+# _legacy_deploy <id> <draft> —— 旧审阅链接路（tunnel deploy + 3 参登记，code 缺省 null）
+# approval_interactive 非 true 时是主路；交互路部署失败时是降级路
+_legacy_deploy() {
+  local id="$1" draft="$2"
+  [[ "$DRY_RUN" == "true" ]] && return 0
+  command -v "$TUNNEL_BIN" >/dev/null 2>&1 || return 0
+  local cur_url; cur_url="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.url // ""' "$QUEUE")"
+  [[ -n "$cur_url" ]] && return 0
+  local deploy_out url
+  deploy_out=$("$TUNNEL_BIN" deploy "$draft" -n "$id" 2>/dev/null || true)
+  url="$(grep -oE 'https?://[^ ]+' <<<"$deploy_out" | tail -1)"
+  if [[ -n "$url" ]]; then
+    "$RQ" tunnel-deploy "$id" "$url" "$id" >/dev/null
+    log "approve ${id}: tunnel 已部署 ${url}"
+  else
+    log "approve ${id}: tunnel 部署失败（卡片将以全文路径代替）"
+  fi
+  return 0
 }
 
 cmd_approve() {
@@ -385,6 +517,9 @@ cmd_approve() {
   acquire_lock
   local target_id="${1:-}"
   local max_ap; max_ap="$(cfg '.max_approval_pushes_per_day' '3')"
+  # 交互路开关：只把 null/缺失当缺省（false），false 是合法配置值（jq `//` falsy 陷阱）
+  local interactive; interactive="$(cfg '.approval_interactive' 'false')"
+  local ttl; ttl="$(cfg '.approval_ttl_hours' '48')"
   local dry_pushed=0
 
   local ids
@@ -405,24 +540,57 @@ cmd_approve() {
     local ok; ok="$(jq -r --arg id "$id" --arg d "$(today)" '.approvals[$d].ok[$id] // false' "$STATE" 2>/dev/null)"
     [[ "$ok" == "true" ]] && continue
 
-    # tunnel 部署（dry-run 跳过）
-    if [[ "$DRY_RUN" != "true" ]] && command -v "${TUNNEL_BIN:-tunnel}" >/dev/null 2>&1; then
-      local cur_url; cur_url="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.url // ""' "$QUEUE")"
-      if [[ -z "$cur_url" ]]; then
-        local deploy_out url
-        deploy_out=$("${TUNNEL_BIN:-tunnel}" deploy "$draft" -n "$id" 2>/dev/null || true)
-        url=$(grep -oE 'https?://[^ ]+' <<<"$deploy_out" | tail -1)
+    local card="/tmp/contrib-approval-$id.txt"
+
+    if [[ "$interactive" == "true" ]]; then
+      # ---- 交互路：人读页 + 随机 slug/短码 + 卡 v2 ----
+      local slug="" code="" url="" page="" card_ok=0
+      slug="$(gen_slug)" && code="$(gen_code)"
+      # 截止时间 = awaiting_epoch（无则当前）+ approval_ttl_hours
+      local base_ep deadline
+      base_ep="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .awaiting_epoch // 0' "$QUEUE")"
+      [[ "$base_ep" =~ ^[0-9]+$ ]] || base_ep="0"
+      (( base_ep > 0 )) || base_ep="$(now_epoch)"
+      deadline="$(date -r $(( base_ep + ttl * 3600 )) "+%m-%d %H:%M")"
+      # 人读页 = draft 路径 + .page.md 后缀（约定派生文件，不入 rq；机器稿本体零改动）
+      if [[ -n "$slug" && -n "$code" ]] \
+         && _build_approval_page "$id" "$draft" "$deadline" "$ttl" > "${draft}.page.md"; then
+        page="${draft}.page.md"
+        # B-1（QA 审查）：再审批轮次先回收旧公开页——.tunnel 即将被新 slug/code 覆写，
+        # 旧页面（公开可读含 draft 全文）会孤儿化且失去台账归属；失败不阻断发卡
+        local old_slug old_rm
+        old_slug="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.slug // ""' "$QUEUE")"
+        old_rm="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.removed_at // ""' "$QUEUE")"
+        if [[ -n "$old_slug" && -z "$old_rm" && "$DRY_RUN" != "true" ]] && command -v "$TUNNEL_BIN" >/dev/null 2>&1; then
+          "$TUNNEL_BIN" rm "$old_slug" >/dev/null 2>&1 || true
+          log "approve $id: 再审批轮次回收旧公开页 $old_slug"
+        fi
+        if [[ "$DRY_RUN" == "true" ]]; then
+          # dry-run 登记语义：跳过真实部署，但 slug/code 生成 + rq 登记（合成 url）照常（沙箱链依赖）
+          url="https://d.stringzhao.life/${slug}"
+        elif command -v "$TUNNEL_BIN" >/dev/null 2>&1; then
+          local deploy_out
+          deploy_out=$("$TUNNEL_BIN" drops approve "$page" --name "$slug" 2>/dev/null || true)
+          url="$(grep -oE 'https?://[^ ]+' <<<"$deploy_out" | tail -1)"
+        fi
         if [[ -n "$url" ]]; then
-          "$RQ" tunnel-deploy "$id" "$url" "$id" >/dev/null
-          log "approve $id: tunnel 已部署 $url"
-        else
-          log "approve $id: tunnel 部署失败（卡片将以全文路径代替）"
+          "$RQ" tunnel-deploy "$id" "$url" "$slug" "$code" >/dev/null
+          log "approve $id: 审批页就绪（slug=${slug}，dry-run=${DRY_RUN}）"
+          _build_approval_card_v2 "$id" "$url" "$code" "$deadline" "$ttl" > "$card"
+          card_ok=1
         fi
       fi
+      if (( card_ok == 0 )); then
+        log "approve $id: 交互路未成（slug/短码/人读页/部署之一失败），降级旧卡路"
+        rm -f "${draft}.page.md"
+        _legacy_deploy "$id" "$draft"
+        _build_approval_card "$id" > "$card"
+      fi
+    else
+      # ---- 旧路（approval_interactive 非 true）：行为兼容 ----
+      _legacy_deploy "$id" "$draft"
+      _build_approval_card "$id" > "$card"
     fi
-
-    local card="/tmp/contrib-approval-$id.txt"
-    _build_approval_card "$id" > "$card"
 
     # 审批推送日限额（dry-run 不计）；approvals[date] = {count, ok:{}, fail:{}}
     local used; used="$(jq -r --arg d "$(today)" '.approvals[$d].count // 0' "$STATE")"
@@ -493,5 +661,5 @@ case "$cmd" in
   approve) cmd_approve "$@" ;;
   receipt) cmd_receipt "$@" ;;
   fallback) cmd_fallback "$@" ;;
-  help|*)  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|*)  sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

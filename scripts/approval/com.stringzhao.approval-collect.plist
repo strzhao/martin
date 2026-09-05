@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stringzhao.approval-collect</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/stringzhao/workspace/martin/scripts/approval/collect.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>90</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <!-- collect.sh 自身是短命子进程、无 nohup 需求，但对齐 contrib-watch 先例统一开启：
+         launchd 默认按进程组收割子进程，不开会把脚本拉起的短命子进程一并带走（09-05 快车道深检秒死教训） -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/stringzhao/workspace/martin/contrib-data/logs/approval-collect-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/stringzhao/workspace/martin/contrib-data/logs/approval-collect-stderr.log</string>
+</dict>
+</plist>

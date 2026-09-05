@@ -16,6 +16,10 @@
 #   rq.sh next --lane deep|probe          # 输出 priority 最高且 state=queued 的 id（无则输出空行，exit 0——契约固化，调用方依赖输出而非 exit code）
 #   rq.sh list [--state S] [--oneline]
 #   rq.sh show <id> [--json]
+#   rq.sh tunnel-deploy <id> <url> <slug> [code]  # notify.sh 部署审批页后登记（code=短码，可空=旧调用方）
+#   rq.sh tunnel-removed <id>
+#   rq.sh set-draft <id> <path>
+#   rq.sh retry-failed
 #   rq.sh sweep                           # 48h 搁置/过期 + tunnel 超期审计
 #   rq.sh budget reserve <id> --lane deep|probe | budget refund <id> --lane ... | budget status
 #   rq.sh validate
@@ -79,7 +83,9 @@ transitions_for() {
     queued)             echo "deep-check awaiting-approval expired shelved rejected failed" ;;
     deep-check)         echo "awaiting-approval failed queued" ;;
     awaiting-approval)  echo "approved revise expired shelved rejected failed" ;;
-    approved)           echo "executed failed" ;;
+    # approved 的 rejected/revise 出口：L2-A 短码路消费标记先行（collect 先 set approved 再按
+    # verdict 落 rejected/revise，见 scripts/approval/collect.sh）——消费即占位，verdict 是第二跳
+    approved)           echo "executed failed rejected revise" ;;
     revise)             echo "queued rejected expired" ;;
     failed)             echo "queued expired shelved rejected" ;;
     shelved)            echo "queued rejected expired" ;;
@@ -188,7 +194,7 @@ cmd_add() {
     '{id: $id, issue: $issue, pr: $pr, title: $title, disposition: $disp, lane: $lane,
       score: $score, priority: $prio, source: $source, state: "queued",
       premises: $premises, ammo: $ammo, draft: null,
-      tunnel: {url: null, slug: null, deployed_at: null, removed_at: null},
+      tunnel: {url: null, slug: null, code: null, deployed_at: null, removed_at: null},
       budget: {week: $wk, day: ($ts | .[0:10])},
       queued_at: $ts, queued_epoch: $ep, awaiting_at: null, awaiting_epoch: null,
       history: [{ts: $ts, event: "queued", note: (if $note == "" then "added via " + $source else $note end)}]}' \
@@ -309,7 +315,7 @@ cmd_sweep() {
         .state = "expired"
         | .history += [{ts: $ts, event: "expired", note: "queued TTL \($ttl)h 到期"}]
         else . end)' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
-    out="${out:+$out；}过期 ${n2} 条 queued（超 ${ttl}h）"
+    out="${out:+${out}；}过期 ${n2} 条 queued（超 ${ttl}h）"
   fi
 
   # tunnel 超期审计（>7 天未删）
@@ -328,7 +334,7 @@ cmd_sweep() {
             .tunnel.removed_at = $ts
             | .history += [{ts: $ts, event: "tunnel-rm", note: "7 天超期强删"}]
             else . end)' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
-        out="${out:+$out；}tunnel rm ${slug}（超期）"
+        out="${out:+${out}；}tunnel rm ${slug}（超期）"
       fi
     done
   fi
@@ -482,14 +488,18 @@ case "$cmd" in
   show)    cmd_show "$@" ;;
   sweep)   cmd_sweep ;;
   tunnel-deploy)
-    # tunnel-deploy <id> <url> <slug> —— notify.sh 部署成功后登记
-    id="${1:-}"; url="${2:-}"; slug="${3:-}"
-    [[ -n "$id" && -n "$url" && -n "$slug" ]] || die "tunnel-deploy 用法: tunnel-deploy <id> <url> <slug>"
+    # tunnel-deploy <id> <url> <slug> [code] —— notify.sh 部署成功后登记
+    # code = 审批页短码（approval_interactive 路）；旧调用方 3 参调用 → code 按 null 入账（C5 向后兼容）
+    id="${1:-}"; url="${2:-}"; slug="${3:-}"; code="${4:-}"
+    [[ -n "$id" && -n "$url" && -n "$slug" ]] || die "tunnel-deploy 用法: tunnel-deploy <id> <url> <slug> [code]"
     acquire_lock; ts="$(now_iso)"; ep="$(now_epoch)"
-    jq --arg id "$id" --arg url "$url" --arg slug "$slug" --arg ts "$ts" --argjson ep "$ep" '
+    jq --arg id "$id" --arg url "$url" --arg slug "$slug" --arg code "$code" --arg ts "$ts" --argjson ep "$ep" '
       .items |= map(if .id == $id then
-        .tunnel = {url: $url, slug: $slug, deployed_at: $ts, deployed_epoch: $ep, removed_at: null}
-        | .history += [{ts: $ts, event: "tunnel-deployed", note: $url}]
+        .tunnel = {url: $url, slug: $slug,
+                   code: (if $code == "" then null else $code end),
+                   deployed_at: $ts, deployed_epoch: $ep, removed_at: null}
+        | .history += [{ts: $ts, event: "tunnel-deployed",
+                        note: (if $code == "" then $url else ($url + "?key=" + $code) end)}]
         else . end)' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
     echo "OK"
     ;;

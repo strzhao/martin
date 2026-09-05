@@ -82,7 +82,7 @@ assert_exit 2 $? "secret 拒绝写入"
 t_case "list：--state 过滤 + --oneline"
 list_out="$(sb_rq list --state queued)"
 assert_exit 0 $?
-assert_contains "$list_out" "rq-20260905-304" "--state 过滤命中 queued 项"
+assert_contains "$list_out" "$id2" "--state 过滤命中 queued 项（id 动态取自 add 返回，修复日期依赖冻结字面量）"
 one="$(sb_rq list --state queued --oneline)"
 assert_contains "$one" "prio=" "oneline 格式"
 
@@ -103,7 +103,7 @@ t_case "budget reserve：超额 DENY exit 1"
 sb_config_set '.deep_check_per_day = 1'
 out="$(sb_rq budget reserve rq-20260905-303 --lane deep)"
 assert_exit 0 $? "第 1 次 OK"
-out="$(sb_rq budget reserve rq-20260905-304 --lane deep 2>/dev/null)"
+out="$(sb_rq budget reserve "$id2" --lane deep 2>/dev/null)"
 rc=$?
 assert_exit 1 $rc "第 2 次 DENY"
 assert_contains "$out" "DENY" "DENY 输出"

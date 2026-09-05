@@ -65,6 +65,8 @@
 
 **纪律守恒（升级不降级）**：①草稿与微信推送是 L1（本地渠道），**发出（gh 写）永远过 L2**——微信批准（L2-A）与会话内明示（L2-B）等效，执行前都查 approved.log 去重；②**所有对外草稿必须过 strategist preflight** 才能进 awaiting-approval；③own-PR 的 push/gh pr create 由执行方执行需 `allow_own_pr_push=true`（默认关）。会话内随时 `scripts/contrib/rq.sh list` / `budget status` 查看队列与预算。首周 `notify_dry_run=true`（只打印不真发），演练闭环确认后再关。
 
+**L2-A 短码审批链（09-05 立项，暗 launch 未启用）**：审批卡带 `?key=<短码>` 链接 → tunnel 审批页点选批准/否决/需修改（短码自动回填，零打字）→ launchd 90s 轮询收集 → 确定性执行链投递。编排实现在 [`scripts/approval/`](scripts/approval/README.md)（collect.sh + execute.sh + plist；**plist 刻意不入 launchd，装载是人工步骤**）；页面与判定层在 tunnel-cli 仓（`drops approve`/`drops decision` ≥1.8.0）。开关 = `config.json` 增 `"approval_interactive": true`（缺省 false = 旧文本卡路，**当前真实 config 未加此键**）；微信文本回复降级路（hermes-contrib-l2 skill）全程保留，两路共用 rq 状态机互斥（collect 先 `set approved` 占坑防重复消费，verdict 是第二跳）。沙箱全链测试零真实外发：`bash scripts/approval/tests/run.sh`。
+
 ## 开源项目运营（oss-ops）
 
 运营 strzhao 名下开源项目组合（ai-todo 打样 → 组合铺开 → 内容引擎 → 发布脉冲）时，**先读 [`oss-ops.md`](oss-ops.md)** —— 沉淀了审批分层红线（L1 全自动只读；**一切对外动作 = L2，无 L3**，按场景走两路：**L2-A 异步路** Hermes 发起→微信审批、**L2-B 实时路** Claude Code 会话内用户明示即执行、不走微信不等时间窗；两路共用 approved.log 账本，preflight 与反 slop 不豁免）、渠道规则事实核查（Topics 自设 / dev.to API 可全自动 / awesome-claude-code 14 天门槛已满足）、9 仓组合台账与 ai-todo 打样 playbook。双 COO 分工：Hermes Agent 承担异步日常执行（每日巡检 cron + `~/.hermes/skills/github/oss-ops/` skill），martin 侧 Claude Code 承担实时合作运营 + 上下文工程 + 打样质量件 + pre-flight 审视（`/oss-preflight`）。动态进度见记忆 [[oss-ops-progress]]。

@@ -38,7 +38,9 @@ t_case "迁移表与实现冻结值一致"
 EXPECTED_queued="deep-check awaiting-approval expired shelved rejected failed"
 EXPECTED_deepcheck="awaiting-approval failed queued"
 EXPECTED_awaiting="approved revise expired shelved rejected failed"
-EXPECTED_approved="executed failed"
+# 09-05 L2-A 短码批准路（scripts/approval/collect.sh）：消费标记先行（awaiting-approval→approved
+# 只发生一次 = 防重复消费 SSOT），verdict 是第二跳——approved 需 rejected/revise 出口
+EXPECTED_approved="executed failed rejected revise"
 EXPECTED_revise="queued rejected expired"
 EXPECTED_failed="queued expired shelved rejected"
 EXPECTED_shelved="queued rejected expired"
