@@ -300,7 +300,7 @@ cmd_flush() {
     # 空卡守卫：剔除报头/脚注/空行后必须还剩实质内容——模板卡与 AI 摘要两种排版
     # 都要能通过；绝不发空壳卡、更不允许空卡把事件标记成已推（09-05 沙箱实测抓到此路径）
     # 注意用 grep -e 多模式：BSD grep 的 BRE 里 `^$\|..` 的 $ 中缀是字面量，交替会失效
-    if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
+    if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
       log "渲染产物无实质内容（空卡守卫触发），按失败挂账"
       rc=1
     fi
@@ -402,11 +402,11 @@ cmd_approve() {
     [[ "$ok" == "true" ]] && continue
 
     # tunnel 部署（dry-run 跳过）
-    if [[ "$DRY_RUN" != "true" ]] && command -v tunnel >/dev/null 2>&1; then
+    if [[ "$DRY_RUN" != "true" ]] && command -v "${TUNNEL_BIN:-tunnel}" >/dev/null 2>&1; then
       local cur_url; cur_url="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.url // ""' "$QUEUE")"
       if [[ -z "$cur_url" ]]; then
         local deploy_out url
-        deploy_out=$(tunnel deploy "$draft" -n "$id" 2>/dev/null || true)
+        deploy_out=$("${TUNNEL_BIN:-tunnel}" deploy "$draft" -n "$id" 2>/dev/null || true)
         url=$(grep -oE 'https?://[^ ]+' <<<"$deploy_out" | tail -1)
         if [[ -n "$url" ]]; then
           "$RQ" tunnel-deploy "$id" "$url" "$id" >/dev/null
