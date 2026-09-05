@@ -18,3 +18,9 @@ oss-ops-data/
 .claude/skills/write-article/references/corpus/
 .claude/skills/write-article/references/exemplars/
 write-article-workspace/
+
+# contrib-watch 流水线运行产物（本地产物）
+contrib-data/
+
+# hermes cron 工程任务的本地覆盖配置（设计上不受 git 管理，工具自动生成）
+local-config.json
