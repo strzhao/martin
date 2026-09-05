@@ -75,3 +75,8 @@
 <!-- tags: hermes, weixin, token, forensics, dogfood, context-token -->
 ## [2026-08-24] weixin context token v2:issued_at 落盘 + 双 dict 职责分离
 T2 给 ContextTokenStore 引入 v2 文件格式({user_id: {"token": str, "issued_at": epoch}}):①`_issued_at`(权威锚点,仅 v2 文件条目与 set() 填充)与 `_set_at`(运行时 age,v1 用 mtime 回填)职责分离——杜绝 mtime 值伪装 issued_at;②未知 issued_at 落盘**省略键不写 null**;③v1/v2/混合逐条 isinstance 判别;④回滚到 v1 读侧时 dict 条目被跳过 → token 缓存清空,靠下一条入站消息自愈(部署协议须知)。TTL 取证从此不再依赖文件 mtime(08-23 事故的 22.5-33.8h 手工三方 join 根因之一被消灭)。
+
+## [2026-09-06] L2-A 审批交互化选型：卡内短码能力 URL + 页面判定层下沉 tunnel-cli
+微信审批从「打字 批 #id」升级为「点链接即批」。关键裁决：①安全模型=审批页公开读公开写的前提下，提交有效性唯一凭据=名字栏==卡内短码（短码经 `?key=` 自动回填，微信零打字）；两段式（点击+微信确认）因多一轮交互被否，威胁模型如实声明「防机会主义不防设备攻破」。②页面与判定层（审批页模板/decision 判定提取/预填）下沉 tunnel-cli 成为通用能力，martin 只留编排薄壳（发卡/轮询/执行）——复用其 blocks/渲染/results 管线，避免重复建设。③执行器选确定性 bash 而非 hermes agent（凌晨无人值守场景零 LLM 方差；微信文本回复路继续走 skill）。④暗 launch：plist 不自动装载、config 开关缺省 false、特性和开关分离——带 bug 的 90s 轮询器不夜里自己上线。被否方案与理由全文见 `.autopilot/runtime/requirements/20260905-开始实现，全程不要问/brainstorm.md` 与 state.md 设计文档。
+
+<!-- tags: approval, security-model, capability-url, tunnel-cli, dark-launch, yagni -->

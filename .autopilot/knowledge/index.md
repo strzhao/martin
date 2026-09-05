@@ -38,3 +38,7 @@
 - [2026-09-05] bash `$var` 紧跟全角标点并入变量名：三方同踩 12+ 处 | tags: bash, unicode, fullwidth, variable-name, testing | → patterns.md
 - [2026-09-05] 第三方工具链遮蔽系统 diff：stdout 空的静默假绿 | tags: macos, toolchain-shadow, diff, PATH, testing | → patterns.md
 - [2026-09-05] 变异测试 vs 纵深防御：注入必须剥离全部同类防御层 | tags: testing, mutation-testing, defense-in-depth, false-green | → patterns.md
+- [2026-09-06] bash 3.2 case 大小写不敏感撞 stub 分支 | tags: bash, macos, stub, false-null | → patterns.md
+- [2026-09-06] macOS mktemp X 串末尾约束 + 空路径重定向吞错 | tags: bash, macos, mktemp, fail-path | → patterns.md
+- [2026-09-06] launchd 进程组收割杀 nohup 子进程 | tags: launchd, macos, background, silent-death | → patterns.md
+- [2026-09-06] L2-A 审批交互化：短码能力 URL + 判定层下沉 tunnel-cli | tags: approval, security-model, tunnel-cli, dark-launch | → decisions.md

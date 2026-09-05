@@ -324,3 +324,16 @@ hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 h
 <!-- tags: testing, mutation-testing, defense-in-depth, detect-harness, false-green -->
 ## [2026-09-05] 变异测试与纵深防御的对抗：缺陷注入必须剥离同类全部防御层
 捕获自证 harness 对「缺 cd」注入变异后 mutated 副本测试仍绿——因为蓝队在入口和子脚本各加了一层 `cd "$MARTIN"`（纵深防御是好生产实践），只剥入口层会被子脚本救回。规约：缺陷类的注入 = **剥离该类在副本内的全部防御实例**（先 grep 全部同构锚点）；防御层加固后必须回归检验既有变异用例的杀伤力（本例新增防御静默击穿了 detect 用例，QA 第三轮才暴露）。
+
+## [2026-09-06] macOS bash 3.2 `case` 匹配大小写不敏感：argv 里的子串撞 stub/分发分支
+实证：`case "-R NousResearch/hermes-agent ..." in *search*)` 命中 SEARCH 分支（`Research` ⊃ `search` 大小写不敏感），gh stub 把 issue-view 答成 pr-search 形状 → 上层 `jq .state`=null → 「状态恒 null」假缺陷。两个教训：①stub/分发器用 `case "$*" in *关键词*)` 按子串分派时，参数里任何含该子串（跨大小写）的值都会误入分支——分派要锚定子命令首 token 而非子串；②排查「字段恒 null」先最小复刻 stub→解析管线，别信第一眼「没消费 stdout」的假设（本案真实根因是四个叠加缺陷之一）。收尾守卫：向调用方传 repo 用 `GH_REPO` env 而非 `-R` argv（gh 官方语义等价，argv 面变干净）。
+
+<!-- tags: bash, macos, bash3.2, case-insensitive, stub, dispatch, false-null, gh-cli -->
+## [2026-09-06] macOS mktemp 模板 X 串必须在末尾 + 空路径重定向静默吞错
+`mktemp /tmp/x-${ID}.XXXXXX.md` 在 macOS 直接 mkstemp 失败（X 串后不能有后缀）→ 变量为空串 → 后续 `> ""` 重定向报错但脚本继续跑（无 set -e 时），下游拿到空文件/空参数，错误在远离根因处爆炸。治法：模板去掉后缀 + mktemp 后立即 `[[ -s $f ]] || fail`。同类：临时敏感件（draft 正文）无 EXIT trap 会在各 fail 路径残留 /tmp。
+
+<!-- tags: bash, macos, mktemp, temp-file, fail-path, hygiene -->
+## [2026-09-06] launchd job 退出即收割进程组：nohup 子进程静默秒死
+launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退出瞬间按进程组收割全部子进程——nohup 只防 SIGHUP 不防 SIGTERM。症状：nohup 派生的后台脚本「每次都秒死、零输出、产物文件永不出现」（现场证据=中间产物文件留存未被消费）。同机双 job 结构里，launchd 直接拉起的那个 job 正常、nohup 链路全死，即是此症。修=plist 加 `<key>AbandonProcessGroup</key><true/>` + `launchctl bootout/bootstrap` 重载 + kickstart 端到端验证。
+
+<!-- tags: launchd, macos, process-group, nohup, background-job, silent-death -->
