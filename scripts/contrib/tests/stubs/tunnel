@@ -1,0 +1,51 @@
+#!/bin/bash
+# 影子 stub：tunnel —— 记录调用；deploy 输出可被 grep 的 URL 行
+# 行为旋钮：
+#   STUB_TUNNEL_FAIL=1      → exit 1（无 URL 输出）
+#   STUB_TUNNEL_URL=<url>   → 自定义 deploy 输出行
+set -u
+NAME="tunnel"
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub $NAME: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+mkdir -p "$LOG_DIR/bodies" 2>/dev/null || true
+
+n=$(( $(cat "$LOG_DIR/.seq-$NAME" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$n" >"$LOG_DIR/.seq-$NAME"
+
+line="$NAME|$PWD|"
+first=1
+prev=""
+slug=""
+for a in "$@"; do
+  if [[ $first -eq 0 ]]; then line="$line "; fi
+  line="$line$a"
+  first=0
+  if [[ "$prev" == "-n" ]]; then slug="$a"; fi
+  prev="$a"
+done
+printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+if [[ "${STUB_TUNNEL_FAIL:-}" == "1" ]]; then
+  echo "tunnel stub: 模拟失败" >&2
+  exit 1
+fi
+
+case "${1:-}" in
+  deploy)
+    if [[ -n "${STUB_TUNNEL_URL:-}" ]]; then
+      printf '%s\n' "$STUB_TUNNEL_URL"
+    else
+      printf 'deployed: https://d.stringzhao.life/%s\n' "${slug:-stub-slug}"
+    fi
+    ;;
+  rm)
+    printf 'removed %s\n' "${2:-}"
+    ;;
+  *)
+    printf 'tunnel stub ok\n'
+    ;;
+esac
+exit 0

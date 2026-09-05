@@ -1,0 +1,31 @@
+#!/bin/bash
+# 影子 stub：osascript —— 记录本地通知调用（含通知文本副本），默认成功
+# 行为旋钮：STUB_OSASCRIPT_FAIL=1 → exit 1
+set -u
+NAME="osascript"
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub $NAME: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+mkdir -p "$LOG_DIR/bodies" 2>/dev/null || true
+
+n=$(( $(cat "$LOG_DIR/.seq-$NAME" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$n" >"$LOG_DIR/.seq-$NAME"
+
+line="$NAME|$PWD|"
+first=1
+for a in "$@"; do
+  if [[ $first -eq 0 ]]; then line="$line "; fi
+  line="$line$a"
+  first=0
+done
+printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+# 通知文本（argv 全量）存副本，供断言兜底文案内容
+{ for a in "$@"; do printf '%s\n' "$a"; done; } >"$LOG_DIR/bodies/$NAME-$n.txt"
+
+if [[ "${STUB_OSASCRIPT_FAIL:-}" == "1" ]]; then
+  exit 1
+fi
+exit 0

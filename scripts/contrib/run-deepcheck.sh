@@ -5,8 +5,9 @@
 # 所有产物落 contrib-data/，本脚本零上游写操作。
 set -uo pipefail
 
-MARTIN="$HOME/workspace/martin"
-LOG="$MARTIN/contrib-data/logs/deepcheck.log"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
+CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
+LOG="$CONTRIB/logs/deepcheck.log"
 
 # launchd 默认 cwd=/，claude -p "/contrib-watch ..." 依赖 martin 的项目级 skill
 # （.claude/skills/），不 cd 会在 preflight 直接 Unknown command（09-05 实证）

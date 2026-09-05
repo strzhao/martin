@@ -5,14 +5,19 @@
 # 所有产物落 contrib-data/，本脚本只做编排，不做任何对外动作（无 push/无评论）。
 set -uo pipefail
 
-MARTIN="$HOME/workspace/martin"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-LOG="$MARTIN/contrib-data/logs/launchd.log"
-LOCK="/tmp/contrib-watch.lock"
+CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
+LOG="$CONTRIB/logs/launchd.log"
+LOCK="${WATCH_LOCK:-/tmp/contrib-watch.lock}"
 ts() { date "+%Y-%m-%dT%H%M"; }
 
 # claude CLI 装在 nvm node bin，版本目录随升级漂移——launchd PATH 极简，须运行时探测（09-03 修复 command not found）
-CLAUDE_BIN="$(command -v claude 2>/dev/null)"
+# seam：CLAUDE_BIN env 优先，空则走现有两级探测（默认语义=现状）
+CLAUDE_BIN="${CLAUDE_BIN:-}"
+if [[ -z "$CLAUDE_BIN" ]]; then
+  CLAUDE_BIN="$(command -v claude 2>/dev/null)"
+fi
 if [[ -z "$CLAUDE_BIN" ]]; then
   CLAUDE_BIN="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1)"
 fi
@@ -70,20 +75,24 @@ else
     --key "$(date +%F)-gate-rc$rc" --summary "scan_gate 闸门异常 rc=$rc" >/dev/null 2>&1 || true
 fi
 
-# --- 2. 每日 radar（08 窗口）---
-if [[ "$(date +%H)" == "08" ]]; then
-  echo "[$(ts)] 每日 radar 启动" >>"$LOG"
-  [[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" -p "/contrib-watch radar" \
-    --permission-mode acceptEdits \
-    --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(git *),Bash(cd *),Bash(scripts/contrib/*),Bash(pytest *),Bash(python *),Bash(python3 *),Bash(ruff *),Bash(rg *)" \
-    >>"$LOG" 2>&1
-  radar_rc=$?
-  echo "[$(ts)] radar 完成 exit=$radar_rc" >>"$LOG"
-  if (( radar_rc != 0 )); then
-    "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
-      --key "$(date +%F)-radar-exit$radar_rc" --summary "radar claude -p 失败 exit=$radar_rc" >/dev/null 2>&1 || true
+# --- 2. 每日 radar（08 窗口；抽 maybe_radar 便于测试注入 hour，默认=现状 date +%H）---
+maybe_radar() {
+  local hour="${1:-$(date +%H)}"
+  if [[ "$hour" == "08" ]]; then
+    echo "[$(ts)] 每日 radar 启动" >>"$LOG"
+    [[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" -p "/contrib-watch radar" \
+      --permission-mode acceptEdits \
+      --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(git *),Bash(cd *),Bash(scripts/contrib/*),Bash(pytest *),Bash(python *),Bash(python3 *),Bash(ruff *),Bash(rg *)" \
+      >>"$LOG" 2>&1
+    radar_rc=$?
+    echo "[$(ts)] radar 完成 exit=$radar_rc" >>"$LOG"
+    if (( radar_rc != 0 )); then
+      "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+        --key "$(date +%F)-radar-exit$radar_rc" --summary "radar claude -p 失败 exit=$radar_rc" >/dev/null 2>&1 || true
+    fi
   fi
-fi
+}
+maybe_radar
 
 # --- 3. 通知层：聚合推送本轮新增告警（失败不影响流水线退出码）---
 if [[ -x "$MARTIN/scripts/contrib/notify.sh" ]]; then

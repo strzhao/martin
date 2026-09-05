@@ -25,14 +25,20 @@
 #   notify.sh fallback <text>
 set -uo pipefail
 
-MARTIN="$HOME/workspace/martin"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 CONFIG="$CONTRIB/config.json"
 QUEUE="$CONTRIB/ready-queue.json"
 EVENTS="$CONTRIB/events.jsonl"
 STATE="$CONTRIB/notify-state.json"
 RQ="$MARTIN/scripts/contrib/rq.sh"
-LOCK="/tmp/contrib-notify.lock"
+LOCK="${NOTIFY_LOCK:-/tmp/contrib-notify.lock}"
+# 命令 seam（默认值=现状硬编码；测试套件经此注入影子 stub，生产语义零改变）
+HERMES_BIN="${HERMES_BIN:-hermes}"
+NOTIFY_SEND_LAST="${NOTIFY_SEND_LAST:-/tmp/contrib-send-last.json}"
+OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
+GATEWAY_PROBE_BIN="${GATEWAY_PROBE_BIN:-pgrep}"
+CLAUDE_BIN="${CLAUDE_BIN:-}"   # 空=走 command -v claude 现状探测
 
 # 不用 jq 的 // 运算符：它把 JSON false 当 falsy（notify_dry_run=false 曾被读成
 # 默认 true，推送全静默 dry-run）——只把 null/缺失当缺省，false 是合法配置值
@@ -66,7 +72,7 @@ acquire_lock() {
   trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 }
 
-gateway_up() { pgrep -f "hermes_cli.main gateway" >/dev/null 2>&1; }
+gateway_up() { "$GATEWAY_PROBE_BIN" -f "hermes_cli.main gateway" >/dev/null 2>&1; }
 
 # _send <msg_file> <subject> → 0=成功 1=发送失败 3=网关不可达
 _send() {
@@ -82,21 +88,21 @@ _send() {
     return 3
   fi
   local rc=0
-  hermes send --to "$TARGET" --file "$msg_file" --subject "$subject" --json >/tmp/contrib-send-last.json 2>>"$CONTRIB/logs/notify.log" || rc=$?
+  "$HERMES_BIN" send --to "$TARGET" --file "$msg_file" --subject "$subject" --json >"$NOTIFY_SEND_LAST" 2>>"$CONTRIB/logs/notify.log" || rc=$?
   if (( rc != 0 )); then
-    log "hermes send 失败 rc=${rc}（$(head -c 200 /tmp/contrib-send-last.json 2>/dev/null)）"
+    log "hermes send 失败 rc=${rc}（$(head -c 200 "$NOTIFY_SEND_LAST" 2>/dev/null)）"
     return 1
   fi
   # 双保险：exit 0 也要 success:true 才算投递成功
-  if [[ "$(jq -r '.success // false' /tmp/contrib-send-last.json 2>/dev/null)" != "true" ]]; then
-    log "hermes send exit=0 但 success≠true（$(head -c 200 /tmp/contrib-send-last.json 2>/dev/null)）"
+  if [[ "$(jq -r '.success // false' "$NOTIFY_SEND_LAST" 2>/dev/null)" != "true" ]]; then
+    log "hermes send exit=0 但 success≠true（$(head -c 200 "$NOTIFY_SEND_LAST" 2>/dev/null)）"
     return 1
   fi
   return 0
 }
 
 _osascript() {
-  osascript -e "display notification \"$1\" with title \"contrib-watch\" sound name \"Ping\"" 2>/dev/null || true
+  "$OSASCRIPT_BIN" -e "display notification \"$1\" with title \"contrib-watch\" sound name \"Ping\"" 2>/dev/null || true
 }
 
 state_bump() { # state_bump <表名> <键> → 计数+1 并写回
@@ -161,7 +167,9 @@ _render_mechanical_card() {
 # 不依赖项目级 skill（run-deepcheck 缺 cd 教训：路径/skill 依赖都是故障面）。
 _ai_digest() {
   local in_file="$1" out_file="$2"
-  if ! command -v claude >/dev/null 2>&1; then
+  local claude_bin="$CLAUDE_BIN"
+  [[ -z "$claude_bin" ]] && claude_bin="$(command -v claude 2>/dev/null)"
+  if [[ -z "$claude_bin" ]]; then
     log "AI 摘要失败：claude 不在 PATH"
     return 1
   fi
@@ -188,7 +196,7 @@ EOF
     cat "$in_file"
   } > "$prompt"
   # alarm 240s 防挂死；cwd=MARTIN（claude 需项目内环境）；prompt 走 stdin
-  ( cd "$MARTIN" && perl -e 'alarm 240; exec @ARGV' claude -p < "$prompt" > "$out_file.raw" 2> "$out_file.err" )
+  ( cd "$MARTIN" && perl -e 'alarm 240; exec @ARGV' "$claude_bin" -p < "$prompt" > "$out_file.raw" 2> "$out_file.err" )
   local rc=$?
   rm -f "$prompt"
   (( rc != 0 )) && { log "AI 摘要失败 rc=${rc}（$(tail -c 200 "$out_file.err" 2>/dev/null)）"; rm -f "$out_file.raw" "$out_file.err"; return 1; }
@@ -356,6 +364,9 @@ PYEOF
     log "告警推送失败 rc=${rc}（${unpushed} 条事件保留，下轮重试）"
   fi
   rm -f "$batch_file" "$keys_file" "$body"
+  # 失败 rc 向上传撑（契约：AI 摘要失败/发送失败 → rc≠0，事件保留重试）；
+  # 调用方均容错（run-watch `|| echo`、deep_check_gate `|| true`），launchd 流水线退出码不受影响
+  return "$rc"
 }
 
 # ---------------- approve（审批推送 🟡） ----------------
@@ -468,6 +479,9 @@ cmd_fallback() {
 }
 
 # ---------------- 入口 ----------------
+# source guard：测试套件 source 本文件复用纯函数（cfg/state_* 等）；默认 unset = 完全现状
+[[ "${NOTIFY_SOURCE_ONLY:-}" == "1" ]] && { return 0 2>/dev/null || exit 0; }
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   event)   cmd_event "$@" ;;

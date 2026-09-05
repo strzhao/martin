@@ -1,0 +1,73 @@
+#!/bin/bash
+# 影子 stub：claude —— 记录调用与 cwd；对 deep-check 的 preflight 阶段产出草稿并经 rq.sh set-draft 登记
+# 行为旋钮：
+#   STUB_CLAUDE_FAIL=1        → exit 1（preflight/redteam/AI 摘要失败链共用）
+#   STUB_CLAUDE_OUT=<text>    → 自定义 stdout（AI 摘要输出不合格用例可注入空串/超长/Unknown command）
+#   STUB_CLAUDE_NO_DRAFT=1    → preflight 成功但不产出草稿（「草稿未产出」失败链）
+set -u
+NAME="claude"
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub $NAME: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+mkdir -p "$LOG_DIR/bodies" 2>/dev/null || true
+
+n=$(( $(cat "$LOG_DIR/.seq-$NAME" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$n" >"$LOG_DIR/.seq-$NAME"
+
+line="$NAME|$PWD|"
+first=1
+prev=""
+prompt=""
+for a in "$@"; do
+  if [[ $first -eq 0 ]]; then line="$line "; fi
+  line="$line$a"
+  first=0
+  if [[ "$prev" == "-p" ]]; then prompt="$a"; fi
+  prev="$a"
+done
+printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+if [[ "${STUB_CLAUDE_FAIL:-}" == "1" ]]; then
+  echo "claude stub: 模拟失败" >&2
+  exit 1
+fi
+
+case "$prompt" in
+  *"--phase preflight"*)
+    if [[ "${STUB_CLAUDE_NO_DRAFT:-}" != "1" ]]; then
+      id="$(printf '%s' "$prompt" | grep -oE 'rq-[0-9]{8}-[0-9]+(-drill)?' | head -1)"
+      if [[ -z "$id" ]]; then
+        echo "claude stub: preflight prompt 无 rq-id: $prompt" >&2
+        exit 1
+      fi
+      draft_dir="${CLAUDE_STUB_DRAFT_DIR:-${CONTRIB_DATA_DIR:-$LOG_DIR}/pending}"
+      mkdir -p "$draft_dir"
+      draft="$draft_dir/$id.md"
+      {
+        printf '# 深检成稿（claude stub 产物）%s\n\n' "$id"
+        printf '结论: 建议以 review 形态提交，附 file:line receipts。\n'
+      } >"$draft"
+      if [[ -n "${MARTIN_DIR:-}" && -x "$MARTIN_DIR/scripts/contrib/rq.sh" ]]; then
+        "$MARTIN_DIR/scripts/contrib/rq.sh" set-draft "$id" "$draft" --note "claude stub 登记" >/dev/null 2>&1 || {
+          echo "claude stub: set-draft 失败" >&2
+          exit 1
+        }
+      else
+        echo "claude stub: MARTIN_DIR 未设置或 rq.sh 缺失" >&2
+        exit 1
+      fi
+    fi
+    ;;
+  *)
+    : # scan / radar / redteam / AI 摘要：成功即返回
+    ;;
+esac
+
+if [[ -n "${STUB_CLAUDE_OUT:-}" ]]; then
+  printf '%s\n' "$STUB_CLAUDE_OUT"
+else
+  printf 'claude stub ok\n'
+fi
+exit 0

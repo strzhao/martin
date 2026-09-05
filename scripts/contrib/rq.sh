@@ -13,7 +13,7 @@
 #   rq.sh add --issue N --disposition D --score S [--pr N] [--title T] [--source scan|radar|manual]
 #             [--lane deep|probe] [--age-hours H] [--premises-json '...'] [--ammo-json '...'] [--drill] [--note N]
 #   rq.sh set <id> <state> [--note N]
-#   rq.sh next --lane deep|probe          # 输出 priority 最高且 state=queued 的 id（无则 exit 1）
+#   rq.sh next --lane deep|probe          # 输出 priority 最高且 state=queued 的 id（无则输出空行，exit 0——契约固化，调用方依赖输出而非 exit code）
 #   rq.sh list [--state S] [--oneline]
 #   rq.sh show <id> [--json]
 #   rq.sh sweep                           # 48h 搁置/过期 + tunnel 超期审计
@@ -21,14 +21,27 @@
 #   rq.sh validate
 set -euo pipefail
 
-MARTIN="$HOME/workspace/martin"
-CONTRIB="$MARTIN/contrib-data"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
+CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 QUEUE="$CONTRIB/ready-queue.json"
 BUDGET="$CONTRIB/budget.json"
 CONFIG="$CONTRIB/config.json"
-LOCKDIR="/tmp/contrib-rq.lock"
+LOCKDIR="${RQ_LOCKDIR:-/tmp/contrib-rq.lock}"
+# 命令 seam（默认值=现状硬编码；测试套件经此注入影子 stub，生产语义零改变）
+TUNNEL_BIN="${TUNNEL_BIN:-tunnel}"
 
-cfg() { jq -r "$1 // $2" "$CONFIG" 2>/dev/null; }
+# 不用 jq 的 // 运算符：它把 JSON false 当 falsy（同 notify_dry_run:false 事故的同构缺陷）——
+# 只把 null/缺失当缺省，false 是合法配置值；文件缺失也回 default（与 notify.sh cfg 同一语义）。
+# `|| true` 必须留在替换内：本脚本 set -e，jq 打不开文件的非零码会经赋值语句杀死脚本
+cfg() {
+  local v
+  v="$(jq -r "$1" "$CONFIG" 2>/dev/null || true)"
+  if [[ -n "$v" && "$v" != "null" ]]; then
+    echo "$v"
+    return 0
+  fi
+  echo "$2"
+}
 now_iso() { date "+%Y-%m-%dT%H:%M:%S%z"; }
 now_epoch() { date +%s; }
 week_key() { date "+%G-W%V"; }
@@ -135,7 +148,8 @@ cmd_add() {
   ensure_files
   acquire_lock
 
-  local id="rq-$(date +%Y%m%d)-${issue}"
+  local id
+  id="rq-$(date +%Y%m%d)-${issue}"
   [[ -n "$drill" ]] && id="${id}-drill"
 
   # 同 id 任何已存在即拒绝（id 含日期，正常流不会重号；重入队属人工操作）
@@ -299,7 +313,7 @@ cmd_sweep() {
   fi
 
   # tunnel 超期审计（>7 天未删）
-  if command -v tunnel >/dev/null 2>&1; then
+  if command -v "$TUNNEL_BIN" >/dev/null 2>&1; then
     local stale_slugs
     stale_slugs=$(jq -r --argjson ep "$ep" '
       .items[] | select(.tunnel.slug != null and .tunnel.removed_at == null
@@ -308,7 +322,7 @@ cmd_sweep() {
       local dep; dep=$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.deployed_epoch // 0' "$QUEUE")
       if (( dep > 0 && ep - dep > 7*86400 )); then
         local slug; slug=$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .tunnel.slug' "$QUEUE")
-        tunnel rm "$slug" >/dev/null 2>&1 || true
+        "$TUNNEL_BIN" rm "$slug" >/dev/null 2>&1 || true
         jq --arg id "$id" --arg ts "$ts" '
           .items |= map(if .id == $id then
             .tunnel.removed_at = $ts
@@ -455,6 +469,9 @@ cmd_validate() {
 }
 
 # ---------------- 入口 ----------------
+# source guard：测试套件 source 本文件复用纯函数（transitions_for/calc_priority 等）；默认 unset = 完全现状
+[[ "${RQ_SOURCE_ONLY:-}" == "1" ]] && { return 0 2>/dev/null || exit 0; }
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   init)    cmd_init ;;

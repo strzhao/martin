@@ -1,0 +1,52 @@
+#!/bin/bash
+# 影子 stub：gh —— 记录调用；issue 列表由 STUB_GH_ISSUES_FILE 提供（默认空数组）
+# 行为旋钮：
+#   STUB_GH_FAIL=1          → exit 1
+#   STUB_GH_ISSUES_FILE=<f> → stdout 输出该文件内容（issue JSON 数组，驱动 scan_gate）
+#   STUB_GH_LATEST=<n>      → 对 `--jq '.[0].number'` 的 --init 调用输出该数字
+set -u
+NAME="gh"
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub $NAME: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+mkdir -p "$LOG_DIR/bodies" 2>/dev/null || true
+
+n=$(( $(cat "$LOG_DIR/.seq-$NAME" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$n" >"$LOG_DIR/.seq-$NAME"
+
+line="$NAME|$PWD|"
+first=1
+prev=""
+for a in "$@"; do
+  if [[ $first -eq 0 ]]; then line="$line "; fi
+  line="$line$a"
+  first=0
+  if [[ "$prev" == "--jq" ]]; then
+    printf '%s\n' "$a" >"$LOG_DIR/bodies/$NAME-$n.jq"
+  fi
+  prev="$a"
+done
+printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+if [[ "${STUB_GH_FAIL:-}" == "1" ]]; then
+  echo "gh stub: 模拟失败" >&2
+  exit 1
+fi
+
+# `gh api ... --jq '.[0].number'`（scan_gate --init 游标拨号）
+jq_expr_file="$LOG_DIR/bodies/$NAME-$n.jq"
+if [[ -f "$jq_expr_file" && "${STUB_GH_LATEST:-}" != "" ]]; then
+  if grep -qF '.[0].number' "$jq_expr_file"; then
+    printf '%s\n' "$STUB_GH_LATEST"
+    exit 0
+  fi
+fi
+
+if [[ -n "${STUB_GH_ISSUES_FILE:-}" && -f "$STUB_GH_ISSUES_FILE" ]]; then
+  cat "$STUB_GH_ISSUES_FILE"
+else
+  printf '[]\n'
+fi
+exit 0

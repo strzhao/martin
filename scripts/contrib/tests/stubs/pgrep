@@ -1,0 +1,29 @@
+#!/bin/bash
+# 影子 stub：pgrep —— notify.sh gateway_up 探测专用（seam：GATEWAY_PROBE_BIN）
+# 使网关状态在沙箱内可控，防真发链在网关未运行时误入 rc=3 分支。
+# 记录写 probe.log（非 calls.log——pgrep 不是传输通道，不进 transport 计数）。
+# 行为旋钮：STUB_PGREP_DOWN=1 → 网关不可达（exit 1）
+set -u
+NAME="pgrep"
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub $NAME: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+
+n=$(( $(cat "$LOG_DIR/.seq-$NAME" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$n" >"$LOG_DIR/.seq-$NAME"
+
+line="$NAME|$PWD|"
+first=1
+for a in "$@"; do
+  if [[ $first -eq 0 ]]; then line="$line "; fi
+  line="$line$a"
+  first=0
+done
+printf '%s\n' "$line" >>"$LOG_DIR/probe.log"
+
+if [[ "${STUB_PGREP_DOWN:-}" == "1" ]]; then
+  exit 1
+fi
+exit 0

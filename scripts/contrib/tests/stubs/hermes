@@ -1,0 +1,47 @@
+#!/bin/bash
+# 影子 stub：hermes —— 记录 argv+cwd 到沙箱调用日志，行为由 STUB_* env 脚本化
+# 注入方式：HERMES_BIN seam + 沙箱 PATH 双通道；拒绝在无 STUB_LOG_DIR 的环境运行（防沙箱外误用）
+# 行为旋钮：
+#   STUB_HERMES_FAIL=1        → exit 1 且输出 {"success":false,...}
+#   STUB_HERMES_SUCCESS_FALSE=1 → exit 0 但输出 {"success":false}（专测「账面 exit0 ≠ 送达」）
+#   STUB_HERMES_OUT=<text>    → 自定义 stdout 输出模板
+set -u
+NAME="hermes"
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub $NAME: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+mkdir -p "$LOG_DIR/bodies" 2>/dev/null || true
+
+n=$(( $(cat "$LOG_DIR/.seq-$NAME" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$n" >"$LOG_DIR/.seq-$NAME"
+
+line="$NAME|$PWD|"
+first=1
+prev=""
+for a in "$@"; do
+  if [[ $first -eq 0 ]]; then line="$line "; fi
+  line="$line$a"
+  first=0
+  if [[ "$prev" == "--file" && -f "$a" ]]; then
+    cp "$a" "$LOG_DIR/bodies/$NAME-$n.txt" 2>/dev/null || true
+  fi
+  prev="$a"
+done
+printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+if [[ "${STUB_HERMES_FAIL:-}" == "1" ]]; then
+  printf '%s\n' '{"success":false,"error":"stub-fail"}'
+  exit 1
+fi
+if [[ "${STUB_HERMES_SUCCESS_FALSE:-}" == "1" ]]; then
+  printf '%s\n' '{"success":false}'
+  exit 0
+fi
+if [[ -n "${STUB_HERMES_OUT:-}" ]]; then
+  printf '%s\n' "$STUB_HERMES_OUT"
+  exit 0
+fi
+printf '{"success":true,"id":"stub-%s"}\n' "$n"
+exit 0

@@ -10,11 +10,13 @@
 # exit code: 0=无新命中  10=有命中待研判  其他=出错
 set -euo pipefail
 
-MARTIN="$HOME/workspace/martin"
-DATA="$MARTIN/contrib-data"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
+DATA="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 REPO="NousResearch/hermes-agent"
 CURSOR="$DATA/scan-cursor.json"
 PENDING="$DATA/pending-hits.json"
+# 命令 seam（默认值=现状硬编码；测试套件经此注入影子 stub，生产语义零改变）
+GH_BIN="${GH_BIN:-gh}"
 PENDING_CAP=40
 LOGDIR="$DATA/logs"
 mkdir -p "$LOGDIR" "$DATA/briefs" "$DATA/radar" "$DATA/runs"
@@ -24,7 +26,7 @@ LOG="$LOGDIR/scan-gate.log"
 log() { echo "[$TS] $*" >>"$LOG"; }
 
 if [[ "${1:-}" == "--init" ]]; then
-  latest=$(gh api "repos/$REPO/issues?state=all&per_page=1" --jq '.[0].number')
+  latest=$("$GH_BIN" api "repos/$REPO/issues?state=all&per_page=1" --jq '.[0].number')
   jq -n --argjson n "$latest" --arg d "$(date -u +%FT%TZ)" '{last_issue: $n, initialized: $d}' > "$CURSOR"
   printf '[]\n' > "$PENDING"
   log "cursor --init 拨到 #${latest}，pending 清空"
@@ -40,7 +42,7 @@ if [[ "${1:-}" == "--drain" ]]; then
 fi
 
 last=$(jq -r '.last_issue // 0' "$CURSOR" 2>/dev/null || echo 0)
-raw=$(gh api "repos/$REPO/issues?state=open&sort=created&direction=desc&per_page=50" 2>>"$LOG")
+raw=$("$GH_BIN" api "repos/$REPO/issues?state=open&sort=created&direction=desc&per_page=50" 2>>"$LOG")
 max_seen=$(jq '[.[].number] | max // 0' <<<"$raw")
 seen_new=$(jq "[.[] | select(.pull_request == null and .number > $last)] | length" <<<"$raw")
 

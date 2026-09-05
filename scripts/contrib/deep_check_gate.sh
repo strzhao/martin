@@ -4,16 +4,16 @@
 # exit: 0=无可跑项  10=有候选（id 已写 /tmp/.deepcheck-target）  其他=错误
 set -euo pipefail
 
-MARTIN="$HOME/workspace/martin"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 RQ="$MARTIN/scripts/contrib/rq.sh"
-CONFIG="$MARTIN/contrib-data/config.json"
-TARGET_FILE="/tmp/.deepcheck-target"
-LOG="$MARTIN/contrib-data/logs/deepcheck.log"
+CONFIG="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}/config.json"
+TARGET_FILE="${DEEPCHECK_TARGET_FILE:-/tmp/.deepcheck-target}"
+LOCK="${DEEPCHECK_LOCK:-/tmp/contrib-deepcheck.lock}"
+LOG="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}/logs/deepcheck.log"
 
 log() { echo "[$(date '+%F %T')] gate: $*" >>"$LOG"; }
 
 # 残留锁清理（>3h 视为上轮卡死）
-LOCK="/tmp/contrib-deepcheck.lock"
 if [[ -d "$LOCK" ]]; then
   age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || date +%s) ))
   if (( age > 10800 )); then
@@ -28,7 +28,12 @@ fi
 # failed → queued（重试晋升，drill 件除外）
 "$RQ" retry-failed >/dev/null
 
-auto="$(jq -r '.auto_deep_check // true' "$CONFIG")"
+# 不用 jq 的 // 运算符：它把 JSON false 当 falsy（auto_deep_check:false 时开关失效的登记 bug）——
+# 只把 null/缺失当缺省，false 是合法配置值（与 notify.sh/rq.sh cfg 同一语义）
+auto="$(jq -r '.auto_deep_check' "$CONFIG" 2>/dev/null)"
+if [[ -z "$auto" || "$auto" == "null" ]]; then
+  auto="true"
+fi
 
 # 1) probe 车道：不受 auto_deep_check 管（轻量），只受 probe_per_day 管
 if [[ "$("$RQ" budget check --lane probe)" == "OK" ]]; then

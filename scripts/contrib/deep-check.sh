@@ -4,22 +4,27 @@
 # 结构性 fresh-context：两阶段是两个独立 claude -p 进程，只靠文件版次传递（v1→v2→final）。
 set -uo pipefail
 
-MARTIN="$HOME/workspace/martin"
+MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-CONTRIB="$MARTIN/contrib-data"
+CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 RQ="$MARTIN/scripts/contrib/rq.sh"
 NOTIFY="$MARTIN/scripts/contrib/notify.sh"
-TARGET_FILE="/tmp/.deepcheck-target"
-LOCK="/tmp/contrib-deepcheck.lock"
+TARGET_FILE="${DEEPCHECK_TARGET_FILE:-/tmp/.deepcheck-target}"
+LOCK="${DEEPCHECK_LOCK:-/tmp/contrib-deepcheck.lock}"
 LOG="$CONTRIB/logs/deepcheck.log"
 
 ts() { date "+%Y-%m-%dT%H%M"; }
 
 log() { echo "[$(date '+%F %T')] deepcheck: $*" >>"$LOG"; }
 
-# claude CLI 探测（同 run-watch.sh）
-CLAUDE_BIN="$(command -v claude 2>/dev/null)"
-[[ -z "$CLAUDE_BIN" ]] && CLAUDE_BIN="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1)"
+# claude CLI 探测（同 run-watch.sh）；seam：CLAUDE_BIN env 优先，空则走现有两级探测（默认语义=现状）
+CLAUDE_BIN="${CLAUDE_BIN:-}"
+if [[ -z "$CLAUDE_BIN" ]]; then
+  CLAUDE_BIN="$(command -v claude 2>/dev/null)"
+fi
+if [[ -z "$CLAUDE_BIN" ]]; then
+  CLAUDE_BIN="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1)"
+fi
 if [[ -z "$CLAUDE_BIN" ]]; then
   log "找不到 claude CLI，放弃"
   exit 1
