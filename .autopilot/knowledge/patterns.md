@@ -308,3 +308,19 @@ cron live 投递的 60s 超时分两类,判据是 `future.cancel()` 返回值:**
 <!-- tags: git, reset, incident, patch-stack, hermes, recovery, reflog -->
 ## [2026-08-26] 补丁栈被 reset to origin/main 抹掉的完整恢复五步(08-26 00:49 实战)
 hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 hermes update 家族行为),网关随之跑回退代码致遥测停更 8.5h。恢复五步(全验证):①**立即 `git branch <anchor> <栈顶>` 锚定 dangling 防 GC**(reflog 可见 HEAD@{n}: reset: moving to origin/main 即此模式);②`git stash push --staged` 保存在跑任务的暂存;③`git reset --hard <栈顶>` 恢复;④stash pop 重放(跨基线 main.py 冲突风险低——接线 hunks 通常落在稳定区域);⑤**全量六任务套件 210 复验 + 网关重启 + 遥测再生验证(events.db max(ts) 前进 + T2/T3 格式行再现)**。预防:观测栈常驻分支锚定;升级一律走 fetch+rebase 流程,勿跑会 reset 的工具。
+
+<!-- tags: bash, jq, boolean, config-parsing, falsy, incident, contrib-watch -->
+## [2026-09-05] jq `//` 运算符把 JSON false 当 falsy：布尔配置静默失效的事故级陷阱
+`jq -r '.key // default'` 中 JSON `false` 走 falsy 分支返回 default——`notify_dry_run: false` 永远读成 `true`，推送层静默 dry-run 还假标「已推送」（09-05 全天审批环失效事故根因）。规约：布尔/数值配置读取**只把 null/缺失当缺省**（`v=$(jq -r "$1" cfg); [[ -n "$v" && "$v" != "null" ]] && echo "$v" || echo "$default"`）；同一语义必须在所有读点同构（本事故后 deep_check_gate/rq.sh 的同构读点仍是旧写法=第二次事故种子，测试基建时才一并拔除）。防线：cfg 语义五态表驱动测试（false/null/missing/数字/字符串）作为任何配置读取层的第一用例。
+
+<!-- tags: bash, unicode, fullwidth, variable-name, testing, regression -->
+## [2026-09-05] bash 里 `$var` 紧跟全角标点被并入变量名：三方同踩 12+ 处的套件杀手
+`echo "PASS $P（cases=...）"` 中全角 `（` 直接并入变量名（`P（cases` unbound）——set -u 下脚本中途炸。本任务蓝队、红队、编排器三方共踩 12+ 处（知识库 09-02 坑③的三次复发证明「知道」防不住「手写」）。治法：交付前统一 regex sweep `\$(\w+)(?=[（）｜：；，「」等全角集])` → `${\1}` 固化成测试套件静态门；写作习惯用 `${var}` 只是缓解不是防线。
+
+<!-- tags: macos, toolchain-shadow, diff, PATH, sandbox, testing -->
+## [2026-09-05] 用户机器第三方工具链遮蔽系统命令：diff 不支持 -r 的静默假绿
+机器上 HarmonyOS 工具链的 diff 在 PATH 前部遮蔽 /usr/bin/diff，遇到长路径参数报 illegal option 且 **stdout 为空**——`$(diff a b | wc -l)` 得 0 → 「pristine 与 mutated 无差异」假绿、`diff -q` 对不同文件返回「相同」。治法：脚本内显式解析 `DIFF_BIN=/usr/bin/diff`（探测 `-x` 否则 command -v 兜底），所有 diff 调用走绝对路径变量。同类风险命令族：grep/sed/awk 的非 POSIX 扩展用法。
+
+<!-- tags: testing, mutation-testing, defense-in-depth, detect-harness, false-green -->
+## [2026-09-05] 变异测试与纵深防御的对抗：缺陷注入必须剥离同类全部防御层
+捕获自证 harness 对「缺 cd」注入变异后 mutated 副本测试仍绿——因为蓝队在入口和子脚本各加了一层 `cd "$MARTIN"`（纵深防御是好生产实践），只剥入口层会被子脚本救回。规约：缺陷类的注入 = **剥离该类在副本内的全部防御实例**（先 grep 全部同构锚点）；防御层加固后必须回归检验既有变异用例的杀伤力（本例新增防御静默击穿了 detect 用例，QA 第三轮才暴露）。

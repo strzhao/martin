@@ -34,3 +34,7 @@
 - [Hermes Agent 安装与配置](domains/hermes-agent.md) — 在 macOS ARM64 上安装 Hermes Agent 的关键决策和踩坑记录
 - [2026-08-23] hermes 事件落库(T1)架构四决策(懒启动 atexit/不设 WAL/config 链分叉/check_same_thread) | tags: hermes, observability, sqlite, config-chain, events-sink | → decisions.md
 - [2026-08-24] weixin context token v2(issued_at 落盘+双 dict 分离+回滚自愈) | tags: hermes, weixin, token, forensics | → decisions.md
+- [2026-09-05] jq `//` 把 false 当 falsy：布尔配置静默失效事故根因 | tags: bash, jq, boolean, config-parsing, incident, contrib-watch | → patterns.md
+- [2026-09-05] bash `$var` 紧跟全角标点并入变量名：三方同踩 12+ 处 | tags: bash, unicode, fullwidth, variable-name, testing | → patterns.md
+- [2026-09-05] 第三方工具链遮蔽系统 diff：stdout 空的静默假绿 | tags: macos, toolchain-shadow, diff, PATH, testing | → patterns.md
+- [2026-09-05] 变异测试 vs 纵深防御：注入必须剥离全部同类防御层 | tags: testing, mutation-testing, defense-in-depth, false-green | → patterns.md
