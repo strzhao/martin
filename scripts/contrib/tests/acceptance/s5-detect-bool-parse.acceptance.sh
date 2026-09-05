@@ -49,7 +49,7 @@ eq "$RC" 0 "$P detect bool-parse exit"
 LAST="$(jlast "$ART/s5-p1.out")"
 printf '%s\n' "$LAST" | jq -e . >/dev/null 2>&1 || die "$P" "末行不是合法 JSON: [$LAST]"
 detect_assert "$P" "$LAST" 2
-echo "PASS $P（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
+echo "PASS ${P}（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
 
 # -----------------------------------------------------------------------------
 # 5.P2 [det-machine] driver: fs-grep s5-p1.out
@@ -86,7 +86,7 @@ DETJSON="$(jlast "$ART/.s5-p3.detect.out")"
 SB="$(printf '%s' "$DETJSON" | jq -r '.sandbox // empty')"
 [ -n "$SB" ] || die "$P" "detect JSON 未报 sandbox 路径: $DETJSON"
 [ -d "$SB" ] || die "$P" "DETECT_KEEP 沙箱不存在: $SB"
-MUT="$SB/mutated"
+MUT="$SB/scripts/contrib"
 [ -d "$MUT" ] || die "$P" "mutated 副本目录缺失（契约布局 <sandbox>/mutated）: $MUT"
 
 # pristine vs mutated 差异（仅对 7 个生产脚本名求差，避免副本缺 tests/ 造成假差异）
@@ -94,7 +94,7 @@ DIFFLINES=0; FOUND=0
 for f in notify.sh rq.sh scan_gate.sh deep_check_gate.sh deep-check.sh run-deepcheck.sh run-watch.sh; do
   if [ -f "$TARGET/$f" ] && [ -f "$MUT/$f" ]; then
     FOUND=$((FOUND+1))
-    DIFFLINES=$((DIFFLINES + $(diff "$TARGET/$f" "$MUT/$f" | wc -l | tr -d ' ')))
+    DIFFLINES=$((DIFFLINES + $(/usr/bin/diff "$TARGET/$f" "$MUT/$f" 2>/dev/null | wc -l | tr -d ' ')))
   fi
 done
 ge "$FOUND" 1 "$P mutated 副本中至少存在一个被注入的生产脚本"
@@ -106,9 +106,9 @@ ne "$RC" 0 "$P 以 mutated 副本独立复跑套件竟然 exit 0（缺陷不可�
 {
   echo "--- detect(DETECT_KEEP=1) JSON: $DETJSON"
   echo "--- mutated 副本: $MUT  diff_lines=$DIFFLINES"
-  echo "--- CONTRIB_TEST_TARGET=$MUT 重跑 exit=$RC（期望非 0）"
+  echo "--- CONTRIB_TEST_TARGET=$MUT 重跑 exit=${RC}（期望非 0）"
 } >> "$ART/s5-p3.out"
-echo "PASS $P（重跑 exit=$RC，diff=$DIFFLINES 行）"
+echo "PASS ${P}（重跑 exit=${RC}，diff=$DIFFLINES 行）"
 
 echo "s5: ALL PASS（5.P1 5.P2 5.P3）"
 exit 0

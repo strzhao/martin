@@ -79,7 +79,7 @@ eq "$CNF" 0 "$P 'command not found' 出现次数"
 eq "$NSF" 0 "$P 'No such file' 出现次数（negate 子句第二模式）"
 RC1="$(cat "$ART/s2-p1.rc")"
 eq "$RC1" 0 "$P 复核 2.P1 exit code"
-echo "PASS $P（command not found=0 / No such file=0 / exit=0）"
+echo "PASS ${P}（command not found=0 / No such file=0 / exit=0）"
 
 echo "s2: ALL PASS（2.P1 2.P2 2.P3）"
 exit 0

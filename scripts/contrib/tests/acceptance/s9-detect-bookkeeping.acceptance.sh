@@ -43,7 +43,7 @@ j "$LAST" "(.cases|length)>=4"                              || die "$P" ".cases 
 j "$LAST" '[.cases[]|select(.pristine_exit!=0)]|length==0'  || die "$P" "存在 pristine_exit!=0 的 case: $LAST"
 j "$LAST" '[.cases[]|select(.mutated_exit==0)]|length==0'   || die "$P" "存在 mutated_exit==0 的 case（簿记缺陷未被捕获）: $LAST"
 j "$LAST" '[.cases[]|select((.diff_lines//0)<1)]|length==0' || die "$P" "存在 diff_lines<1 的 case: $LAST"
-echo "PASS $P（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
+echo "PASS ${P}（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
 
 # -----------------------------------------------------------------------------
 # 9.P2 [det-machine] driver: fs-grep s9-p1.out（case 名集合覆盖四簿记语义）
@@ -74,14 +74,14 @@ eq "$RC_D" 0 "$P DETECT_KEEP=1 复跑 detect exit"
 DETJSON="$(jlast "$ART/.s9-p3.detect.out")"
 SB="$(printf '%s' "$DETJSON" | jq -r '.sandbox // empty')"
 [ -n "$SB" ] && [ -d "$SB" ] || die "$P" "DETECT_KEEP 沙箱缺失: $DETJSON"
-MUT="$SB/mutated"
+MUT="$SB/scripts/contrib"
 [ -d "$MUT" ] || die "$P" "mutated 副本目录缺失（契约布局 <sandbox>/mutated）: $MUT"
 
 DIFFLINES=0; FOUND=0
 for f in notify.sh rq.sh scan_gate.sh deep_check_gate.sh deep-check.sh run-deepcheck.sh run-watch.sh; do
   if [ -f "$TARGET/$f" ] && [ -f "$MUT/$f" ]; then
     FOUND=$((FOUND+1))
-    DIFFLINES=$((DIFFLINES + $(diff "$TARGET/$f" "$MUT/$f" | wc -l | tr -d ' ')))
+    DIFFLINES=$((DIFFLINES + $(/usr/bin/diff "$TARGET/$f" "$MUT/$f" 2>/dev/null | wc -l | tr -d ' ')))
   fi
 done
 ge "$FOUND" 1 "$P mutated 副本中至少存在一个被注入的生产脚本"
@@ -93,9 +93,9 @@ ne "$RC" 0 "$P 以簿记守卫拆除副本独立复跑套件竟然 exit 0"
 {
   echo "--- detect(DETECT_KEEP=1) JSON: $DETJSON"
   echo "--- mutated 副本: $MUT  diff_lines=$DIFFLINES"
-  echo "--- CONTRIB_TEST_TARGET=$MUT 重跑 exit=$RC（期望非 0）"
+  echo "--- CONTRIB_TEST_TARGET=$MUT 重跑 exit=${RC}（期望非 0）"
 } >> "$ART/s9-p3.out"
-echo "PASS $P（重跑 exit=$RC，diff=$DIFFLINES 行）"
+echo "PASS ${P}（重跑 exit=${RC}，diff=$DIFFLINES 行）"
 
 echo "s9: ALL PASS（9.P1 9.P2 9.P3）"
 exit 0

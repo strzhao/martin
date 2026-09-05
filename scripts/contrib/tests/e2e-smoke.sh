@@ -100,7 +100,7 @@ if [[ -z "$FAIL_REASON" ]]; then
 fi
 
 # ---- 汇总 JSON（末行）----
-sb_json_path="$SB_ROOT/stublog"
+sb_json_path="$SB_ROOT/stublog/calls.log"
 sandbox_key=""
 if [[ "${E2E_KEEP:-}" == "1" ]]; then
   sandbox_key=",\"sandbox\":\"$SB_ROOT\""

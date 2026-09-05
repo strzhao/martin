@@ -41,7 +41,7 @@ j "$LAST" "(.cases|length)>=1"                              || die "$P" ".cases 
 j "$LAST" '[.cases[]|select(.pristine_exit!=0)]|length==0'  || die "$P" "存在 pristine_exit!=0 的 case: $LAST"
 j "$LAST" '[.cases[]|select(.mutated_exit==0)]|length==0'   || die "$P" "存在 mutated_exit==0 的 case（cwd 缺陷未被捕获）: $LAST"
 j "$LAST" '[.cases[]|select((.diff_lines//0)<1)]|length==0' || die "$P" "存在 diff_lines<1 的 case: $LAST"
-echo "PASS $P（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
+echo "PASS ${P}（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
 
 # -----------------------------------------------------------------------------
 # 6.P2 [det-machine] driver: fs-grep s6-p1.out

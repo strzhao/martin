@@ -53,6 +53,14 @@ gen_stub(){
 if [ ! -t 0 ]; then printf -- '---STDIN---\n' >>"$L"; cat >>"$L" 2>/dev/null; printf -- '---END-STDIN---\n' >>"$L"; fi
 case "$STUB_NAME" in
   hermes)
+    prev=""
+    for a in "$@"; do
+      if [ "$prev" = "--file" ] && [ -f "$a" ]; then
+        mkdir -p "$(dirname "$L")/bodies" 2>/dev/null
+        cp "$a" "$(dirname "$L")/bodies/hermes-last.txt" 2>/dev/null
+      fi
+      prev="$a"
+    done
     if [ -n "${HERMES_STUB_FAIL:-}" ]; then printf '%s\n' '{"success":false,"error":"stub-fail"}'; exit 1; fi
     printf '%s\n' '{"success":true,"ok":true}' ;;
   claude)
@@ -74,7 +82,7 @@ SH
 }
 new_sb(){
   SB="$(mktemp -d "${TMPDIR:-/tmp}/acc-s12.XXXXXX")"
-  mkdir -p "$SB/contrib-data/pending" "$SB/bin" "$SB/logs" "$SB/tmp"
+  mkdir -p "$SB/contrib-data/logs" "$SB/contrib-data/pending" "$SB/bin" "$SB/logs" "$SB/tmp"
   STUBBIN="$SB/bin"; STUBLOG="$SB/logs"
   local n
   for n in hermes gh claude tunnel osascript pgrep; do gen_stub "$n"; done
@@ -218,8 +226,10 @@ do_flush "12.P5"
 eq "$(calls claude)" 0 "$P 纯机械批次 claude 调用数（模板卡不经 LLM）"
 ge "$(calls hermes)" 1 "$P hermes 影子被调次数（模板卡必须真发）"
 [ -f "$STUBLOG/hermes.log" ] || die "$P" "hermes 影子日志缺失"
-grep -q '^▪' "$STUBLOG/hermes.log" \
-  || die "$P" "发送体不含 ▪ 开头行（stub 日志见 $STUBLOG/hermes.log）"
+[ -f "$STUBLOG/bodies/hermes-last.txt" ] \
+  || die "$P" "hermes stub 未捕获到 --file 发送体（bodies/ 缺失）"
+grep -q '^▪' "$STUBLOG/bodies/hermes-last.txt" \
+  || die "$P" "发送体不含 ▪ 开头行（body 见 $STUBLOG/bodies/hermes-last.txt）"
 LED="$SB/contrib-data/events.jsonl"
 j "$(jq -s --arg k s12-mech-1 '[.[]|select(.key==$k)][0].pushed' "$LED")" '.==true' \
   || die "$P" "机械批次未被标 pushed"

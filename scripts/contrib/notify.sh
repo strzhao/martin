@@ -84,8 +84,10 @@ _send() {
     return 0
   fi
   if ! gateway_up; then
-    log "网关不可达（pgrep hermes_cli.main gateway 落空）"
-    return 3
+    # 探针只做诊断、不做否决：pgrep 在部分执行环境假阴性（09-05 21:14 实证——
+    # hermes 工具内调 notify 时探针落空但网关实际存活，回执被拦死 rc=3）。
+    # 可达性的唯一真值 = hermes send 自身结果。
+    log "网关探针落空（pgrep），仍尝试投递（可达性以 send 结果为准）"
   fi
   local rc=0
   "$HERMES_BIN" send --to "$TARGET" --file "$msg_file" --subject "$subject" --json >"$NOTIFY_SEND_LAST" 2>>"$CONTRIB/logs/notify.log" || rc=$?
@@ -109,8 +111,8 @@ state_bump() { # state_bump <表名> <键> → 计数+1 并写回
   jq --arg t "$1" --arg k "$2" '.[$t][$k] = ((.[$t][$k] // 0) + 1)' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 state_get() { jq -r --arg t "$1" --arg k "$2" '.[$t][$k] // 0' "$STATE"; }
-state_set() { # state_set <表名> <键> <值> → 置值并写回（一次性标记用）
-  jq --arg t "$1" --arg k "$2" --arg v "$3" '.[$t][$k] = $v' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+state_set() { # state_set <表名> <键> <JSON值> → 置值并写回（--argjson：数字/布尔保型，契约 schema 防字符串化）
+  jq --arg t "$1" --arg k "$2" --argjson v "$3" '.[$t][$k] = $v' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 
 # ---------------- 事件分级（外发消息规范的机械/叙事两级） ----------------
@@ -169,8 +171,10 @@ _ai_digest() {
   local in_file="$1" out_file="$2"
   local claude_bin="$CLAUDE_BIN"
   [[ -z "$claude_bin" ]] && claude_bin="$(command -v claude 2>/dev/null)"
+  # launchd 环境兜底：PATH 里没有 claude 时按 nvm 安装布局探测（同 deep-check.sh）
+  [[ -z "$claude_bin" ]] && claude_bin="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1)"
   if [[ -z "$claude_bin" ]]; then
-    log "AI 摘要失败：claude 不在 PATH"
+    log "AI 摘要失败：claude 不可达（PATH 与 nvm 布局均未命中）"
     return 1
   fi
   local prompt="/tmp/contrib-digest-prompt-$$.txt"

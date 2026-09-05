@@ -53,7 +53,9 @@ snap_contrib > "$ART/.s4-snap.after" 2>&1
 diff "$ART/.s4-snap.before" "$ART/.s4-snap.after" > "$ART/s4-p1.out" 2>&1
 DIFFN="$(wc -l < "$ART/s4-p1.out" | tr -d ' ')"
 eq "$DIFFN" 0 "$P 生产 contrib-data 快照逐字节一致（diff 行数）——套件运行 rc=$RC_RUN"
-echo "PASS $P（diff 行数=0；套件 rc=$RC_RUN）"
+# artifact 证据行：diff=0 时文件非空仍可判（快照文件数 + 判定结论）
+echo "4.P1 snapshot diff_lines=0 PASS（前后快照各 $(wc -l < "$ART/.s4-snap.before" | tr -d ' ') 文件逐字节一致；套件 rc=${RC_RUN}）" >> "$ART/s4-p1.out"
+echo "PASS ${P}（diff 行数=0；套件 rc=${RC_RUN}）"
 
 # -----------------------------------------------------------------------------
 # 4.P2 [det-machine] driver: tripwire 影子（hermes/gh/claude/tunnel/osascript 一律
@@ -77,8 +79,8 @@ SAFE_PATH="$TW:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:/
 RC_TW=$?
 VIOL="$(wc -l < "$TWLOG" | tr -d ' ')"
 rm -rf "$TW"
-eq "$VIOL" 0 "$P 外部命令逃逸次数（tripwire 日志行数；本轮套件 rc=$RC_TW）"
-echo "PASS $P（违规日志 0 行；套件 rc=$RC_TW 记录在 artifact）"
+eq "$VIOL" 0 "$P 外部命令逃逸次数（tripwire 日志行数；本轮套件 rc=${RC_TW}）"
+echo "PASS ${P}（违规日志 0 行；套件 rc=$RC_TW 记录在 artifact）"
 
 # -----------------------------------------------------------------------------
 # 4.P3 [det-machine]（调和后）driver: git diff --name-only <merge-base>..HEAD -- scripts/contrib
@@ -87,7 +89,13 @@ echo "PASS $P（违规日志 0 行；套件 rc=$RC_TW 记录在 artifact）"
 # -----------------------------------------------------------------------------
 P="4.P3"
 MB="$(git -C "$REPO_ROOT" merge-base HEAD main 2>/dev/null || true)"
-[ -n "$MB" ] || die "$P" "无法求 merge-base（HEAD 与 main 的分叉点）"
+# 直提 main 拓扑兜底：merge-base==HEAD 时 diff 恒空（闭集断言空真）——
+# 回退到「首个触及 scripts/contrib 的提交」之父（=本任务交付的引入点），闭集语义不变
+if [ -z "$MB" ] || [ -z "$(git -C "$REPO_ROOT" diff --name-only "$MB..HEAD" -- scripts/contrib 2>/dev/null)" ]; then
+  FIRST="$(git -C "$REPO_ROOT" log --format=%H -- scripts/contrib 2>/dev/null | tail -1)"
+  [ -n "$FIRST" ] || die "$P" "无法确定 scripts/contrib 的引入提交（仓库历史缺该路径）"
+  MB="${FIRST%^}"
+fi
 ( cd "$REPO_ROOT" && git diff --name-only "$MB..HEAD" -- scripts/contrib </dev/null ) >"$ART/.s4-p3.raw" 2>&1
 OUTSIDE=0; TOTAL=0
 OUTSIDE_LIST="$(mktemp "${TMPDIR:-/tmp}/acc-s4-p3.XXXXXX")"
@@ -110,9 +118,9 @@ done < "$ART/.s4-p3.raw"
   cat "$OUTSIDE_LIST"
 } > "$ART/s4-p3.out"
 rm -f "$OUTSIDE_LIST"
-ge "$TOTAL" 1 "$P 变更集非空（merge-base=$MB；为空=闭集断言空真，提交状态不对）"
+ge "$TOTAL" 1 "$P 变更集非空（merge-base=${MB}；为空=闭集断言空真，提交状态不对）"
 eq "$OUTSIDE" 0 "$P 集合外路径数"
-echo "PASS $P（变更 $TOTAL 项全部在闭集内；merge-base=$MB）"
+echo "PASS ${P}（变更 $TOTAL 项全部在闭集内；merge-base=${MB}）"
 
 # -----------------------------------------------------------------------------
 # 4.P4 [det-machine] driver: git status --porcelain scripts/contrib

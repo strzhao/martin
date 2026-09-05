@@ -88,7 +88,10 @@ SH
 }
 new_sb(){
   SB="$(mktemp -d "${TMPDIR:-/tmp}/acc-s11.XXXXXX")"
-  mkdir -p "$SB/contrib-data/pending" "$SB/bin" "$SB/logs" "$SB/tmp"
+  mkdir -p "$SB/contrib-data/logs" "$SB/contrib-data/pending" "$SB/bin" "$SB/logs" "$SB/tmp"
+  # 被测脚本副本：gate/deep-check 按 MARTIN_DIR 派生兄弟脚本路径（rq.sh 等），必须整目录在沙箱内
+  mkdir -p "$SB/scripts/contrib"
+  cp "$TARGET"/*.sh "$SB/scripts/contrib/"
   STUBBIN="$SB/bin"; STUBLOG="$SB/logs"
   local n
   for n in hermes gh claude tunnel osascript pgrep; do gen_stub "$n"; done
@@ -158,7 +161,7 @@ trap cleanup EXIT
 # -----------------------------------------------------------------------------
 P="11.P1"
 grep -q 'tunnel-removed' "$SKILL_HERMES" || die "$P" "前置失效：hermes SKILL.md 未引用 tunnel-removed，负向变异无法锚定"
-( cd "$REPO_ROOT" && bash scripts/contrib/tests/run.sh </dev/null ) >"$ART/s11-p1.out" 2>&1
+( cd "$REPO_ROOT" && bash "$SUITE/run.sh" </dev/null ) >"$ART/s11-p1.out" 2>&1
 RC_POS=$?
 eq "$RC_POS" 0 "$P 交付态全套件 exit（契约守卫须绿，缺失子命令数==0）"
 
@@ -167,14 +170,14 @@ cp -R "$REPO_ROOT/scripts/contrib/." "$MUT/" || die "$P" "复制被测目录失�
 [ -f "$MUT/rq.sh" ] || die "$P" "副本缺 rq.sh"
 grep -q 'tunnel-removed' "$MUT/rq.sh" || die "$P" "前置失效：rq.sh 副本无 tunnel-removed token（无法删除 case 分支）"
 grep -v 'tunnel-removed' "$TARGET/rq.sh" > "$MUT/rq.sh" || die "$P" "case 分支删除失败"
-if diff -q "$TARGET/rq.sh" "$MUT/rq.sh" >/dev/null 2>&1; then
+if /usr/bin/diff -q "$TARGET/rq.sh" "$MUT/rq.sh" >/dev/null 2>&1; then
   die "$P" "负向变异是空操作（mutated==pristine），守卫测试无意义"
 fi
 ( cd "$REPO_ROOT" && CONTRIB_TEST_TARGET="$MUT" bash scripts/contrib/tests/run.sh </dev/null ) >>"$ART/s11-p1.out" 2>&1
 RC_NEG=$?
 rm -rf "$MUT"
 ne "$RC_NEG" 0 "$P 负向：删除 SKILL.md 引用的 case 分支后守卫竟然 exit 0"
-echo "PASS $P（正=0 / 负=$RC_NEG，tunnel-removed 分支删除可被守卫捕获）"
+echo "PASS ${P}（正=0 / 负=${RC_NEG}，tunnel-removed 分支删除可被守卫捕获）"
 
 # -----------------------------------------------------------------------------
 # 11.P2 [det-machine] deep_check_gate exit 契约 + target 文件格式
@@ -212,6 +215,9 @@ new_sb; seed_config false; seed_state; seed_budget
 seed_event probe-premise-dead "s11p3-mech" "机械事件（dry-run 否定变体）"
 seed_queue_item "rq-${TODAY//-}-000002" deep awaiting-approval
 printf 'stub draft body\n' > "$SB/contrib-data/pending/rq-${TODAY//-}-000002.md"
+jq --arg d "$SB/contrib-data/pending/rq-${TODAY//-}-000002.md" '.items[0].draft = $d' \
+  "$SB/contrib-data/ready-queue.json" > "$SB/contrib-data/ready-queue.json.tmp" \
+  && mv "$SB/contrib-data/ready-queue.json.tmp" "$SB/contrib-data/ready-queue.json"
 
 unset NOTIFY_DRY_RUN
 export NOTIFY_DRY_RUN=true
@@ -228,7 +234,7 @@ RC_A=$?
 H2="$(calls hermes)"; T2="$(calls tunnel)"
 eq "$H2" 0 "$P approve 在 DRY_RUN 下 hermes 调用数"
 eq "$T2" 0 "$P approve 在 DRY_RUN 下 tunnel 调用数"
-grep -Fq '[dry-run]' "$ART/.s11-p3.approve.out" || die "$P" "approve stdout 不含 [dry-run]（rc=$RC_A）: $(cat "$ART/.s11-p3.approve.out")"
+grep -Fq '[dry-run]' "$ART/.s11-p3.approve.out" || die "$P" "approve stdout 不含 [dry-run]（rc=${RC_A}）: $(cat "$ART/.s11-p3.approve.out")"
 {
   echo "--- flush rc=$RC_F hermes=$H1 tunnel=$T1"
   cat "$ART/.s11-p3.flush.out"

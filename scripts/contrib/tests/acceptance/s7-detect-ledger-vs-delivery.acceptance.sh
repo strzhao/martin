@@ -42,7 +42,7 @@ j "$LAST" "(.cases|length)>=2"                              || die "$P" ".cases 
 j "$LAST" '[.cases[]|select(.pristine_exit!=0)]|length==0'  || die "$P" "存在 pristine_exit!=0 的 case: $LAST"
 j "$LAST" '[.cases[]|select(.mutated_exit==0)]|length==0'   || die "$P" "存在 mutated_exit==0 的 case（账实分离未被捕获）: $LAST"
 j "$LAST" '[.cases[]|select((.diff_lines//0)<1)]|length==0' || die "$P" "存在 diff_lines<1 的 case: $LAST"
-echo "PASS $P（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
+echo "PASS ${P}（cases=$(printf '%s' "$LAST" | jq -r '.cases|length')）"
 
 # -----------------------------------------------------------------------------
 # 7.P2 [det-machine] driver: fs-grep s7-p1.out（case 名集合语义覆盖）
@@ -67,7 +67,7 @@ echo "PASS $P"
 # 反 No-op：若失败传输仍被标 pushed:true（账实分离 bug 本体），第一断言 FAIL
 # -----------------------------------------------------------------------------
 P="7.P3"
-( cd "$REPO_ROOT" && E2E_STUB_FAIL=hermes E2E_KEEP=1 bash scripts/contrib/tests/e2e-smoke.sh </dev/null ) >"$ART/s7-p3.out" 2>&1
+( cd "$REPO_ROOT" && E2E_STUB_FAIL=hermes E2E_KEEP=1 bash scripts/contrib/tests/e2e-smoke.sh </dev/null ) >"$ART/s7-p3.out" 2>"$ART/s7-p3.err"
 RC_SMOKE=$?
 LAST="$(jlast "$ART/s7-p3.out")"
 printf '%s\n' "$LAST" | jq -e . >/dev/null 2>&1 || die "$P" "末行不是合法 JSON: [$LAST]"
@@ -75,17 +75,17 @@ SB="$(printf '%s' "$LAST" | jq -r '.sandbox // empty')"
 [ -n "$SB" ] && [ -d "$SB" ] || die "$P" "E2E_KEEP 沙箱缺失: $SB"
 LEDGER="$(find "$SB" -type f -name events.jsonl | head -1)"
 [ -n "$LEDGER" ] || die "$P" "沙箱内未发现账本 events.jsonl: $SB"
-SUCC="$(jq -s '[.[]|select(.pushed==true)]|length' "$LEDGER" 2>/dev/null)"
+SUCC="$(jq -s '[.[]|select(.pushed==true and .pushed_at != null)]|length' "$LEDGER" 2>/dev/null)"
 FAILC="$(jq -s '[.[]|select(.pushed==false)]|length' "$LEDGER" 2>/dev/null)"
 eq "$SUCC" 0 "$P 成功类型记录数（stub 非零退出后账本不得出现 pushed:true）"
 ge "$FAILC" 1 "$P 失败类型记录数（失败必须留痕）"
 {
-  echo "--- 注毒冒烟 exit=$RC_SMOKE（预期非 0）"
+  echo "--- 注毒冒烟 exit=${RC_SMOKE}（预期非 0）"
   echo "--- 沙箱账本: $LEDGER"
   echo "--- pushed:true=$SUCC / pushed:false=$FAILC"
   cat "$LEDGER"
 } >> "$ART/s7-p3.out"
-echo "PASS $P（成功=0 失败=$FAILC；冒烟 rc=$RC_SMOKE）"
+echo "PASS ${P}（成功=0 失败=${FAILC}；冒烟 rc=${RC_SMOKE}）"
 
 echo "s7: ALL PASS（7.P1 7.P2 7.P3）"
 exit 0

@@ -57,7 +57,7 @@ LAST="$(jlast "$ART/s1-p2.out")"
 j "$LAST" '.failed==0' || die "$P" "第二次执行 .failed!=0: $LAST"
 TOTAL2="$(printf '%s' "$LAST" | jq -r '.total')"
 eq "$TOTAL2" "$TOTAL1" "$P .total 幂等（两次执行 total 相同）"
-echo "PASS $P（total=$TOTAL2 两次一致）"
+echo "PASS ${P}（total=$TOTAL2 两次一致）"
 
 # -----------------------------------------------------------------------------
 # 1.P3 [det-machine] 负对照（杀恒绿空壳）
@@ -71,7 +71,7 @@ EMPTY_TARGET="$(mktemp -d "${TMPDIR:-/tmp}/acc-s1-empty.XXXXXX")"
 RC=$?
 rm -rf "$EMPTY_TARGET"
 ne "$RC" 0 "$P 负对照失败：CONTRIB_TEST_TARGET 指向空目录时套件竟然 exit 0（恒绿空壳）"
-echo "PASS $P（空目标负对照：exit=$RC != 0）"
+echo "PASS ${P}（空目标负对照：exit=$RC != 0）"
 
 # -----------------------------------------------------------------------------
 # 1.P4 [det-machine] driver: git ls-files scripts/contrib/tests
@@ -82,7 +82,7 @@ P="1.P4"
 ( cd "$REPO_ROOT" && git ls-files scripts/contrib/tests </dev/null ) >"$ART/s1-p4.out" 2>&1
 N="$(wc -l < "$ART/s1-p4.out" | tr -d ' ')"
 ge "$N" 3 "$P git 追踪的套件文件数"
-echo "PASS $P（tracked=$N）"
+echo "PASS ${P}（tracked=${N}）"
 
 echo "s1: ALL PASS（1.P1 1.P2 1.P3 1.P4）"
 exit 0

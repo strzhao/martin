@@ -52,7 +52,7 @@ P="3.P2"
 ( cd "$REPO_ROOT" && E2E_STUB_FAIL=hermes bash scripts/contrib/tests/e2e-smoke.sh </dev/null ) >"$ART/s3-p2.out" 2>&1
 RC=$?
 ne "$RC" 0 "$P E2E_STUB_FAIL=hermes 后冒烟竟然 exit 0"
-echo "PASS $P（stub 注毒 → exit=$RC != 0）"
+echo "PASS ${P}（stub 注毒 → exit=$RC != 0）"
 
 # -----------------------------------------------------------------------------
 # 3.P3 [det-machine] driver: E2E_KEEP=1 冒烟后按 JSON stub_log 路径 wc -l
@@ -73,7 +73,7 @@ TC="$(printf '%s' "$LAST" | jq -r '.transport_calls')"
 LINES="$(awk 'END{print NR}' "$STUBLOG")"
 ge "$TC" 1 "$P transport_calls（互证前置：至少一次调用）"
 eq "$LINES" "$TC" "$P stub 日志条数($LINES) == 上报 transport_calls($TC) —— 防伪互证失败"
-echo "PASS $P（stub_log 条数=$LINES == transport_calls=$TC）"
+echo "PASS ${P}（stub_log 条数=$LINES == transport_calls=${TC}）"
 
 echo "s3: ALL PASS（3.P1 3.P2 3.P3）"
 exit 0

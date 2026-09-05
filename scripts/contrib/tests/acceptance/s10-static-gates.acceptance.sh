@@ -52,7 +52,7 @@ NFILES=0
 for f in $FILES; do NFILES=$((NFILES+1)); done
 ge "$NFILES" 10 "$P 被检文件数（生产 4 + 套件 .sh + stub）"
 
-# shellcheck -x -S warning "$FILES" —— stdout 应为零行、exit 0
+# 运行命令：shellcheck -x -S warning "$FILES" —— stdout 应为零行、exit 0
 SC_OUT="$(mktemp "${TMPDIR:-/tmp}/acc-s10-p1.XXXXXX")"
 # shellcheck disable=SC2086
 "$SC" -x -S warning $FILES >"$SC_OUT" 2>"$ART/.s10-p1.stderr"
@@ -68,7 +68,7 @@ STDOUT_LINES="$(wc -l < "$SC_OUT" | tr -d ' ')"
 eq "$RC" 0 "$P shellcheck exit（$NFILES 文件）"
 eq "$STDOUT_LINES" 0 "$P shellcheck stdout 行数（零发现）"
 rm -f "$SC_OUT" "$ART/.s10-p1.stderr"
-echo "PASS $P（$NFILES 文件零发现）"
+echo "PASS ${P}（$NFILES 文件零发现）"
 
 # -----------------------------------------------------------------------------
 # 10.P2 [det-machine] bash -n / zsh -n 全文件集
@@ -104,7 +104,7 @@ rm -f "$ERRFILE"
 eq "$BAD" 0 "$P 语法检查失败文件数"
 eq "$ERRLINES" 0 "$P 语法检查 stderr 行数"
 ge "$CHECKED" 10 "$P 被检文件数（下限与 10.P1 对齐）"
-echo "PASS $P（$CHECKED 个文件零语法错误）"
+echo "PASS ${P}（$CHECKED 个文件零语法错误）"
 
 echo "s10: ALL PASS（10.P1 10.P2）"
 exit 0

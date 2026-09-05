@@ -185,7 +185,7 @@ class_cases() { # <class> → case 名列表（换行分隔）
 class_desc() {
   case "$1" in
     bool-parse) echo "config 布尔解析层塌缩（jq // 把 false 当 falsy → notify dry-run 静默化 / deep gate 开关失效）" ;;
-    cwd-dep) echo "launchd cwd 依赖缺陷（run-deepcheck 缺 cd → claude 子进程 cwd=/ 找不到项目 skill）" ;;
+    cwd-dep) echo "launchd cwd 依赖缺陷（副本内全部 cd 保险剥离 → claude 子进程 cwd=/ 找不到项目 skill）" ;;
     ledger-vs-delivery) echo "账面成功与实际送达分离（发送失败仍标 pushed / success 回执证据未绑定）" ;;
     state-machine) echo "状态机守卫拆除（非法迁移放行写入 / validate 状态闭集 schema 收缩误伤生产态）" ;;
     bookkeeping) echo "簿记回归（quota 限额、dedup 幂等、retry attempts、alert fallback 日幂等四处守卫拆除）" ;;
@@ -217,6 +217,21 @@ run_class() { # <class> → 0=全部 case pristine绿/mutated红/diff>=1
       echo "detect: [$case_name] 注入失败（锚点未命中）" >&2
       sb_cleanup
       return 1
+    fi
+    # cwd-dep 类纵深防御对策：入口与子脚本各有 cd，缺陷类=「无任何 cwd 保险」——
+    # 变异必须剥净副本内全部 cd 锚点，否则被子脚本 cd 救回即失去杀伤力
+    if [[ "$case_name" == "cwd-rundeepcheck-no-cd" ]]; then
+      STRIP_CD="$SB_ROOT" python3 - <<'PYEOF2'
+import os
+base = os.environ["STRIP_CD"]
+CD_ANCHORS = ('cd "$MARTIN" || exit 1', 'cd "$MARTIN"')
+NL = chr(10)
+for f in ("deep-check.sh", "run-watch.sh"):
+    fp = os.path.join(base, "scripts", "contrib", f)
+    src = open(fp).read()
+    out = NL.join(l for l in src.split(NL) if l.strip() not in CD_ANCHORS)
+    open(fp, "w").write(out + NL)
+PYEOF2
     fi
     bash "$PROBE_DIR/$probe" >/dev/null 2>&1
     mutated_rc=$?
