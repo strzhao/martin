@@ -87,14 +87,24 @@ fail() {
 }
 
 # --- 阶段 1：strategist preflight + 亲手核 → 草稿 v2 ---
+# cwd 必须在 MARTIN（skill 是项目级；agent 的相对路径命令也依赖它）
+cd "$MARTIN" || exit 1
 log "阶段1 preflight 启动"
+# allowedTools 必须同时覆盖相对/绝对两种命令形态——agent 实测会用绝对路径调
+# rq.sh，只放行相对形式时权限闸拒绝、编排契约（set-draft 注册）静默失败（09-05 实证）
 "$CLAUDE_BIN" -p "/contrib-watch deep-check $ID --phase preflight" \
   --permission-mode acceptEdits \
-  --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(rg *),Bash(scripts/contrib/rq.sh set *),Bash(scripts/contrib/rq.sh set-draft *)" \
+  --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(rg *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(scripts/contrib/rq.sh set *),Bash(scripts/contrib/rq.sh set-draft *),Bash(${MARTIN}/scripts/contrib/rq.sh set *),Bash(${MARTIN}/scripts/contrib/rq.sh set-draft *),Bash(rq.sh set *),Bash(rq.sh set-draft *)" \
   >>"$D/run.log" 2>&1 || fail preflight
 
-# v2 草稿必须已登记
+# v2 草稿必须已登记；编排层自愈：文件在而队列字段缺 → 补注册而非整轮作废
+# （agent 被权限闸拦住没跑成 set-draft 时，智力产物不该陪葬——09-05 双 probe 实证）
 draft="$("$RQ" show "$ID" --json 2>/dev/null | jq -r '.draft // ""')"
+if [[ -z "$draft" || ! -f "$draft" ]] && [[ -s "$CONTRIB/pending/$ID.md" ]]; then
+  log "队列 .draft 缺失但 $CONTRIB/pending/$ID.md 在——编排层补注册"
+  "$RQ" set-draft "$ID" "$CONTRIB/pending/$ID.md" >/dev/null 2>&1 || true
+  draft="$("$RQ" show "$ID" --json 2>/dev/null | jq -r '.draft // ""')"
+fi
 if [[ -z "$draft" || ! -f "$draft" ]]; then
   fail "preflight（草稿未产出）"
 fi
@@ -105,7 +115,7 @@ if [[ "$LANE" == "deep" ]]; then
   log "阶段2 redteam 启动"
   "$CLAUDE_BIN" -p "/contrib-watch deep-check $ID --phase redteam" \
     --permission-mode acceptEdits \
-    --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(rg *),Bash(scripts/contrib/rq.sh set *)" \
+    --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(rg *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(scripts/contrib/rq.sh set *),Bash(${MARTIN}/scripts/contrib/rq.sh set *),Bash(rq.sh set *)" \
     >>"$D/run.log" 2>&1 || fail redteam
   log "阶段2 redteam 完成"
 else
