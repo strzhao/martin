@@ -337,3 +337,30 @@ hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 h
 launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退出瞬间按进程组收割全部子进程——nohup 只防 SIGHUP 不防 SIGTERM。症状：nohup 派生的后台脚本「每次都秒死、零输出、产物文件永不出现」（现场证据=中间产物文件留存未被消费）。同机双 job 结构里，launchd 直接拉起的那个 job 正常、nohup 链路全死，即是此症。修=plist 加 `<key>AbandonProcessGroup</key><true/>` + `launchctl bootout/bootstrap` 重载 + kickstart 端到端验证。
 
 <!-- tags: launchd, macos, process-group, nohup, background-job, silent-death -->
+
+## 2026-09-06 — 红蓝对抗下 fake harness 必须守约 DI resolve 语义：51 红的接缝错位教训
+
+<!-- tags: testing, dependency-injection, red-blue, fake, contract, gcli, autopilot -->
+
+**场景**：gcli hermes 子命令红蓝对抗，红队 60 个验收用例 51 个失败。三方独立复核（编排器/qa-reviewer/红队自己的 CONTRACT_AMBIGUOUS 标注）实证**零实现缺陷**——失败全部来自红队 fake 违反 DI 契约：fake `readTextFile` 对缺失文件 throw ENOENT（契约是 resolve `undefined`）、fake write/copy 返回 void（契约是 `{ok}` 结果对象）。
+
+**教训**：
+1. **DI 契约必须钉死签名含错误通道**（`Promise<string | undefined>` vs `Promise<{ok}>` vs throw），只列方法名不够——红队信息隔离下只能猜，猜错就 51 红。
+2. **fake 的职责是模拟生产 dep 的契约行为，不是模拟 fs 原生行为**。生产 dep 内部 try/catch 守约，fake 直接 throw 等于测试一个永不存在的生产行为。
+3. **删掉 `as unknown as` cast 能让 tsc 成为契约哨兵**——形状不匹配在编写期就炸，不用等运行时 51 红。
+4. 修复落点判断法：impl 契约有 JSDoc 钉死且生产守约 → 修 fake；修 impl 加防御 = 为永不发生的行为写代码。
+
+**证据**：gcli hermes.acceptance.test.ts 51/60 失败聚合（36 ENOENT throw + 10 TypeError 'ok'），修 fake 三函数 ~15 行后 60/60 全绿。
+
+## 2026-09-06 — plan 期"已实证"的外部数据断言也会错：实机 dry-run 是最便宜的证伪器
+
+<!-- tags: verification, false-evidence, smoke-test, dry-run, gcli, cc-switch -->
+
+**场景**：plan-reviewer 声称"内置 seed 与真实数据精确匹配（'Kimi For Coding' 含原文拼写）"，实现与红队测试都按此落地。Wave 1.5 实机 `gcli hermes kimi --dry-run` 暴露真相：cc-switch.db 里 kimi 系条目真实名是 `kimi`，"Kimi For Coding" **根本不存在**——若真实切换会推导平行 id `kimi`/KIMI_API_KEY，把 5 个 cron job 从 kimi-coding 漂走。
+
+**教训**：
+1. **subagent 的"我验证过"声明也可能是编的**（或查的是过期快照）——关键外部事实（DB 行名、API 字段）在 QA 实机冒烟必须复核原文。
+2. **--dry-run 类只读全链路演练是性价比最高的真实数据验证**：零副作用跑完真实匹配/推导/计划生成全链路，一次就抓到 seed 失配 + glm 歧义两个真实数据问题。
+3. **硬编码 seed 清单天然易腐**（本次即实证）：防御外部改名/别名，除了 seed 还应有结构兜底（如 base_url 相等检查）。
+
+**证据**：sqlite3 实查 cc-switch.db 全量清单 vs smoke-dryrun-kimi.out 的平行 id 输出；修复后复跑同命令命中 seed。

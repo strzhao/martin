@@ -28,7 +28,11 @@
 - [2026-08-24] 单进程全仓 pytest sweep 跨文件 env 污染(WEIXIN_ACCOUNT_ID import 期写入) | tags: pytest, cross-file-pollution, env-leak, hermes | → patterns.md
 - [2026-08-24] 取证日志镜像原则:观测结论与控制流判定同源 | tags: logging, classification, forensic | → patterns.md
 
+- [2026-09-06] 红蓝对抗 fake harness 必须守约 DI resolve 语义（51 红接缝错位教训） | tags: testing, dependency-injection, red-blue, fake, contract, gcli | → patterns.md
+- [2026-09-06] plan 期"已实证"的外部数据断言也会错：实机 dry-run 是最便宜的证伪器 | tags: verification, false-evidence, smoke-test, dry-run, gcli | → patterns.md
 - [2026-08-24] scheduler in-flight 超时分类:#38922 cancel() 返回值语义与 fixture 驱动法 | tags: hermes, cron, future, test-fixture | → patterns.md
+
+- [2026-09-06] 零依赖 CLI 下的 YAML 编辑：手写针对性行级编辑器（宁报错不猜+幂等钉死） | tags: typescript, yaml, zero-dependency, gcli, config-editing | → decisions.md
 
 ## Domain Knowledge
 - [Hermes Agent 安装与配置](domains/hermes-agent.md) — 在 macOS ARM64 上安装 Hermes Agent 的关键决策和踩坑记录

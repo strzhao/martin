@@ -80,3 +80,18 @@ T2 给 ContextTokenStore 引入 v2 文件格式({user_id: {"token": str, "issued
 微信审批从「打字 批 #id」升级为「点链接即批」。关键裁决：①安全模型=审批页公开读公开写的前提下，提交有效性唯一凭据=名字栏==卡内短码（短码经 `?key=` 自动回填，微信零打字）；两段式（点击+微信确认）因多一轮交互被否，威胁模型如实声明「防机会主义不防设备攻破」。②页面与判定层（审批页模板/decision 判定提取/预填）下沉 tunnel-cli 成为通用能力，martin 只留编排薄壳（发卡/轮询/执行）——复用其 blocks/渲染/results 管线，避免重复建设。③执行器选确定性 bash 而非 hermes agent（凌晨无人值守场景零 LLM 方差；微信文本回复路继续走 skill）。④暗 launch：plist 不自动装载、config 开关缺省 false、特性和开关分离——带 bug 的 90s 轮询器不夜里自己上线。被否方案与理由全文见 `.autopilot/runtime/requirements/20260905-开始实现，全程不要问/brainstorm.md` 与 state.md 设计文档。
 
 <!-- tags: approval, security-model, capability-url, tunnel-cli, dark-launch, yagni -->
+
+## 2026-09-06 — 零依赖 CLI 下的 YAML 编辑：手写针对性行级编辑器
+
+<!-- tags: typescript, yaml, zero-dependency, gcli, config-editing -->
+
+**决策**：gcli hermes 子命令改写 ~/.hermes/config.yaml 不用任何 YAML 库，自写行级编辑器 `editHermesConfig`（col-0 段表 → model 段逐键替换/缺键插入 → providers 段条目块 upsert/段尾追加 → 标量 quoting 白名单）。
+
+**原因**：
+- gcli 硬约束零 npm 依赖；python3 stdlib 无 yaml、PyYAML/yq 不保证安装
+- 全量 YAML round-trip 会摧毁配置文件的注释与排版（hermes config.yaml 含 personality 文案）
+- 目标文件结构实测规整（model 段 3 键、providers 为最后顶层段、2/4 空格缩进），局部编辑可行
+
+**关键纪律**：**宁报错不猜**——段缺失/意外嵌套一律返回 {error} 零写盘（用户落回手动流程，备份永远在）；备份先行 + tmp+rename 原子写；幂等性用单测钉死（edit∘edit ≡ edit），quoting 首次会把带空格值重写为单引号形（语义等价，稳态后零漂移）。
+
+**适用边界**：仅当目标配置文件结构规整且编辑面局部时成立；结构复杂的 YAML 仍需真 parser。
