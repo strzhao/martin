@@ -25,7 +25,7 @@ mkdir -p "$ART"
 die(){ echo "ACCEPTANCE-FAIL[$1]: $2" >&2; exit 1; }
 eq(){ [ "$1" = "$2" ] || die "$3" "期望 [$2] 实得 [$1]"; }
 ne(){ [ "$1" != "$2" ] || die "$3" "期望 != [$2]，实得相等 [$1]"; }
-ge(){ case "${1:-}" in ''|*[!0-9]*) die "$3" "非数值 [$1]（期望 >= $2）";; esac; [ "$1" -ge "$2" ] || die "$3" "期望 >= $2 实得 [$1]"; }
+ge(){ case "${1:-}" in ''|*[!0-9]*) die "$3" "非数值 [$1]（期望 >= ${2}）";; esac; [ "$1" -ge "$2" ] || die "$3" "期望 >= $2 实得 [$1]"; }
 
 command -v jq >/dev/null 2>&1 || die "env" "jq 不可用"
 command -v shasum >/dev/null 2>&1 || die "env" "shasum 不可用"

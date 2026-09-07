@@ -316,6 +316,7 @@ hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 h
 <!-- tags: bash, unicode, fullwidth, variable-name, testing, regression -->
 ## [2026-09-05] bash 里 `$var` 紧跟全角标点被并入变量名：三方同踩 12+ 处的套件杀手
 `echo "PASS $P（cases=...）"` 中全角 `（` 直接并入变量名（`P（cases` unbound）——set -u 下脚本中途炸。本任务蓝队、红队、编排器三方共踩 12+ 处（知识库 09-02 坑③的三次复发证明「知道」防不住「手写」）。治法：交付前统一 regex sweep `\$(\w+)(?=[（）｜：；，「」等全角集])` → `${\1}` 固化成测试套件静态门；写作习惯用 `${var}` 只是缓解不是防线。
+**[2026-09-07 已固化]** 静态门落地：`scripts/contrib/tests/gate.sh`（三关聚合秒级门）+ `static/gate-fullwidth.sh`（run.sh 维度）+ `lib/fullwidth-pattern.txt`（regex 单源，perl 字节模式冻结）+ `.githooks/pre-commit`（staged 触及两域 *.sh 才跑，MARTIN_GATE_SKIP=1 逃生阀留台账）。13 处存量整改后全仓零命中。配套实证：shellcheck 0.11 的 SC2086 是 **info** 级，`-S warning` 阈值下放行——warning 级注入样本要用 SC2034。
 
 <!-- tags: macos, toolchain-shadow, diff, PATH, sandbox, testing -->
 ## [2026-09-05] 用户机器第三方工具链遮蔽系统命令：diff 不支持 -r 的静默假绿
@@ -364,3 +365,7 @@ launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退�
 3. **硬编码 seed 清单天然易腐**（本次即实证）：防御外部改名/别名，除了 seed 还应有结构兜底（如 base_url 相等检查）。
 
 **证据**：sqlite3 实查 cc-switch.db 全量清单 vs smoke-dryrun-kimi.out 的平行 id 输出；修复后复跑同命令命中 seed。
+
+<!-- tags: qa, autopilot, artifact, predicate, evidence-integrity -->
+## [2026-09-07] QA 验收谓词 artifact 必须每谓词独立观测：一次运行切片多路径 = 复制冒充
+红队把同一次 gate 运行的输出原样写进多个谓词 artifact（不同路径同 MD5），stop-hook PRED-ARTIFACT-DUP 拦截（路径不同内容相同 = 复制冒充独立产物；显式共用同一路径才允许）。正确形态：每条谓词的 artifact 承载**该谓词专属的观测**（exit 码 / FAIL 行切片 / 对照组运行 / 环境条件），观测对象或 driver 条件不同，内容天然不同。附带的假阳性教训：SC2086 在 `-S warning` 下是 info 级会放行，注入样本选码前先实跑确认 severity。

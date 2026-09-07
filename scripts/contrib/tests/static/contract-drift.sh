@@ -95,4 +95,25 @@ else
   _fail "scan_gate --drain" "SKILL.md 引用的手动兜底入口缺失"
 fi
 
+t_case "全角门 regex 单源（gate.sh / gate-fullwidth.sh 同读 fullwidth-pattern.txt，禁内嵌字面量）"
+GATE_SH="$TARGET/tests/gate.sh"
+GATE_FW="$TARGET/tests/static/gate-fullwidth.sh"
+for g in "$GATE_SH" "$GATE_FW"; do
+  gname="$(basename "$g")"
+  if [[ ! -f "$g" ]]; then
+    _fail "gate 脚本在位" "缺 $g"
+    continue
+  fi
+  if grep -qF 'fullwidth-pattern.txt' "$g"; then
+    _pass "$gname 引用 regex 单源"
+  else
+    _fail "$gname 引用 regex 单源" "未引用 fullwidth-pattern.txt（双份定义漂移）"
+  fi
+  if grep -qF '[（）：；，「」｜。？！【】、·]' "$g"; then
+    _fail "$gname 无内嵌全角字符类" "源码内嵌全角字符类 regex 字面量（与单源漂移）"
+  else
+    _pass "$gname 无内嵌全角字符类"
+  fi
+done
+
 t_finish

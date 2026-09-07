@@ -63,7 +63,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --dry-run          仅检查 Max 套餐状态，不购买"
       echo "  --nowait            不等待开售，直接尝试购买"
       echo "  --period 月|季|年    订阅周期（默认: 季，9折）"
-      echo "  --profile <name>    Chrome 配置文件（默认: $PROFILE）"
+      echo "  --profile <name>    Chrome 配置文件（默认: ${PROFILE}）"
       echo "  --poll-interval <ms> 轮询间隔毫秒（默认: 2000）"
       echo "  --max-wait <s>      最长等待秒数（默认: 600）"
       echo "  -h, --help          显示帮助"

@@ -1,0 +1,51 @@
+#!/bin/bash
+# pre-commit — contrib/approval 域 .sh 入库验收门（gate.sh 接线）
+#   守卫口径：staged ∩ (scripts/contrib/**.sh ∪ scripts/approval/**.sh) 非空才跑门（与覆盖集同口径收窄到 *.sh）。
+#   gate FAIL → 打印发现全文 + 修复指引一行 → 非零退出阻止提交。
+#   逃生阀：MARTIN_GATE_SKIP=1 跳过门，但追加一行台账到 .autopilot/runtime/gate-skip.log。
+set -uo pipefail
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+GATE="$REPO_ROOT/scripts/contrib/tests/gate.sh"
+
+# --- 守卫：staged 文件 ∩ 覆盖口径 ---
+staged="$(git diff --cached --name-only)"
+touched=""
+while IFS= read -r p; do
+  case "$p" in
+    scripts/contrib/*.sh|scripts/approval/*.sh) touched="$touched$p
+" ;;
+  esac
+done <<< "$staged"
+touched_flat="${touched//$'\n'/}"
+if [[ -z "$touched_flat" ]]; then
+  # 本域 .sh 无变更：门不介入
+  exit 0
+fi
+
+# --- 逃生阀（有台账，不静默） ---
+if [[ "${MARTIN_GATE_SKIP:-}" == "1" ]]; then
+  log="$REPO_ROOT/.autopilot/runtime/gate-skip.log"
+  mkdir -p "$(dirname "$log")"
+  head="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  printf '%s HEAD=%s staged=%s\n' \
+    "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$head" "$(printf '%s' "$touched" | tr '\n' ' ')" >>"$log"
+  echo "gate skipped (MARTIN_GATE_SKIP=1)，已记台账: $log" >&2
+  exit 0
+fi
+
+# --- 验收门 ---
+if [[ ! -x "$GATE" ]]; then
+  echo "pre-commit: gate.sh 不可执行: $GATE（修复指引：bash scripts/contrib/tests/install-hooks.sh 并 chmod +x）" >&2
+  exit 1
+fi
+out="$(bash "$GATE" 2>&1)"
+rc=$?
+# 契约：阻止提交时 stderr 输出 gate 发现全文（gate 输出统一走 stderr，stdout 保持干净）
+printf '%s\n' "$out" >&2
+if [[ "$rc" -ne 0 ]]; then
+  echo "提交被入库验收门阻止（exit=${rc}）。修复指引：bash scripts/contrib/tests/gate.sh 复跑定位；口径见 scripts/contrib/tests/README.md" >&2
+  exit 1
+fi
+exit 0

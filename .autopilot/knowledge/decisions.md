@@ -95,3 +95,7 @@ T2 给 ContextTokenStore 引入 v2 文件格式({user_id: {"token": str, "issued
 **关键纪律**：**宁报错不猜**——段缺失/意外嵌套一律返回 {error} 零写盘（用户落回手动流程，备份永远在）；备份先行 + tmp+rename 原子写；幂等性用单测钉死（edit∘edit ≡ edit），quoting 首次会把带空格值重写为单引号形（语义等价，稳态后零漂移）。
 
 **适用边界**：仅当目标配置文件结构规整且编辑面局部时成立；结构复杂的 YAML 仍需真 parser。
+
+<!-- tags: testing, gate, bash, pipeline, contrib-watch, decision -->
+## [2026-09-07] bash 产线统一入库验收门选型：三关聚合薄壳 + regex 单源 + pre-commit 路径守卫
+背景：B 期 headless bash 事故定案后（取证见 20260907 会话），contrib/approval 域需要入库门。选型要点：①**薄壳自聚合**而非扩展 run.sh——run.sh 无参数解析且全量含 e2e 太重，gate.sh 秒级可跑（三关：bash/zsh -n 语法 + shellcheck -S warning + 全角 regex）；②**regex 单源** `lib/fullwidth-pattern.txt`（双脚本同读 + contract-drift 双判定断言兜底），杜绝双份定义漂移；③**fail-closed 全集**（六依赖任一缺失 exit 2，与 lint-shellcheck 的 skip 语义刻意相反——门必须硬）；④**pre-commit 守卫收窄到 staged *.sh**（域外提交零开销），逃生阀 MARTIN_GATE_SKIP 必须留台账（.autopilot/runtime/gate-skip.log）不静默；⑤文件集 find 圈定禁硬编码清单（syntax.sh 的 7 脚本清单漏 mail_gate/quota_circuit 的清单债教训）。已知边界（设计接受）：门扫 worktree 而非 staged 快照，add-then-revert 可绕过——后续可加 --staged 模式。

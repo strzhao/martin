@@ -46,3 +46,5 @@
 - [2026-09-06] macOS mktemp X 串末尾约束 + 空路径重定向吞错 | tags: bash, macos, mktemp, fail-path | → patterns.md
 - [2026-09-06] launchd 进程组收割杀 nohup 子进程 | tags: launchd, macos, background, silent-death | → patterns.md
 - [2026-09-06] L2-A 审批交互化：短码能力 URL + 判定层下沉 tunnel-cli | tags: approval, security-model, tunnel-cli, dark-launch | → decisions.md
+- [2026-09-07] QA 验收谓词 artifact 必须每谓词独立观测（切片多路径=复制冒充，MD5 去重拦截） | tags: qa, autopilot, artifact, predicate, evidence-integrity | → patterns.md
+- [2026-09-07] bash 产线统一入库验收门选型：三关聚合薄壳 + regex 单源 + pre-commit 路径守卫 | tags: testing, gate, bash, pipeline, contrib-watch | → decisions.md

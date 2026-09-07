@@ -61,6 +61,8 @@
 
 **边界**：scan/radar 严格 L1 只读（gh 读+本地写）；build 产出本地 worktree 分支 + PR-DRAFT 草稿，**绝不 push / 绝不 gh pr create**——提交永远人工，L2 闸门不豁免；自动构建旋钮在 `contrib-data/config.json`（auto_build / min_build_score=12 / 每日上限 1）。观察真实运转质量后再评估是否放开自动提交。
 
+**入库验收门（2026-09-07 上线）**：`scripts/contrib/**.sh` ∪ `scripts/approval/**.sh` 的变更在 pre-commit 由 `scripts/contrib/tests/gate.sh` 统一验收（bash -n/zsh -n 语法 + shellcheck -S warning + 全角 regex 门，聚合不短路；exit 0/1/2=全绿/有发现/依赖缺失）；装载：`bash scripts/contrib/tests/install-hooks.sh`；逃生阀 `MARTIN_GATE_SKIP=1`（台账 `.autopilot/runtime/gate-skip.log`，不静默）。口径与豁免见 `scripts/contrib/tests/README.md`。
+
 **commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
 
 ### 快车道与 L2-A 微信审批环（09-04 上线）

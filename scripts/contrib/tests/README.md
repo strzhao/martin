@@ -26,9 +26,27 @@ CONTRIB_TEST_TARGET=<JSON 里的 sandbox 路径> bash scripts/contrib/tests/run.
 cd / && env -i HOME=$(mktemp -d) TMPDIR=$(mktemp -d) PATH=/usr/bin:/bin:/usr/sbin:/sbin \
   bash /Users/stringzhao/workspace/martin/scripts/contrib/tests/run.sh
 
+# 入库验收门（pre-commit 同款；秒级）
+bash scripts/contrib/tests/gate.sh          # exit 0=全绿 1=有发现 2=依赖缺失
+MARTIN_GATE_TARGET=<沙箱副本根> bash scripts/contrib/tests/gate.sh   # 覆盖集根重定向（mutation 自证用）
+
 # 单个测试文件（调试用）
 bash scripts/contrib/tests/unit/cfg-semantics.sh
 ```
+
+## 入库验收门（gate.sh + pre-commit）
+
+`scripts/contrib/tests/gate.sh` 是 contrib/approval 域 .sh 的统一秒级入库门，薄壳自聚合三关，**聚合不短路**（收集全部发现一次报告）：
+
+1. 语法门：`bash -n` / `zsh -n`（按 shebang 分流）；
+2. `shellcheck -x -S warning`（仅 bash 系；zsh 豁免，口径同上）；
+3. 全角 regex 门：`\$(\w+)` 紧跟全角标点即 FAIL——regex **单源** `lib/fullwidth-pattern.txt`（gate.sh 与 static/gate-fullwidth.sh 同读一个源，contract-drift.sh 机械守卫「两脚本引用单源 && 无内嵌字面量」）；perl 一律字节模式（不带 -C 系标志），契约冻结。
+
+覆盖集：`scripts/contrib/**/*.sh` ∪ `scripts/approval/**/*.sh`（find 圈定，非硬编码）。退出码闭集：**0**=全绿 / **1**=有发现 / **2**=依赖缺失（bash/zsh/shellcheck/perl/git/find 任一不可得即 fail closed，禁空集静默绿）。绿跑输出契约：`COVERAGE scripts/contrib scripts/approval` 覆盖面声明行 + 逐维度 `SCAN <dim>: <N> files`（dim ∈ bash -n / zsh -n / shellcheck / 全角）+ 逐行 `FAIL <file> <类别> <detail>`（类别 ∈ syntax|shellcheck|fullwidth|dep）+ 末行 `GATE: PASS|FAIL (N files, M findings)`。零仓内写入。
+
+接线：`bash scripts/contrib/tests/install-hooks.sh`（= `git config core.hooksPath .githooks`，幂等）→ pre-commit 只在 staged 触及本域 `*.sh` 时跑门；gate FAIL 阻止提交并给修复指引。逃生阀 `MARTIN_GATE_SKIP=1`：跳过门但追加台账行到 `.autopilot/runtime/gate-skip.log`（时间戳+HEAD+staged），永不静默。缺陷注入自证用 `MARTIN_GATE_TARGET=<mktemp 副本根>` 重定向覆盖集根，绝不污染仓内文件。
+
+`static/gate-fullwidth.sh`（run.sh static 维度自动发现）是同一全角门的套件形态：命中即 `_fail` 并打印 file:L<行号> 定位行；沙箱语义——`CONTRIB_TEST_TARGET` 指向沙箱树时只扫 target 树内 .sh，`scripts/approval` 缺失按 N/A skip 显式计数，**target 树零 .sh 文件必须 FAIL**（保负对照）。
 
 每个测试文件**末行**输出 `##SUMMARY {…}`，run.sh 据此聚合；`exit 0 当且仅当 failed==0 且全部 detect 类 exit 0`。
 
@@ -89,7 +107,8 @@ run-watch.sh 的 radar 分支抽为 `maybe_radar [hour]`（缺省 `date +%H` = �
 
 ## 豁免清单
 
-- **zsh 3 个脚本**（deep-check.sh / run-deepcheck.sh / run-watch.sh）不做 shellcheck（SC1071 是工具对 zsh 的误报），以 `zsh -n` 语法门覆盖（static/syntax.sh）。
+- **zsh 脚本**（deep-check.sh / run-deepcheck.sh / run-watch.sh / quota_circuit.sh，按 shebang 动态识别）不做 shellcheck（SC1071 是工具对 zsh 的误报），以 `zsh -n` 语法门覆盖（static/syntax.sh 生产 3 个 + gate.sh 全部 zsh shebang）。
+- **`scripts/approval/tests/*.bash`** 不在 gate.sh 覆盖集内（口径收窄到 `*.sh`），由 approval 套件自测覆盖（`bash scripts/approval/tests/run.sh`）。
 - **`stat -f %m`**（macOS 专属）出现在 deep_check_gate.sh 与 run-watch.sh 的锁滞留检测——macOS-only 语义，不跨平台。
 - **`jq -r '.success // false'`**（notify.sh `_send`）保留 `//` 运算符：这里语义正确（把非 true 输出一律当失败），与被修的 cfg 布尔塌缩不是同一形态。
 - **e2e-smoke 的前缀锚点行**以 python3 `json.dumps` 默认分隔符格式播种：flush 的账本重写会以同格式重序列化全部行，前缀字节不变断言锚定的是「未入批行不被破坏/丢失」这一真实保证。
