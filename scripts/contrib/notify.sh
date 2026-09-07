@@ -14,9 +14,14 @@
 #     （min_interval + 当日计数 + /tmp 锁）
 #   - 审批推送（🟡 卡片）与告警分开计数；回执独立计数不占限额（审批卡=规范化模板，豁免 AI 整理）
 #   - hermes send 失败链：重试 1 次 → 事件保留 → 累计 3 败 osascript 本地通知兜底
+#   - 审批卡推送（09-07 双修①）：rc==1 失败原地退避重试（默认 3 次×35s，跨 iLink 30s cooldown，
+#     seam NOTIFY_CARD_ATTEMPTS/NOTIFY_CARD_BACKOFF）；跨轮兜底 = run-watch 每小时 approve --all sweep
+#   - claude -p 模型 pin（09-07 双修②）：--model 剥 [1m]/[1M] 后缀（seam CLAUDE_MODEL_PIN；
+#     来源链 settings.json env > 运行时 env），运行时 ANTHROPIC_MODEL 同步 sanitize
 #   - notify_dry_run=true 时只打印完整消息体与目标，不触 hermes/tunnel（AI 摘要照常生成）
 #   - **审批交互路（approval_interactive=true，09-05 L2-A 短码批准）**：发卡前由机器稿生成人读页
-#     `<draft>.page.md`（① interactive fence：radio id:verdict 批准/否决/需修改 + text id:comment
+#     `<draft>.page.md`（⓪ 页首 `<!-- twq:submit-top -->` 指令：名字栏+提交按钮置顶，tunnel-cli ≥1.9.0
+#     服务端渲染剥离；① interactive fence：radio id:verdict 批准/否决/需修改 + text id:comment
 #     ② 中文 BLUF 头 ③ premises 证据表 ④ 机器稿 verbatim 附录；机器稿本体零改动），部署走
 #     `tunnel drops approve <page> --name <slug>`；slug=[a-z0-9]{10}、短码=[a-km-np-z2-9]{6}
 #     （去 0/o/1/l），短码经 ?key= 自动回填审批页名字栏；卡片渲染卡 v2 模板。
@@ -36,6 +41,7 @@ set -uo pipefail
 
 MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
+SELF_BIN="${NOTIFY_SELF_BIN:-$MARTIN/scripts/contrib/notify.sh}"   # 自递归调用（cmd_approve 内嵌 event 上报）；勿用 $NOTIFY——那是调用方视角变量，09-06 曾致 unbound crash
 CONFIG="$CONTRIB/config.json"
 QUEUE="$CONTRIB/ready-queue.json"
 EVENTS="$CONTRIB/events.jsonl"
@@ -44,11 +50,49 @@ RQ="$MARTIN/scripts/contrib/rq.sh"
 LOCK="${NOTIFY_LOCK:-/tmp/contrib-notify.lock}"
 # 命令 seam（默认值=现状硬编码；测试套件经此注入影子 stub，生产语义零改变）
 HERMES_BIN="${HERMES_BIN:-hermes}"
+# tunnel CLI 装在 nvm node bin（launchd/cron PATH 极简找不到——09-06 实证：run-watch 触发的
+# 审批卡因 command -v tunnel 落空而静默降级旧卡路，两连发 104067/103969）：
+# env seam 优先 → PATH 查找 → nvm 布局探测，命中后 nvm bin 目录进 PATH（tunnel 包装脚本需 node 本体）
+TUNNEL_BIN="${TUNNEL_BIN:-}"
+if [[ -z "$TUNNEL_BIN" ]]; then
+  TUNNEL_BIN="$(command -v tunnel 2>/dev/null || true)"
+fi
+if [[ -z "$TUNNEL_BIN" ]]; then
+  _tw_cand="$(ls -t "$HOME"/.nvm/versions/node/*/bin/tunnel 2>/dev/null | head -1 || true)"
+  if [[ -n "$_tw_cand" ]]; then
+    TUNNEL_BIN="$_tw_cand"
+    # tunnel 是 node 包装脚本（exec node …）——node 本体也要可达，把 nvm bin 目录一并进 PATH
+    PATH="$(dirname "$_tw_cand"):$PATH"
+    export PATH
+  fi
+fi
 TUNNEL_BIN="${TUNNEL_BIN:-tunnel}"
+export TUNNEL_BIN
 NOTIFY_SEND_LAST="${NOTIFY_SEND_LAST:-/tmp/contrib-send-last.json}"
 OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 GATEWAY_PROBE_BIN="${GATEWAY_PROBE_BIN:-pgrep}"
+GH_BIN="${GH_BIN:-gh}"   # 发卡前 TTL 轻复验用（09-06 新增；沙箱经此注入 stub，勿裸调 gh）
 CLAUDE_BIN="${CLAUDE_BIN:-}"   # 空=走 command -v claude 现状探测
+
+# 模型 pin seam：settings.json/运行时 env 注入的模型名可能带 [1m]/[1M] 后缀，claude CLI 直接拒
+# （09-07 实证：AI 摘要层 unrecognized_model glm-5.3-flash[1m] 整轮报废；09-06 deep-check 同族实证）。
+# 优先级：CLAUDE_MODEL_PIN 显式覆盖 > ~/.claude/settings.json env.ANTHROPIC_MODEL 剥后缀 >
+# 运行时 $ANTHROPIC_MODEL 剥后缀；空=不加 --model flag（现状语义）。运行时 env 同时剥后缀
+# sanitize 子进程（16:10 失败向量是 launchd 运行时 env，不只 settings 文件）。
+MODEL_PIN="${CLAUDE_MODEL_PIN:-}"
+if [[ -z "$MODEL_PIN" ]]; then
+  _raw="$(jq -r '.env.ANTHROPIC_MODEL // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)"
+  MODEL_PIN="${_raw%\[*\]}"
+fi
+if [[ -z "$MODEL_PIN" && -n "${ANTHROPIC_MODEL:-}" ]]; then
+  MODEL_PIN="${ANTHROPIC_MODEL%\[*\]}"
+fi
+# 剥后缀 guard：仅当原值以 ] 结尾才算「带后缀」被剥，正常模型名不动（% 模式对无 ] 值本就原样，这里显式化意图）
+if [[ -n "${ANTHROPIC_MODEL:-}" && "$ANTHROPIC_MODEL" == *"]" ]]; then
+  export ANTHROPIC_MODEL="${ANTHROPIC_MODEL%\[*\]}"
+fi
+MODEL_FLAG=()
+[[ -z "$MODEL_PIN" ]] || MODEL_FLAG=(--model "$MODEL_PIN")
 
 # 不用 jq 的 // 运算符：它把 JSON false 当 falsy（notify_dry_run=false 曾被读成
 # 默认 true，推送全静默 dry-run）——只把 null/缺失当缺省，false 是合法配置值
@@ -203,14 +247,16 @@ _ai_digest() {
 - own-pr-activity：我们自己的上游 PR 有新动静（维护者评论/mergeable 翻转/停滞超期）
 - pipeline-failure：contrib-watch 流水线自身某环节失败（scan/深检/推送等）
 - deep-budget-exhausted：当日深检配额用尽，候选自动排队明日重试
+- mail-needs-user：GitHub 通知邮件里有需要他本人关注的事项（维护者点名/占坑竞争/资产状态变化）
 - rq-xxxxx：ready-queue 审批候选项编号；expired=已作废；awaiting-approval=等你审批
 
 EOF
     echo "事件 JSON："
     cat "$in_file"
   } > "$prompt"
-  # alarm 240s 防挂死；cwd=MARTIN（claude 需项目内环境）；prompt 走 stdin
-  ( cd "$MARTIN" && perl -e 'alarm 240; exec @ARGV' "$claude_bin" -p < "$prompt" > "$out_file.raw" 2> "$out_file.err" )
+  # alarm 240s 防挂死；cwd=MARTIN（claude 需项目内环境）；prompt 走 stdin；
+  # MODEL_FLAG：剥 [1m] 后缀的 --model（bash 3.2 + set -u 下空数组须 +guard 惯用法）
+  ( cd "$MARTIN" && perl -e 'alarm 240; exec @ARGV' "$claude_bin" -p ${MODEL_FLAG[@]+"${MODEL_FLAG[@]}"} < "$prompt" > "$out_file.raw" 2> "$out_file.err" )
   local rc=$?
   rm -f "$prompt"
   (( rc != 0 )) && { log "AI 摘要失败 rc=${rc}（$(tail -c 200 "$out_file.err" 2>/dev/null)）"; rm -f "$out_file.raw" "$out_file.err"; return 1; }
@@ -436,6 +482,10 @@ _build_approval_card_v2() { # <id> <page-url> <code> <deadline> <ttl> → stdout
        else $it.disposition end)",
     "目标: NousResearch/hermes-agent#\($it.issue) · \($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)",
     "概要: \($it.title[0:80])",
+    # 升级路专属：微信卡直接带出首个卡点（完整清单在页面顶部）
+    (if (($it.escalate_reasons // []) | length) > 0
+     then "🤔 我定不了: \($it.escalate_reasons[0][0:60])"
+     else empty end),
     "✅ 点开即批（短码已自动填入）: \($url)?key=\($code)",
     "⏱ \($deadline) 前有效（\($ttl)h），超时自动搁置",
     "💬 微信备用: 批/否 #\($it.id)；改 #\($it.id): 意见"'
@@ -445,15 +495,33 @@ _build_approval_card_v2() { # <id> <page-url> <code> <deadline> <ttl> → stdout
 # ① 顶部 interactive fence（C2 形状：radio id:verdict 三选项固定顺序 + text id:comment）
 # ② 中文 BLUF 头（rq 元数据）③ premises 证据表 ④ 机器稿全文 verbatim 附录（不包 fence，防草稿自身 fence 嵌套破坏）
 # 全程 jq 模板渲染，不走 bash 字符串内插（全角标点变量名盲区）；机器稿本体零改动（C8 逐字投递语义）
+# _build_approval_page <id> <draft> <deadline> <ttl> → stdout 人读页 markdown
+# 09-06 决策单重构（用户审批体验反馈）：页=决策支持单页，非生产质检报告——
+#   L0 一句话+动作/风险/时效（blockquote）→ L1 中文摘要（摘自草稿头部注释块
+#   「审批页中文摘要」段，该段随注释块在投递时被 strip，永不外发）→ L2 复核锚点
+#   （premises 结论表+链接）→ L3 原文附录（details 折叠，内容=真实投递载荷：
+#   剥离头部注释块 + 截掉「## 内部备注」尾部）。无摘要段时降级=标题+premises。
 _build_approval_page() {
   local id="$1" draft="$2" deadline="$3" ttl="$4"
   jq -rn --rawfile draftbody "$draft" --slurpfile q "$QUEUE" \
        --arg id "$id" --arg deadline "$deadline" --argjson ttl "$ttl" '
     ($q[0].items[] | select(.id == $id)) as $it |
+    # 真实投递载荷 = 剥离头部注释块 + 截掉内部备注尾部（与 execute.sh 口径一致）
+    ($draftbody | sub("(?s)^\\s*(<!--.*?-->\\s*)+"; "") | split("## 内部备注")[0]
+      | gsub("\\s+$"; "")) as $payload |
+    # 中文摘要：藏在头部注释块内（投递随注释剥离，不外发）
+    (($draftbody | split("审批页中文摘要（L1，不随评论发出）：")) as $sp |
+      if ($sp | length) > 1 then ($sp[1] | split("-->")[0] | gsub("^\\s+|\\s+$"; ""))
+      else "" end) as $summary |
+    ($summary | split("\n") | map(gsub("^\\s+"; "") | select(test("\\S"))) ) as $slines |
+    (if ($slines | length) > 0 then ($slines[0] | sub("^一句话："; "")) else $it.title end) as $l0 |
+    (if $it.disposition == "own-PR" then "提交修复 PR（issue #\($it.issue)）"
+     elif $it.disposition == "probe-salvage" then "在 issue #\($it.issue) 发一条取证评论"
+     else "在 PR #\($it.pr // $it.issue) 发一条技术评论" end) as $action |
     [ "```interactive",
       "id: verdict",
       "type: radio",
-      "question: 是否批准执行该项（批准=正文逐字投递，见文末原文附录）？",
+      "question: 批准发出？（批准 = 附录原文逐字投递到 GitHub）",
       "options:",
       "  - 批准",
       "  - 否决",
@@ -463,32 +531,46 @@ _build_approval_page() {
       "```interactive",
       "id: comment",
       "type: text",
-      "question: 意见（选填；选「需修改」时请写明修改点）",
-      "placeholder: 例：第 2 条 premise 请补 file:line 证据",
+      "question: 意见（选填）",
+      "placeholder: 选「需修改」时请写明修改点",
+      "show_when: verdict=需修改",
       "```",
       "",
-      "# L2 审批 #\($it.id) —— \(if $it.disposition == "own-PR" then "own-PR 推进"
-        elif $it.disposition == "review-evidence" then "evidence 评审"
-        elif $it.disposition == "probe-salvage" then "probe 取证"
-        else $it.disposition end)",
+      "<!-- twq:submit-here -->",
       "",
-      "- 目标 issue: NousResearch/hermes-agent#\($it.issue)（\($it.title[0:80])）",
-      "- 质量分: \($it.score)/15 · 审核轮次: \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)",
-      "- 审批截止: \($deadline)（\($ttl)h，超时自动搁置）",
-      "- 提交前请确认名字栏已填卡片里的 6 位短码（微信链接会自动填入）",
+      "# 审批：\($action)",
       "",
-      "## 决策依据（premises，\($it.premises | length) 条）",
+      "> \($l0)",
+      "> **动作**：以 strzhao 名义公开发表，发出后可编辑/删除 · ⏱ \($deadline) 前有效（逾期自动搁置）",
       "",
-      "| claim | evidence |",
+      # 升级路专属（09-06 默认自动/例外升级）：AI 定不了的点置顶——用户只需裁决这几条
+      ((if (($it.escalate_reasons // []) | length) > 0
+        then (["## 🤔 我定不了的点（需你拍板）", ""]
+              + [$it.escalate_reasons[] | "- " + .] + [""])
+        else [] end)[]),
+      "## 这条评论说了什么",
+      "",
+      (if ($slines | length) > 1 then ($slines[1:][] ) elif ($slines|length) == 1 then $slines[0]
+       else "- \($it.title)（详见附录原文）" end),
+      "",
+      "## 复核锚点（每条都可点开自查）",
+      "",
+      "| 结论 | 依据 |",
       "|---|---|",
       ($it.premises[] |
-        "| \((.claim // "") | gsub("[\\|\n]"; " ") | .[0:160]) | \((.evidence // "") | gsub("[\\|\n]"; " ") | .[0:160]) |"),
+        "| \((.claim // "") | gsub("[\\\\|\\n]"; " ") | .[0:160]) | \((.evidence // "") | gsub("[\\\\|\\n]"; " ") | .[0:160]) |"),
+      "",
+      "- 目标：[issue #\($it.issue)](https://github.com/NousResearch/hermes-agent/issues/\($it.issue))"
+        + (if $it.pr then " · [PR #\($it.pr)](https://github.com/NousResearch/hermes-agent/pull/\($it.pr))" else "" end),
+      "- 质量：\($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过 · 编号 \($it.id)（微信回「批/否 #\($it.id)」亦可）",
       "",
       "---",
       "",
-      "## 审批对象（机器稿原文，逐字附录）",
+      "<details><summary>📄 英文原文附录（批准后将逐字发出，点开核对）</summary>",
       "",
-      $draftbody
+      $payload,
+      "",
+      "</details>"
     ] | join("\n") + "\n"'
 }
 
@@ -516,7 +598,8 @@ cmd_approve() {
   ensure_state
   acquire_lock
   local target_id="${1:-}"
-  local max_ap; max_ap="$(cfg '.max_approval_pushes_per_day' '3')"
+  # 09-06 用户拍板：审批卡不设日限额（原 max_approval_pushes_per_day 机制整体移除，
+  # config key 留作历史兼容、代码不再读取；E10d 转为「不限额」回归守卫）
   # 交互路开关：只把 null/缺失当缺省（false），false 是合法配置值（jq `//` falsy 陷阱）
   local interactive; interactive="$(cfg '.approval_interactive' 'false')"
   local ttl; ttl="$(cfg '.approval_ttl_hours' '48')"
@@ -532,9 +615,45 @@ cmd_approve() {
 
   for id in $ids; do
     local draft; draft="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .draft // ""' "$QUEUE")"
+    # 相对路径一律锚定工作区根（=dirname(CONTRIB)，生产环境即 martin 根、沙箱即沙箱根）转绝对：
+    # tunnel bin 会先 cd 到 tunnel-cli 仓目录再 exec，相对路径参数（deploy/approve 的 page）
+    # 会被错解析到该仓下而「路径不存在」（09-06 drill 发卡静默降级事故的根因）
+    [[ -n "$draft" && "$draft" != /* ]] && draft="$(dirname "$CONTRIB")/$draft"
     if [[ -z "$draft" || ! -f "$draft" ]]; then
       log "approve $id: 草稿不存在（${draft}），跳过"
       continue
+    fi
+    # ── 发卡前 premise TTL 轻复验（09-06 build-104067 抓到的框架缺口：旧文本路有、短码链没有；
+    #    #102413 教训「过期 premise 的审批卡绝不能推」。execute 时仍有完整 TTL 兜底，这里收窄
+    #    「卡已推但 premise 已死」的窗口。检查失败不阻断——仅当明确判死才拦截（gh 抖动不误杀）──
+    if [[ "$DRY_RUN" != "true" ]] && command -v "$GH_BIN" >/dev/null 2>&1; then
+      local iss st prs own_pr
+      iss="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .issue // ""' "$QUEUE")"
+      own_pr="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .pr // ""' "$QUEUE")"
+      st="$(GH_REPO="$(cfg '.repo' 'NousResearch/hermes-agent')" "$GH_BIN" issue view "$iss" --json state --jq .state 2>/dev/null || true)"
+      if [[ "$st" == "CLOSED" ]]; then
+        log "approve $id: premise 死亡（issue #$iss 已关闭）——置 rejected，不发卡"
+        "$RQ" set "$id" rejected --note "premise 死亡：issue 已关闭（发卡前 TTL 轻复验拦截）" >/dev/null 2>&1 || true
+        "$SELF_BIN" event premise-dead --key "premise-dead-$id" \
+          --summary "审批项 $id 的 issue #$iss 已关闭，发卡前拦截未推送" >/dev/null 2>&1 || true
+        continue
+      fi
+      # 占坑检查只对 own-PR/probe-salvage 有意义；review-evidence 的 PR 引用是评论对象/背景（同 execute.sh 修正）
+      local disp_chk
+      disp_chk="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .disposition // ""' "$QUEUE")"
+      if [[ "$disp_chk" == "review-evidence" ]]; then
+        prs=""
+      else
+      prs="$(GH_REPO="$(cfg '.repo' 'NousResearch/hermes-agent')" "$GH_BIN" pr list --search "$iss in:body" --state open --json number 2>/dev/null \
+        | jq -r --arg own "$own_pr" '[.[]?.number | tostring | select(. != $own)] | join(",")' 2>/dev/null || true)"
+      fi
+      if [[ -n "$prs" && "$prs" != "null" ]]; then
+        log "approve $id: premise 死亡（issue #$iss 已被 PR $prs 占坑）——置 rejected，不发卡"
+        "$RQ" set "$id" rejected --note "premise 死亡：已被 PR $prs 占坑（发卡前 TTL 轻复验拦截）" >/dev/null 2>&1 || true
+        "$SELF_BIN" event premise-dead --key "premise-dead-$id" \
+          --summary "审批项 $id 的 issue #$iss 已被 PR $prs 占坑，发卡前拦截未推送" >/dev/null 2>&1 || true
+        continue
+      fi
     fi
     # 已成功推过则不重复
     local ok; ok="$(jq -r --arg id "$id" --arg d "$(today)" '.approvals[$d].ok[$id] // false' "$STATE" 2>/dev/null)"
@@ -592,16 +711,23 @@ cmd_approve() {
       _build_approval_card "$id" > "$card"
     fi
 
-    # 审批推送日限额（dry-run 不计）；approvals[date] = {count, ok:{}, fail:{}}
-    local used; used="$(jq -r --arg d "$(today)" '.approvals[$d].count // 0' "$STATE")"
-    if [[ "$DRY_RUN" != "true" ]] && (( used >= max_ap )); then
-      _osascript "contrib 审批 $id 待推（今日审批推送限额 ${max_ap} 已满，明晨补推）"
-      log "approve $id: 审批日限额已满（${used}/${max_ap}），留待补推"
-      rm -f "$card"; continue
-    fi
-
-    local rc=0
-    _send "$card" "contrib L2 审批 $id" || rc=$?
+    # 审批推送记账；approvals[date] = {count, ok:{}, fail:{}}
+    # 09-07 双修①：审批卡是用户的唯一决策触达通道，单发即败=永久卡死（rq-20260907-104693 实证：
+    # iLink 30s cooldown 被同窗口回执挤爆，fail=1 后无人再推）。rc==1 类失败原地退避重试跨过
+    # cooldown；跨轮兜底 = run-watch 每小时 approve --all sweep。rc==3（网关不可达）重试无意义，
+    # 保持 osascript 兜底。重试只重发同一张卡，不重新部署 tunnel 页（slug/code 已登记）。
+    local rc=0 attempts total backoff
+    total="${NOTIFY_CARD_ATTEMPTS:-3}"
+    backoff="${NOTIFY_CARD_BACKOFF:-35}"
+    attempts=0
+    while :; do
+      attempts=$((attempts+1))
+      rc=0
+      _send "$card" "contrib L2 审批 $id" || rc=$?
+      (( rc == 0 || rc == 3 )) && break
+      (( attempts >= total )) && break
+      sleep "$backoff"
+    done
     if (( rc == 3 )); then
       _osascript "contrib 审批 $id 就绪（hermes 网关不可达，未推送）——明细 contrib-data/pending/$id.md"
       log "approve $id: 网关不可达，osascript 兜底"
@@ -611,14 +737,15 @@ cmd_approve() {
           .approvals[$d].count = ((.approvals[$d].count // 0) + 1)
           | .approvals[$d].ok[$id] = true' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
       fi
-      log "approve $id: 审批卡已推送（dry-run=${DRY_RUN}）"
+      log "approve $id: 审批卡已推送（dry-run=${DRY_RUN}，attempt=${attempts}）"
       dry_pushed=$((dry_pushed+1))
     else
-      local attempts; attempts="$(jq -r --arg id "$id" --arg d "$(today)" '.approvals[$d].fail[$id] // 0' "$STATE")"
-      attempts=$((attempts+1))
-      jq --arg d "$(today)" --arg id "$id" --argjson n "$attempts" '.approvals[$d].fail[$id] = $n' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
-      (( attempts >= 3 )) && _osascript "contrib 审批 $id 推送连续 ${attempts} 次失败（微信通道异常？）"
-      log "approve $id: 推送失败（第 ${attempts} 次）"
+      local fail_prev fail_total
+      fail_prev="$(jq -r --arg id "$id" --arg d "$(today)" '.approvals[$d].fail[$id] // 0' "$STATE")"
+      fail_total=$((fail_prev + attempts))
+      jq --arg d "$(today)" --arg id "$id" --argjson n "$fail_total" '.approvals[$d].fail[$id] = $n' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+      (( fail_total >= 3 )) && _osascript "contrib 审批 $id 推送连续 ${fail_total} 次失败（微信通道异常？）"
+      log "approve $id: 推送失败（本次尝试 ${attempts} 次，累计 ${fail_total} 次）"
     fi
     rm -f "$card"
   done

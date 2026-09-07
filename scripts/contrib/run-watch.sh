@@ -28,6 +28,29 @@ if [[ -z "$CLAUDE_BIN" ]]; then
 fi
 echo "[$(ts)] CLAUDE_BIN=$CLAUDE_BIN" >>"$LOG"
 
+# 模型 pin seam：settings.json env 注入的模型名可能带 [1M] 后缀（bigmodel 端点拒绝，09-06 深检实证）。
+# claude CLI flag 优先级最高；默认读 ANTHROPIC_MODEL 剥后缀，CLAUDE_MODEL_PIN 显式覆盖；空=不加 flag（现状语义）
+MODEL_PIN="${CLAUDE_MODEL_PIN:-}"
+if [[ -z "$MODEL_PIN" ]]; then
+  _raw="$(jq -r '.env.ANTHROPIC_MODEL // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)"
+  MODEL_PIN="${_raw%\[*\]}"
+fi
+MODEL_FLAG=()
+[[ -z "$MODEL_PIN" ]] || MODEL_FLAG=(--model "$MODEL_PIN")
+
+# 阶段超时 seam：claude -p 卡死时不得拖死整条 hourly 链（09-06 实证同类挂死模式）
+WATCH_PHASE_TIMEOUT="${WATCH_PHASE_TIMEOUT:-2700}"
+run_phase() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift @ARGV; exec @ARGV or die "exec: $!"' "$secs" "$@"
+  else
+    "$@"   # 无超时工具：退化为直跑（现状语义）
+  fi
+}
+
 echo "[$(ts)] ===== run-watch start (hour=$(date +%H)) =====" >>"$LOG"
 
 # 防重入（上一轮 LLM 还没跑完时跳过本轮）；锁滞留 >2h 视为残留 → 告警并强清
@@ -48,6 +71,17 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 
 cd "$MARTIN"
 
+# 配额断路器（09-06 八连 429 空烧沉淀）：开闸期跳过一切 LLM 步骤（scan 研判/radar），
+# 廉价闸门与 notify flush 照跑；冷却到期自动闭合，放一次真实尝试
+QC="$MARTIN/scripts/contrib/quota_circuit.sh"
+QC_OPEN=0
+if [[ -x "$QC" ]]; then
+  if ! qc_remain="$(zsh "$QC" check)"; then
+    QC_OPEN=1
+    echo "[$(ts)] 配额断路器打开（冷却剩余 ${qc_remain}s），本轮跳过 scan/radar LLM 步骤" >>"$LOG"
+  fi
+fi
+
 # --- 1. 廉价闸门 ---
 if zsh "$MARTIN/scripts/contrib/scan_gate.sh" >>"$LOG" 2>&1; then
   rc=0
@@ -55,17 +89,22 @@ else
   rc=$?
 fi
 
-if (( rc == 10 )); then
+if (( rc == 10 && QC_OPEN == 1 )); then
+  echo "[$(ts)] 有域内命中但断路器打开，研判顺延" >>"$LOG"
+elif (( rc == 10 )); then
   echo "[$(ts)] 有域内命中 → headless 研判" >>"$LOG"
-  [[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" -p "/contrib-watch scan" \
+  [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch scan" \
     --permission-mode acceptEdits \
     --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *)" \
     >>"$LOG" 2>&1
   scan_rc=$?
   echo "[$(ts)] 研判完成 exit=$scan_rc" >>"$LOG"
   if (( scan_rc != 0 )); then
+    [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
     "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
       --key "$(date +%F)-scan-exit$scan_rc" --summary "scan 研判 claude -p 失败 exit=$scan_rc" >/dev/null 2>&1 || true
+  else
+    [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1   # 成功 = 配额可用实证
   fi
 elif (( rc == 0 )); then
   echo "[$(ts)] 无命中" >>"$LOG"
@@ -75,20 +114,57 @@ else
     --key "$(date +%F)-gate-rc$rc" --summary "scan_gate 闸门异常 rc=$rc" >/dev/null 2>&1 || true
 fi
 
+# --- 1.5 邮件检查（09-07）：GitHub 通知未读 → AI 三通道研判（auto 流水线内动作 / important
+#     推微信 mail-needs-user / routine 进简报）。采集零 LLM 成本照常跑（同 scan_gate 待遇），
+#     断路器只挡研判步。首启只定位游标不回灌存量。失败 fail-soft 不拖死 hourly 链。---
+if [[ -x "$MARTIN/scripts/contrib/mail_gate.sh" ]]; then
+  mrc=0
+  "$MARTIN/scripts/contrib/mail_gate.sh" >>"$LOG" 2>&1 || mrc=$?
+  if (( mrc == 10 && QC_OPEN == 1 )); then
+    echo "[$(ts)] 有新 GitHub 邮件但断路器打开，研判顺延（pending 保留下轮）" >>"$LOG"
+  elif (( mrc == 10 )); then
+    echo "[$(ts)] 有新 GitHub 邮件 → headless 研判" >>"$LOG"
+    [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch mail" \
+      --permission-mode acceptEdits \
+      --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(scripts/contrib/rq.sh list *),Bash(scripts/contrib/rq.sh add *),Bash(scripts/contrib/notify.sh event *),Bash(scripts/contrib/mail_gate.sh --commit-cursor)" \
+      >>"$LOG" 2>&1
+    mail_rc=$?
+    echo "[$(ts)] 邮件研判完成 exit=$mail_rc" >>"$LOG"
+    if (( mail_rc != 0 )); then
+      [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
+      "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+        --key "$(date +%F)-mail-exit$mail_rc" --summary "邮件研判 claude -p 失败 exit=$mail_rc" >/dev/null 2>&1 || true
+    else
+      [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1
+      # 研判成功才推进游标（失败的轮次 pending 保留，下轮重研判——幂等靠 event --key）
+      "$MARTIN/scripts/contrib/mail_gate.sh" --commit-cursor >>"$LOG" 2>&1 || true
+    fi
+  elif (( mrc == 0 )); then
+    echo "[$(ts)] 邮件闸门：无新 GitHub 通知" >>"$LOG"
+  else
+    echo "[$(ts)] 邮件闸门出错 rc=${mrc}（himalaya/网络抖动？下轮重试）" >>"$LOG"
+  fi
+fi
+
 # --- 2. 每日 radar（08 窗口；抽 maybe_radar 便于测试注入 hour，默认=现状 date +%H）---
 maybe_radar() {
   local hour="${1:-$(date +%H)}"
-  if [[ "$hour" == "08" ]]; then
+  if [[ "$hour" == "08" && "$QC_OPEN" == "1" ]]; then
+    echo "[$(ts)] radar 窗口到但断路器打开，跳过" >>"$LOG"
+  elif [[ "$hour" == "08" ]]; then
     echo "[$(ts)] 每日 radar 启动" >>"$LOG"
-    [[ -n "$CLAUDE_BIN" ]] && "$CLAUDE_BIN" -p "/contrib-watch radar" \
+    [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch radar" \
       --permission-mode acceptEdits \
       --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(git *),Bash(cd *),Bash(scripts/contrib/*),Bash(pytest *),Bash(python *),Bash(python3 *),Bash(ruff *),Bash(rg *)" \
       >>"$LOG" 2>&1
     radar_rc=$?
     echo "[$(ts)] radar 完成 exit=$radar_rc" >>"$LOG"
     if (( radar_rc != 0 )); then
+      [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
       "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
         --key "$(date +%F)-radar-exit$radar_rc" --summary "radar claude -p 失败 exit=$radar_rc" >/dev/null 2>&1 || true
+    else
+      [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1
     fi
   fi
 }
@@ -98,6 +174,11 @@ maybe_radar
 if [[ -x "$MARTIN/scripts/contrib/notify.sh" ]]; then
   "$MARTIN/scripts/contrib/notify.sh" flush >>"$LOG" 2>&1 \
     || echo "[$(ts)] notify flush 失败（事件保留，下轮重试）" >>"$LOG"
+  # 审批卡补推 sweep（09-07 双修①跨轮兜底）：每小时重推卡死的审批卡（发送失败零重试曾致
+  # rq-20260907-104693 卡死 6h）。安全由 notify.sh 现有机制保证：premise TTL 发卡前复验 /
+  # ok 项幂等跳过 / 重推时 B-1 回收旧 tunnel 页 / 48h deadline 由 awaiting_epoch 派生不漂移
+  "$MARTIN/scripts/contrib/notify.sh" approve --all >>"$LOG" 2>&1 \
+    || echo "[$(ts)] 审批卡补推 sweep 异常（下轮重试）" >>"$LOG"
 fi
 
 # --- 4. 快车道（09-04）：scan 刚产出候选 → 立即后台深检，不等明早 09:37（该窗口保留为兜底）---

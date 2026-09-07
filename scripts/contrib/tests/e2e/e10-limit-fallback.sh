@@ -51,7 +51,7 @@ assert_exit 1 $rc
 assert_eq "$(( $(stub_count osascript) - before_osascript ))" "0" "osascript 恰一次/日"
 assert_eq "$(jq -r 'select(.key == "e10-retry") | .attempts' "$EVENTS_FILE")" "5" "attempts 继续递增（账面不丢）"
 
-t_case "E10d: 审批推送限额——max_approval_pushes_per_day 用满后拒推并兜底"
+t_case "E10d: 审批推送不限额回归守卫——count 已满仍照推（09-06 用户拍板移除限额）"
 sb_seed_queue_item "rq-20260905-011" 11 deep awaiting-approval 40
 printf '# 草稿\n' >"$SB_ROOT/contrib-data/pending/rq-20260905-011.md"
 sb_rq set-draft rq-20260905-011 "$SB_ROOT/contrib-data/pending/rq-20260905-011.md" >/dev/null
@@ -62,8 +62,8 @@ before_osascript="$(stub_count osascript)"
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" approve rq-20260905-011' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc
-assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "审批限额拒推零调用"
-assert_eq "$(( $(stub_count osascript) - before_osascript ))" "1" "审批限额 osascript 兜底一次"
+assert_eq "$(( $(stub_count hermes) - before_hermes ))" "1" "不限额：count=3 仍正常推送"
+assert_eq "$(( $(stub_count osascript) - before_osascript ))" "0" "不限额：无限额兜底告警"
 
 sb_cleanup
 t_finish

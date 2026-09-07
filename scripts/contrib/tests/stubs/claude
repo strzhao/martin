@@ -4,6 +4,7 @@
 #   STUB_CLAUDE_FAIL=1        → exit 1（preflight/redteam/AI 摘要失败链共用）
 #   STUB_CLAUDE_OUT=<text>    → 自定义 stdout（AI 摘要输出不合格用例可注入空串/超长/Unknown command）
 #   STUB_CLAUDE_NO_DRAFT=1    → preflight 成功但不产出草稿（「草稿未产出」失败链）
+#   STUB_CLAUDE_SLEEP=<secs>  → 挂死指定秒数（阶段超时/整壳兜底击杀链，e7）
 set -u
 NAME="claude"
 LOG_DIR="${STUB_LOG_DIR:-}"
@@ -28,6 +29,10 @@ for a in "$@"; do
   prev="$a"
 done
 printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+if [[ -n "${STUB_CLAUDE_SLEEP:-}" ]]; then
+  sleep "${STUB_CLAUDE_SLEEP}"
+fi
 
 if [[ "${STUB_CLAUDE_FAIL:-}" == "1" ]]; then
   echo "claude stub: 模拟失败" >&2

@@ -51,6 +51,8 @@
 
 **任何对外动作落地前过 `/contrib-preflight`**（hermes-contrib-strategist agent）；对外动作走 L2 闸门（会话内批准/微信审批 + approved.log 台账）。存量可 pick 库存（#96472/#85548/#75771/#75453/#65794 + #86062 内 1d0e71e822）台账见 hermes-contribution.md §11。
 
+**邮件检查阶段（2026-09-07 上线）**：run-watch 每小时在 scan 后新增阶段 1.5——`mail_gate.sh` 零 LLM 采集（himalaya 只读拉 INBOX 未读 GitHub 通知，to/主题双分流 + `[GitHub]` 账号类排除，`mail-cursor.json` 增量，**首启只定位不回灌存量**；QQ IMAP 坑：查询严禁带日期条件会服务端超时、`message read` 必须带 `-p` 否则自动置已读）→ 有 pending 才唤 `claude -p "/contrib-watch mail"` 三通道研判：**auto**（流水线内动作：own-pr-activity event/入队）、**important**（`mail-needs-user` event → flush AI 摘要层推微信，受每日 3 条告警硬闸——用户拍板「只推重要的事，宁进简报不进微信」）、**routine**（进当日 briefs）。研判成功才 `--commit-cursor`（拨游标+清 pending 消费闭环），失败下轮重研判（event --key 幂等）。私有邮件不碰；邮件只是信号源，状态断言以 gh 实查为准（hermes-contribution.md §9）。
+
 **lane 模式接入（2026-09-07 已实施，详见 [`hermes-lane-protocol.md`](hermes-lane-protocol.md) §8）**：contrib 域双 lane 已落——①`contrib` profile（hermes worker，只读研判专家：premise 复验/状态核查/报告解读；gh 只读红线，SOUL.md 含 hermes-contribution.md 知识源路由）；②`contrib-cc` lane（CC 消费）：execute.sh own-PR 已批分支自动建卡（幂等）+ 微信派单（default SOUL.md 路由表：直答/`contrib`/`contrib-cc` 三分）。escalate 审批项**不建卡**（消费者是用户非 CC，防双消费）。流水线主链与三路 L2 审批全部原样保留。
 
 ### 机会流水线 contrib-watch（09-02 上线，试点 local-only）

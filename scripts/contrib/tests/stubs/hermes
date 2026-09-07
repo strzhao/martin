@@ -3,6 +3,7 @@
 # 注入方式：HERMES_BIN seam + 沙箱 PATH 双通道；拒绝在无 STUB_LOG_DIR 的环境运行（防沙箱外误用）
 # 行为旋钮：
 #   STUB_HERMES_FAIL=1        → exit 1 且输出 {"success":false,...}
+#   STUB_HERMES_FAIL_FIRST=<n> → 前 n 次调用 exit 1，之后正常成功（审批卡重试用例：失败 2 次第 3 次成功）
 #   STUB_HERMES_SUCCESS_FALSE=1 → exit 0 但输出 {"success":false}（专测「账面 exit0 ≠ 送达」）
 #   STUB_HERMES_OUT=<text>    → 自定义 stdout 输出模板
 set -u
@@ -33,6 +34,10 @@ printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
 
 if [[ "${STUB_HERMES_FAIL:-}" == "1" ]]; then
   printf '%s\n' '{"success":false,"error":"stub-fail"}'
+  exit 1
+fi
+if [[ -n "${STUB_HERMES_FAIL_FIRST:-}" ]] && (( n <= STUB_HERMES_FAIL_FIRST )); then
+  printf '%s\n' '{"success":false,"error":"stub-fail-first"}'
   exit 1
 fi
 if [[ "${STUB_HERMES_SUCCESS_FALSE:-}" == "1" ]]; then

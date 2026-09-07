@@ -13,6 +13,7 @@
 #   rq.sh add --issue N --disposition D --score S [--pr N] [--title T] [--source scan|radar|manual]
 #             [--lane deep|probe] [--age-hours H] [--premises-json '...'] [--ammo-json '...'] [--drill] [--note N]
 #   rq.sh set <id> <state> [--note N]
+#   rq.sh amend <id> [--disposition D] [--pr N] [--note N]  # 深检重裁决等场景修正非状态字段（白名单字段 + 全程留痕）
 #   rq.sh next --lane deep|probe          # 输出 priority 最高且 state=queued 的 id（无则输出空行，exit 0——契约固化，调用方依赖输出而非 exit code）
 #   rq.sh list [--state S] [--oneline]
 #   rq.sh show <id> [--json]
@@ -81,7 +82,9 @@ assert_no_secret() {
 transitions_for() {
   case "$1" in
     queued)             echo "deep-check awaiting-approval expired shelved rejected failed" ;;
-    deep-check)         echo "awaiting-approval failed queued" ;;
+    # deep-check 的 expired 出口：深检期 TTL 复验可能发现 premise 死亡（如 issue 被 farm PR
+    # 占坑，rq-20260906-104260 首例 09-07）——failed 会被次日 gate 自动重试，premise 死亡必须直达终态
+    deep-check)         echo "awaiting-approval failed queued expired" ;;
     awaiting-approval)  echo "approved revise expired shelved rejected failed" ;;
     # approved 的 rejected/revise 出口：L2-A 短码路消费标记先行（collect 先 set approved 再按
     # verdict 落 rejected/revise，见 scripts/approval/collect.sh）——消费即占位，verdict 是第二跳
@@ -235,6 +238,45 @@ cmd_set() {
       | .history += [{ts: $ts, event: $state, note: $note}]
       else . end) | .updated = $ts' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
   echo "$id → $state"
+}
+
+# ---------------- amend（非状态字段修正，白名单 + 留痕） ----------------
+cmd_amend() {
+  local id="" disp="" pr="" note=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --disposition) disp="$2"; shift 2 ;;
+      --pr) pr="$2"; shift 2 ;;
+      --note) note="$2"; shift 2 ;;
+      *)
+        if [[ -z "$id" ]]; then id="$1"; shift; else die "amend 未知参数: $1"; fi ;;
+    esac
+  done
+  [[ -n "$id" ]] || die "amend 用法: rq.sh amend <id> [--disposition D] [--pr N] [--note N]"
+  [[ -n "$disp" || -n "$pr" ]] || die "amend 至少要给一个待改字段（--disposition/--pr）"
+  if [[ -n "$disp" ]]; then
+    case "$disp" in own-PR|review-evidence|probe-salvage) ;; *) die "disposition 必须是 own-PR|review-evidence|probe-salvage" ;; esac
+  fi
+  if [[ -n "$pr" ]]; then [[ "$pr" =~ ^[0-9]+$ ]] || die "pr 必须是数字"; fi
+  assert_no_secret "$disp|$pr|$note"
+  ensure_files
+  acquire_lock
+
+  local cur
+  cur=$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .state' "$QUEUE")
+  [[ -n "$cur" && "$cur" != "null" ]] || die "找不到 $id"
+
+  local ts; ts="$(now_iso)"
+  local desc=""
+  [[ -n "$disp" ]] && desc="disposition→$disp"
+  [[ -n "$pr" ]] && desc="${desc:+$desc; }pr→$pr"
+  jq --arg id "$id" --arg disp "$disp" --arg pr "$pr" --arg ts "$ts" --arg note "$note" --arg desc "$desc" '
+    .items |= map(if .id == $id then
+      (if $disp != "" then .disposition = $disp else . end)
+      | (if $pr != "" then .pr = ($pr | tonumber) else . end)
+      | .history += [{ts: $ts, event: "amend", note: ($desc + (if $note == "" then "" else "（" + $note + "）" end))}]
+      else . end) | .updated = $ts' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+  echo "$id amended: $desc"
 }
 
 # ---------------- next ----------------
@@ -483,6 +525,7 @@ case "$cmd" in
   init)    cmd_init ;;
   add)     cmd_add "$@" ;;
   set)     cmd_set "$@" ;;
+  amend)   cmd_amend "$@" ;;
   next)    cmd_next "$@" ;;
   list)    cmd_list "$@" ;;
   show)    cmd_show "$@" ;;

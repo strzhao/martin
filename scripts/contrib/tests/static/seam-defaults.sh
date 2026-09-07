@@ -93,12 +93,19 @@ seam_in deep-check.sh 'NOTIFY="$MARTIN/scripts/contrib/notify.sh"'
 t_case "deep-check: claude seam（env 优先，空则现有两级探测）"
 seam_in deep-check.sh 'CLAUDE_BIN="${CLAUDE_BIN:-}"'
 
+t_case "deep-check: 模型 pin + 阶段超时 seam（09-06 深检挂死实证回归）"
+seam_in deep-check.sh 'MODEL_PIN="${CLAUDE_MODEL_PIN:-}"'
+seam_in deep-check.sh 'PHASE_TIMEOUT="${DEEPCHECK_PHASE_TIMEOUT:-3600}"'
+
 # ---------------- run-deepcheck.sh ----------------
 t_case "run-deepcheck: 路径 seam"
 seam_in run-deepcheck.sh 'MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"'
 seam_in run-deepcheck.sh 'CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"'
 seam_in run-deepcheck.sh 'LOG="$CONTRIB/logs/deepcheck.log"'
 seam_in run-deepcheck.sh 'cd "$MARTIN" || exit 1'
+
+t_case "run-deepcheck: 整壳超时 seam（09-06 失收尸永挂实证回归）"
+seam_in run-deepcheck.sh 'orch_to="${DEEPCHECK_ORCH_TIMEOUT:-14400}"'
 
 # ---------------- run-watch.sh ----------------
 t_case "run-watch: 路径 seam"
@@ -111,5 +118,9 @@ t_case "run-watch: claude seam + maybe_radar 抽取"
 seam_in run-watch.sh 'CLAUDE_BIN="${CLAUDE_BIN:-}"'
 seam_in run-watch.sh 'maybe_radar() {'
 seam_in run-watch.sh 'local hour="${1:-$(date +%H)}"'
+
+t_case "run-watch: 模型 pin + 阶段超时 seam（09-06 同款挂死模式预防）"
+seam_in run-watch.sh 'MODEL_PIN="${CLAUDE_MODEL_PIN:-}"'
+seam_in run-watch.sh 'WATCH_PHASE_TIMEOUT="${WATCH_PHASE_TIMEOUT:-2700}"'
 
 t_finish

@@ -25,6 +25,16 @@ if [[ -d "$LOCK" ]]; then
   fi
 fi
 
+# 配额断路器（09-06 八连 429 空烧沉淀）：开闸期不做重试晋升、不选候选——
+# 配额类失败重试无意义，等冷却到期自动闭合后放一次真实尝试
+QC="$MARTIN/scripts/contrib/quota_circuit.sh"
+if [[ -x "$QC" ]]; then
+  if ! qc_remain="$(zsh "$QC" check)"; then
+    log "配额断路器打开（冷却剩余 ${qc_remain}s），本轮跳过（failed 不晋升、不选候选）"
+    exit 0
+  fi
+fi
+
 # failed → queued（重试晋升，drill 件除外）
 "$RQ" retry-failed >/dev/null
 

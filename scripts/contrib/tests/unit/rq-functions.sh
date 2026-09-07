@@ -36,7 +36,9 @@ assert_exit 2 $? "transitions_for bogus-state"
 
 t_case "迁移表与实现冻结值一致"
 EXPECTED_queued="deep-check awaiting-approval expired shelved rejected failed"
-EXPECTED_deepcheck="awaiting-approval failed queued"
+# 09-07 deep-check 增 expired 出口：深检期 TTL 复验可发现 premise 死亡（rq-20260906-104260 首例），
+# failed 会被次日 gate 自动重试，premise 死亡必须直达终态
+EXPECTED_deepcheck="awaiting-approval failed queued expired"
 EXPECTED_awaiting="approved revise expired shelved rejected failed"
 # 09-05 L2-A 短码批准路（scripts/approval/collect.sh）：消费标记先行（awaiting-approval→approved
 # 只发生一次 = 防重复消费 SSOT），verdict 是第二跳——approved 需 rejected/revise 出口

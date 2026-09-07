@@ -1,7 +1,7 @@
 ---
 name: contrib-watch
-description: hermes 上游机会流水线——增量扫描新 issue 后智能研判（评分→五分类决策）、停滞 PR 雷达（salvage 供给）、本地自动 PR 构建（产出分支+PR 草稿，绝不 push/绝不建 PR）、就绪队列快车道（验证付清项→微信 L2-A 审批环）。四种模式：scan（研判 pending 命中+入队）、radar（每日雷达+自有资产+premise 复验+至多 1 个自动构建）、build <issue#>（本地 PR 构建流水线）、deep-check <rq-id>（三轮审自动化：strategist preflight+fresh-context 红队）。
-argument-hint: [scan | radar | build <issue#> | deep-check <rq-id> --phase preflight|redteam] [附加说明]
+description: hermes 上游机会流水线——增量扫描新 issue 后智能研判（评分→五分类决策）、停滞 PR 雷达（salvage 供给）、本地自动 PR 构建（产出分支+PR 草稿，绝不 push/绝不建 PR）、就绪队列快车道（验证付清项→微信 L2-A 审批环）、GitHub 通知邮件研判（三通道分流）。五种模式：scan（研判 pending 命中+入队）、radar（每日雷达+自有资产+premise 复验+至多 1 个自动构建）、build <issue#>（本地 PR 构建流水线）、deep-check <rq-id>（三轮审自动化：strategist preflight+fresh-context 红队）、mail（邮件三通道：auto 流水线动作/important 微信卡/routine 简报）。
+argument-hint: [scan | radar | build <issue#> | deep-check <rq-id> --phase preflight|redteam | mail] [附加说明]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 ---
 
@@ -14,7 +14,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 - `/Users/stringzhao/workspace/martin/hermes-contribution.md`（共建策略 + §10 sweeper 机制）
 - `/Users/stringzhao/workspace/martin/.claude/agents/hermes-contrib-strategist.md`（形态选择框架/锚定铁律/验证纪律全文）
 
-对外动作分级（不可逾越）：**scan/radar/deep-check = L1 只读上游**（gh 读 + 本地文件写；微信推送/写 ready-queue 是本地渠道动作，属 L1）。**「草稿自动备好 + 推送审批」属于 L1；发出（gh 写：评论/issue/PR/push）永远过 L2**，两路等效：**L2-A 微信批准**（ready-queue `awaiting-approval` → 用户「批 #rq-id」→ hermes 侧执行方 TTL 复验 → 落弹 → martin/approved.log）或 **L2-B 会话内明示**（同样记 approved.log）。两路执行前都查 approved.log 去重。**所有对外草稿必须过 strategist preflight 才能进 awaiting-approval**（deep 车道另加 fresh-context 红队；probe 车道单轮 strategist 免红队）。**build 只到本地为止**——`git push`/`gh pr create` 仅当对应 own-PR 项获 L2-A 批准**且** `config.allow_own_pr_push=true` 时由执行方执行，其余场景绝对禁止。
+对外动作分级（不可逾越）：**scan/radar/deep-check = L1 只读上游**（gh 读 + 本地文件写；微信推送/写 ready-queue 是本地渠道动作，属 L1）。**「草稿自动备好 + 推送审批」属于 L1；发出（gh 写：评论/issue/PR/push）永远过 L2**——L2 三路等效：**L2-auto 自动批准**（09-06 用户拍板默认路：深检末段红队/preflight 写 `verdict.json`，确定性闸门 `scripts/approval/auto-gate.sh` 硬条件全过——评论类可逆动作 + auto/high/low + score≥12 + 非 own-PR——则跳过微信卡直接进执行链，台账标 L2-auto，回执照常推送）、**L2-A 微信批准**（升级路：闸门任一不过 → 审批卡置顶「我定不了的点」清单 → 用户「批 #rq-id」→ TTL 复验 → 落弹 → approved.log）、**L2-B 会话内明示**。三路执行前都查 approved.log 去重。**所有对外草稿必须过 strategist preflight 才能进 awaiting-approval/auto-gate**（deep 车道另加 fresh-context 红队；probe 车道单轮 strategist 免红队）。**build 只到本地为止**——`git push`/`gh pr create` 仅当对应 own-PR 项获 L2-A 批准**且** `config.allow_own_pr_push=true` 时由执行方执行，其余场景绝对禁止（own-PR 永不进 L2-auto）。
 
 ---
 
@@ -79,6 +79,19 @@ launchd 每小时粗滤后有域内命中时调用。步骤：
 1. 只读 `$CONTRIB/pending/<id>.md`（v2）+ 必要的上游实查工具。
 2. 把 v2 拆成可验证断言编号 A1..An，逐条独立核验（log 引用逐字比对、时长算术复算、引用保真、敏感信息扫描、语气/定位终检）→ `$CONTRIB/runs/deep-check/<id>/redteam.md`（必修/建议分级）。
 3. 必修+建议全吸收 → final 版（覆盖 `$CONTRIB/pending/<id>.md`），history 记 `redteam_absorbed=n/m`；`rq.sh set <id> awaiting-approval --note "final 就绪"`。
+4. **final 稿头部注释块必须含「审批页中文摘要（L1，不随评论发出）：」段**（09-06 审批体验重构）：一句话（L0，给审批者 30 秒决策）+ 3-5 条要点（这条评论/PR 说了什么、证据是什么、给对方带来什么、风险一句）+ 时效。审批页模板从该段渲染中文摘要层；它在注释块内，投递时随注释剥离，**绝不外发**。缺该段 = 成稿不完整，审批页退化为标题+premises。
+5. **必须写判定文件 `$CONTRIB/runs/deep-check/<id>/verdict.json`**（09-06 用户拍板：默认自动、例外升级——preflight 单轮的 probe 车道同责，由其阶段 1 写出）：
+
+```json
+{
+  "decision": "auto | escalate",
+  "confidence": "high | medium | low",
+  "risk_level": "low | medium | high",
+  "reasons": ["升级时必填：每条 = 一个具体的、你定不了的点，写给用户裁决"]
+}
+```
+
+**auto 门槛（宁升勿放）**：仅当「断言全部核验通过 + 零必修残留 + 动作可逆（评论类）+ 你对发出内容无保留」时才判 auto/high/low。以下任一 → escalate 并写清 reasons：任何 premise 存疑或证据链有缺口；域外/不熟机制；语气、定位、与维护者关系的拿捏不准；涉及取舍判断（如提不提 cherry-pick offer）；红队有未吸收的必修项。**reasons 是给用户看的决策点，不是给同行看的评审术语**——写成用户 30 秒能裁决的人话（例：「这条评论建议对方改 API 形状，但我拿不准维护者对 breaking change 的容忍度」）。
 
 **失败处理**：任一阶段 exit≠0 → `rq.sh set <id> failed --note "<阶段>"`；预算按 `config.refund_failed_deep_check` 决定是否返还（默认不返还）；次日 gate 可自动重试（`failed → queued` 迁移由 gate 执行）。
 
@@ -100,6 +113,24 @@ launchd 每小时粗滤后有域内命中时调用。步骤：
 5. **commit**：单关注点 message（`fix(<scope>): ...`，正文 2-5 行说清机制）。**自检**：`git log -1 --format=%B` 确认无 `Co-Authored-By` 行，有则 `git commit --amend` 剥离。
 6. **PR 草稿**：写 `$CONTRIB/runs/$(date +%F)-issue<N>/PR-DRAFT.md`——完整可直接粘贴的 body：Summary / Changes（逐文件）/ Validation（测试+mutation 证据，真实数字）/ Related issue（`Fixes #<N>`）/ References。同目录 `BRANCH.md`：分支名、worktree 路径、测试证据摘要、README 一行「待人工审查后手动 push+建 PR」。
 7. **收尾**：在当日 briefs 追加构建记录（issue/分支/测试结果/残留风险）；**终端末行明确输出「本地分支就绪，未 push——请人工审查」**。push 两路：用户手动 `git push fork fix/<slug>` + `gh pr create`（push 目标 remote 是 `fork`，`origin` 是上游 403）；或该项入 ready-queue 走 L2-A——微信批准后由 hermes 侧执行方 push+建 PR（**仅当 `config.allow_own_pr_push=true`**，默认关）。
+
+---
+
+## 模式五：mail（GitHub 通知邮件三通道研判，由 run-watch 阶段 1.5 调起或手动）
+
+输入 `$CONTRIB/mail-pending.json`（mail_gate.sh 预取：id/subject/from/to/date/message_id/preview）。文件缺失或空数组 → 输出「无待研判邮件」结束。**只依据 preview 研判，不碰邮件客户端**（himalaya 写操作绝对禁止；需要更多上下文时用 gh 实查对应 issue/PR——邮件是快照信号，gh 是事实源，hermes-contribution.md §9）。
+
+逐封归入三通道：
+
+| 通道 | 判定 | 动作 |
+|---|---|---|
+| **auto** | 无需人介入的流水线内部信号：维护者对我方 PR/issue 实质互动（→ `notify.sh event own-pr-activity --key mail-<message_id或id> --summary ...`）、新 issue 信号（→ 正常 scan rubric 简评入队 `rq.sh add`，走既有队列而非绕过）、CI/premise 变化需复验（→ 当日 briefs 记录） | 调既有通路，**不新增任何对外写动作** |
+| **important** | 需要用户本人关注且时效敏感（微信推送，受每日 3 条告警硬闸）：维护者提出直接问题/要求我方行动、own-PR mergeable 翻转/被 close、我方关注 issue 出现占坑竞争、premise 死亡级资产变化 | `notify.sh event mail-needs-user --key <message_id 或 mail-<id>-<date>> --summary "<30 字内：发生了什么+为何重要>"` |
+| **routine** | 盯梢类：triage 机器人互动、label 变化、无关仓库动态、CI 波动 | 追加当日 briefs 一节「## 邮件动态」（每封一行：主题→一句话），不推送 |
+
+分级纪律（用户 09-07 拍板）：**宁进简报不进微信**——不确定 importance 时降级 routine；同主题多封（同 PR 评论连发）合并为一个 event，key 取最新 message_id。
+
+收尾：briefs 追加「## 邮件研判」统计行（auto/important/routine 计数）；**不要自己动 mail-cursor.json**——退出码 0 后 run-watch 会调 `mail_gate.sh --commit-cursor` 推进游标，研判中途失败则游标不动、pending 下轮重研判（event --key 保证重复研判不重复推送）。
 
 ---
 
