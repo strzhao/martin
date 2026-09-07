@@ -44,12 +44,14 @@
 
 三腿分工：
 1. **evidence authority** —— 生产取证型 review/评论，只在域内+有独家证据时出手（weixin TTL/取证、state.db/FTS、cron 投递）
-2. **cherry-pick invitation** —— review 真发现缺口 && 库存有货时，按 #86062 模式 offer 单关注点 commit（fork sha + authorship 保留 + 三选一：被 pick/rebase 进对方分支/follow-up PR），**没货就纯 review，不硬带**
+2. **cherry-pick invitation** —— review 真发现缺口 && 库存有货时，按 #86062 模式 offer 单关注点 commit（fork sha + authorship 保留；措辞**排序推荐不并列**：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底；禁「随你方便」式对称句式——09-07 #103650 对称措辞致 substance 被采纳但署名归零），**没货就纯 review，不硬带**
 3. **salvage** —— 停滞 PR 雷达（farm 洪水的必然产物=工业化停滞供给），probe→salvage 走 §5 流程
 
 **review 红线（COI 防御）**：主载荷必须是对维护者的验证价值（file:line receipts + mutation 自证）；自己的 PR/commit 只在缺口驱动场合出现；**每周深检预算 1-3 个**（三轮验证 strategist→亲手核→fresh-context 红队成本高），其余新 PR/issue 只内部研判不发帖——不做全仓免费 QA。筛选 rubric：域契合 × 合入临近度 × 独家弹药 × 可收敛性 × 作者质量史。**漏斗度量：review → adoption → pick → 关系信号（@提及/直接 ping）。**
 
 **任何对外动作落地前过 `/contrib-preflight`**（hermes-contrib-strategist agent）；对外动作走 L2 闸门（会话内批准/微信审批 + approved.log 台账）。存量可 pick 库存（#96472/#85548/#75771/#75453/#65794 + #86062 内 1d0e71e822）台账见 hermes-contribution.md §11。
+
+**lane 模式接入（2026-09-07 已实施，详见 [`hermes-lane-protocol.md`](hermes-lane-protocol.md) §8）**：contrib 域双 lane 已落——①`contrib` profile（hermes worker，只读研判专家：premise 复验/状态核查/报告解读；gh 只读红线，SOUL.md 含 hermes-contribution.md 知识源路由）；②`contrib-cc` lane（CC 消费）：execute.sh own-PR 已批分支自动建卡（幂等）+ 微信派单（default SOUL.md 路由表：直答/`contrib`/`contrib-cc` 三分）。escalate 审批项**不建卡**（消费者是用户非 CC，防双消费）。流水线主链与三路 L2 审批全部原样保留。
 
 ### 机会流水线 contrib-watch（09-02 上线，试点 local-only）
 
@@ -65,7 +67,21 @@
 
 **纪律守恒（升级不降级）**：①草稿与微信推送是 L1（本地渠道），**发出（gh 写）永远过 L2**——微信批准（L2-A）与会话内明示（L2-B）等效，执行前都查 approved.log 去重；②**所有对外草稿必须过 strategist preflight** 才能进 awaiting-approval；③own-PR 的 push/gh pr create 由执行方执行需 `allow_own_pr_push=true`（默认关）。会话内随时 `scripts/contrib/rq.sh list` / `budget status` 查看队列与预算。首周 `notify_dry_run=true`（只打印不真发），演练闭环确认后再关。
 
-**L2-A 短码审批链（09-05 立项，暗 launch 未启用）**：审批卡带 `?key=<短码>` 链接 → tunnel 审批页点选批准/否决/需修改（短码自动回填，零打字）→ launchd 90s 轮询收集 → 确定性执行链投递。编排实现在 [`scripts/approval/`](scripts/approval/README.md)（collect.sh + execute.sh + plist；**plist 刻意不入 launchd，装载是人工步骤**）；页面与判定层在 tunnel-cli 仓（`drops approve`/`drops decision` ≥1.8.0）。开关 = `config.json` 增 `"approval_interactive": true`（缺省 false = 旧文本卡路，**当前真实 config 未加此键**）；微信文本回复降级路（hermes-contrib-l2 skill）全程保留，两路共用 rq 状态机互斥（collect 先 `set approved` 占坑防重复消费，verdict 是第二跳）。沙箱全链测试零真实外发：`bash scripts/approval/tests/run.sh`。
+**L2-A 短码审批链（09-05 立项；~~暗 launch 未启用~~ 09-07 探查实证已实际启用：config `approval_interactive:true` + `auto_approve:true`+`auto_approve_min_score:12` 已在，`com.stringzhao.approval-collect` 已装载运行，notify-state approvals 计数为证；CLAUDE.md 此前的「未启用」记载系文档滞后）**：审批卡带 `?key=<短码>` 链接 → tunnel 审批页点选批准/否决/需修改（短码自动回填，零打字）→ launchd 90s 轮询收集 → 确定性执行链投递。编排实现在 [`scripts/approval/`](scripts/approval/README.md)（collect.sh + execute.sh + plist；**plist 刻意不入 launchd，装载是人工步骤**）；页面与判定层在 tunnel-cli 仓（`drops approve`/`drops decision` ≥1.8.0）。开关 = `config.json` 增 `"approval_interactive": true`（缺省 false = 旧文本卡路，**当前真实 config 未加此键**）；微信文本回复降级路（hermes-contrib-l2 skill）全程保留，两路共用 rq 状态机互斥（collect 先 `set approved` 占坑防重复消费，verdict 是第二跳）。沙箱全链测试零真实外发：`bash scripts/approval/tests/run.sh`。
+
+## hermes 多域 COO 架构（kanban + profiles，2026-09-06 立项）
+
+用户拍板方向：四域各一个 profile（**面向场景设计专家，能力组合走 skill 层**——task 行有独立 skills 列可按任务挂载；拆 profile 的唯一正当理由是权限/身份/爆炸半径边界，不是能力复用）。四域 = contrib（开源共建，暂维持脚本流水线）/ ops（产品运营）/ life（生活助理，dogfood 首选）/ hkstock（待建）。微信单入口 `/kanban create` → triage → 人工路由（dogfood 期 `auto_decompose: false`）→ dispatcher 按 assignee=profile spawn 隔离 worker → 终态事件自动推回微信。
+
+**已落地（第 0 步加固）**：`~/.hermes/config.yaml` kanban 段已显式设 `auto_decompose: false`（#49638 事故路径，每 tick 重读即时生效）、`max_in_progress: 2`（macOS 无 MemTotal 内存推导回落无界，必须显式封顶；watcher 启动时读取，需 gateway 重启生效）、`default_assignee: "default"`。实态：dispatcher 在跑（60s tick 单例锁）、kanban.db 全空零历史、微信 `/kanban` 无平台限制可用、`kanban-worker`/`kanban-orchestrator` skill 已装。v1 成熟度中高（孤儿卡 reconcile/僵尸回收/per-profile 并发上限齐备）。
+
+待办：~~gateway 重启使 max_in_progress 生效~~ ✅ → ~~life profile dogfood 全链~~ ✅（smoke 卡 + 微信自然语言派单全环 09-06 23:22 跑通：派单→建卡→life worker 55s→notifier 唤醒微信 agent 推回）→ 压测微信推送并发（[[hermes-weixin-rate-limit]] TTL 老问题会放大）→ ops 跟进 → contrib 迁移评估。
+
+**life profile 已配置（09-07）**：SOUL.md 重写为生活助理（三大主场+kanban worker 准则）；修复 clone_honcho_for_profile 对 self-hosted Honcho 静默失效 bug（life 本地 honcho.json 独立 aiPeer，workspace 共享）——**此 bug 是贡献候选，在 evidence authority 域（state/记忆方向），待入 contrib-watch 台账**。遗留：①profile 级 cron 需 multiplex gateway 或独立 gateway 才触发；②用户自装 skill（dianping-*/travel-planner）不随 hermes update 同步到 profile，需手动拷贝。
+
+**UX 层（2026-09-06 补）**：default profile 的 `toolsets` 已加 `kanban`——微信里用**自然语言派单**（「派给 life 做 X」），agent 调 `kanban_create` 工具建卡并自动订阅当前微信会话（`_maybe_auto_subscribe`，`kanban.auto_subscribe_on_create` 默认 True，热加载无需重启），worker 终态自动推回微信。`/kanban create --assignee` 裸命令只是管道层/调试入口。smoke 卡 t_797cfe76 已验证主链（life profile worker 21s 完成）。
+
+**执行规范全文 → [`hermes-lane-protocol.md`](hermes-lane-protocol.md)**（lane 模式协作手册：分工口诀「能写成 SOP 的→真 profile，每次都要重新想的→`<域>-cc` lane」、建卡规范、CC claim 动作流、五条红线、并发安全模型、**新 profile 创建 SOP——后续每个 profile 必须按此落 lane 配置**、contrib 薄适配方案、源码锚点表）。核心三条：①CC 路径 = control-plane lane 消费者（assignee=不存在的 profile 名如 `contrib-cc`，dispatcher 永不 spawn，停 ready 等 claim）；②CC 会话**永不跑 `hermes kanban dispatch`/`daemon`**；③产物回流三层 = comment / attach / complete --summary --metadata。
 
 ## 开源项目运营（oss-ops）
 
@@ -81,7 +97,7 @@
 - **安装路径**: `/Users/stringzhao/workspace/hermes-agent/`
 - **CLI 路径**: `/Users/stringzhao/.local/bin/hermes`
 - **用户数据目录**: `~/.hermes/`（config.yaml、sessions、skills、memories、cron、logs 等）
-- **当前模型**: `glm-5.3-flash`（自定义 provider `glm-flash`，智谱 Anthropic 兼容端点 `https://open.bigmodel.cn/api/anthropic`，key 在 `~/.hermes/.env` 的 `BIGMODEL_API_KEY`；2026-09-05 从 deepseek-v4-flash 切换，config 备份 `~/.hermes/config.yaml.bak-before-glmflash`）
+- **当前模型**: `deepseek-v4-flash`（自定义 provider `deepseek-flash`，DeepSeek 官方 Anthropic 兼容端点 `https://api.deepseek.com/anthropic`，key 在 `~/.hermes/.env` 的 `DEEPSEEK_FLASH_API_KEY`；2026-09-07 用 `gcli hermes deepseek-flash` 一键切换——因 Kimi coding plan 额度用尽，属**临时切换**，config 备份 `~/.hermes/config.yaml.bak-before-deepseek-flash-1788769781`；回滚 `gcli hermes rollback` 或切回 kimi-coding/k3，5 个 cron 已随切换自动重 pin）
 - **终端后端**: local（命令直接在宿主机执行）
 - **当前工具集**: hermes-cli
 

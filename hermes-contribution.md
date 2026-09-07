@@ -46,6 +46,8 @@ fork：`strzhao/hermes-agent` → `NousResearch/hermes-agent`。gh token 已加 
 
 ## 4. 共建三路径（按推荐度）
 
+> **⚠️ 09-02 更新**：本节写于 07-31 快照。anchor 占位路径已被 AI farm 生态卷死（issue→PR 以小时计），三路径的现行收窄版见 **§11 策略主轴 2.0**——salvage 流程（§5）仍有效，成为第三腿。
+
 ### 🌟 路径 A：salvage 停滞 PR（最优，kshitijk4poor 核心打法）
 找"sweeper review 过 + salvageability=high/medium + 作者停滞 >15 天 + mergeable=dirty"的 PR，接手推进。维护者优先合"推进停滞工作"的人。
 
@@ -162,6 +164,65 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 | #85548 / #86622 | P2，08-16 后无动静 | 正常排队；#85548 safe-mode 语义需维护者拍板 |
 | #75771 / #75453 | sweeper high/medium 已处理，head 落后 4000+ | 有效资产，下次触碰时 rebase |
 | #65100 / #65112 | P3 冷门域，落后 4000+ | 无 issue 支撑难合；冻结不再投入，或关闭止损 |
+
+### 09-02 规律更新：anchor 层已卷死，evidence authority 是唯一持续优势
+
+09-02 全量扫当天 60 条 issue 的实证：**头部候选 issue 全部在当天（数小时内）被 PR 占坑**——#101093→#101095、#101064→#101085+#101081、#101039→#101055、#100946→#100976、#100943→#100974、#100954→#101108。背后是一批高velocity AI 贡献者（dionysoslin615/foma-agent/chelsealong/Sahilvishnaliya/686f6c61/mustafaturksavas…），单日 issue→PR 转化以小时计。**结论**：① §4 路径 A/B/C 中的「空+锚占位」（#96472 模式）对人类节奏已基本不可用——发现即占坑的窗口 <24h；② 模式选择框架收窄为：**evidence authority**（生产取证/独家证据生态，如 weixin TTL 模型、state.db 修复线）+ **salvage**（等 AI 批量 PR 停滞后捡，供给端比以前充足）+ **substance 层查重后剩余人迹罕至的深水区**；③ #86622 被 teknium salvage 保署名合入（09-02）证明：写得「单关注点+可剥离」的 PR 即使不合，也在 maintainer 的 salvage 池里增值——own-PR 仍值得提，但价值实现形式变了。
+
+---
+
+## 11. 策略主轴 2.0：review-first，让维护者做 pick（2026-09-02 拍板）
+
+> 取代 §4 的路径推荐（§5 salvage 流程仍有效，成为第三腿）。用户拍板：专注高质量 review，review 中搭车我方 commit，让收敛者 pick。
+
+### 证据链（09-02 侦察 + 我方历史四实证）
+
+- **上游已是 AI farm 生态，三种架构并存**：① 自锚打包（@leomcamilo：#101093 issue 08:22 发 → #101095 PR 08:23 开，**1 分钟间隔**，长文 issue+PR 预打包背靠背提交）② 消防 hose 竞速（@fangliquanflq：单日 7 PR、30 分钟 turnaround 认领他人 issue；#101064 被 @rainbowgore/@JoaoMarcos44 30/36 分钟双抢）③ issue 农场（@dionysoslin615：只发 issue + 58 次 DeleteEvent=agent 临时分支清理指纹；@foma-agent 简介自白 "An AI agent with human oversight"）。commit trailer 全部干净（同样遵守上游无 trailer 惯例）
+- **当日 8 个抢坑 PR 零合入**（7 OPEN + 1 CLOSED）→ **anchor ≠ merge**；瓶颈=维护者注意力+质量+证据。分钟级占坑竞速不参与，SLA=当日内+决策质量（唯一例外：深水区+独家证据域，如 weixin 族）
+- **三代收敛文化**：erosika #83500 → kshitij #85452 → teknium #99375/#100916，皆从 PR 池 cherry-pick 保署名收编
+- **我方四实证**：#86622 被 #100916 salvage（3 commits 署名保留，09-02）/ 1d0e71e822 被 #86062 cherry-pick（"Adopted your idea @strzhao"）/ #96437 review 33 分钟被全盘接受 / #94862 收敛覆盖我方 review 指出的两残余缺口（无 credit 但实际塑形了收敛内容）
+
+### 三腿分工
+
+| 腿 | 动作 | 触发条件 |
+|---|---|---|
+| **evidence authority** | 生产取证型 review/评论 | 域内 PR/issue + 我方独家证据（weixin TTL/取证包、state.db/FTS、cron 投递可观测性）|
+| **cherry-pick invitation** | review 指出缺口 + offer 库存 commit（#86062 模式）| review 真发现缺口 && 库存有货 |
+| **salvage** | 停滞 PR 雷达 → probe → 接手（§5 流程）| farm 洪水 → 批量停滞的工业化供给 |
+
+### review 红线（COI 防御）
+
+1. 主载荷 = **对维护者的验证价值**：file:line receipts + mutation 自证（#96437 评论格式为模板）
+2. 自己的 PR/commit 只在**缺口驱动**场合出现；没货就纯 review，不硬带
+3. offer 措辞规范（**09-07 #103650 教训**：lift/absorb 对称措辞 → substance 被逐字采纳但作者默认走成本最低的 absorb 路径，我方 2 commits 署名归零）——**排序推荐，永不并列**：
+   - ① **lift 保署名 = 显式首选**：「the filters and tests lift as one small commit keeping authorship」
+   - ② absorb 须点名 credit：「if you'd rather rewrite it yourself, a Co-authored-by on the absorbing commit would be appreciated」
+   - ③ follow-up PR = 我方兜底（对方两条都不要时才摆出）
+   - 模板：「这个缺口我有一个单关注点 commit 已修（fork sha），测试齐全——**首选**你整块 cherry-pick/rebase（署名保留）；如你倾向自己重写，麻烦在该 commit 上带 Co-authored-by；两者都不合适我再出 follow-up」
+   - **禁语**：「随你方便」/「equally fine」/任何把 lift 与 absorb 等权呈现的句式
+4. **每周深检预算 1-3 个**（三轮验证 strategist→亲手核→fresh-context 红队成本高）；其余新 PR 只内部研判不发帖——不做全仓免费 QA（~~09-02 定 1-3/周~~ **09-04 用户拍板放宽为周 30/日 3——token 充裕，配额只做防突发节流；COI 防线移由 rubric 门槛 + premise 复验 + 每项微信审批承担**；由 `contrib-data/budget.json` 机械记账，散文预算状态以账本为准）
+5. 筛选 rubric：**域契合 × 合入临近度（CI 绿/review 收敛/mergeable）× 独家弹药 × 可收敛性 × 作者质量史**
+
+### §11.1 执行通道机械化（09-04 上线：ready-queue + L2-A 微信审批环）
+
+- **入队**：scan/radar 把「验证成本已付清、只差 L2 批准」的项写 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`；premises 逐条登记，radar 每日复验 + 执行前 TTL 复验双保险——#102413 教训制度化）
+- **准备**：launchd 09:37 对预算内 top1 自动三轮审（两次独立 `claude -p` 进程 = 结构性 fresh-context；probe 车道单轮 strategist 免红队、不占深检预算）；成稿推微信 🟡 审批卡（tunnel 只读 URL，审后即删）
+- **执行**：用户「批/改/否 #rq-id」→ hermes 侧 `hermes-contrib-l2` skill：TTL 复验 → 逐字投递 → approved.log（L2-A，与会话内 L2-B 等效且互查去重）→ 回执；48h 搁置（09:17 cron 对账）。own-PR push 另需 `allow_own_pr_push=true`（默认关）
+
+### 可 pick 库存台账（资产；review 是分发渠道）
+
+| 资产 | 域 | 搭车场景 |
+|---|---|---|
+| #96472 import sanity canary（CI 绿、review 闭环、等复审）| gateway 启动/lifecycle | 同域 PR review 顺带提 |
+| #85548 safe-mode memory provider（needs-decision）| config/safe-mode | 同域 issue/PR |
+| #75771 poll-loop guard salvage / #75453 ffmpeg drain salvage | process/cron 执行 | process 域 PR review 时 offer rebase |
+| #65794 image feedback 层 | vision/gateway 图片 | 图片路由域 PR（#94423 watch 中）|
+| 1d0e71e822（FTS 四点加固，在 #86062 内）| SQLite/FTS | state.db 损坏族收敛（正在进行时：#101093/#101064 + 当日 4 PR）|
+| 方向 3 cached-output 重投（#16645 salvage，未开工）| cron 投递 | 按需生产 |
+
+### 漏斗度量
+
+review → adoption（点被采纳）→ **pick（commit 被收编入 main，graph 亮灯）** → 关系信号（@提及/直接 ping/进收敛者视野）。review 本身不入 graph，**pick 才是终极产出**；库存是资产、review 是渠道、信任是复利。
 
 ## 相关记忆
 - `hermes-contribution-followups.md` —— 4 个 PR 的具体进度 + sweeper 反馈机制

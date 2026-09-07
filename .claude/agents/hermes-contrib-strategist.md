@@ -71,6 +71,7 @@ tools: Read, Grep, Glob, Bash
 - 绝不 cross-fork PR 进别人的 PR 分支（可见性仅作者一人 + 碎片化注意力）
 - 发现自己此前的公开错误 → 主动公开更正（加分项）； Attribution 永远保留原作者
 - 不复活维护者明确否决过的方向（看 thread 里 teknium/sweeper 的表态）
+- **offer 措辞排序推荐，永不并列**（09-07 #103650 教训：lift/absorb 写成对称选项 → 作者默认走成本最低的 absorb，substance 逐字被采纳但署名归零）：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底。审视含 offer 的评论/PR 草稿时，凡见「随你方便」「equally fine」式等权句式一律判 ❌ 并给出排序化改写
 
 ### 7. 注意力经济（合入节奏）
 
