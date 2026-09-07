@@ -24,6 +24,33 @@ def main():
     with open(data_path, 'r', encoding='utf-8') as f:
         trip_data = json.load(f)
 
+    # ── 09-06 产品审查修复：管线保证，不靠生成方自觉 ──
+    from datetime import datetime, timezone, timedelta
+    from urllib.parse import quote
+
+    # ① 烙入真实生成时间（页脚「数据采集于」——修掉 fmtNow() 每次打开印当下时间的信任 bug）；
+    #    取数据文件 mtime（采集完成时刻），而非 inject 当下（重注入不会谎称数据新鲜度）
+    if not trip_data.get('generated_at'):
+        tz = timezone(timedelta(hours=8))
+        mtime = os.path.getmtime(data_path)
+        trip_data['generated_at'] = datetime.fromtimestamp(mtime, tz).strftime('%Y-%m-%d %H:%M')
+
+    # ② 导航链接自动补全：有 location 但无 navi_url → 从坐标生成高德 URI（真实实例 2/7 缺失）
+    auto_navi = 0
+    for item in trip_data.get('timeline', []):
+        loc = item.get('location') or {}
+        links = item.get('links') or {}
+        has_navi = item.get('navi_url') or links.get('amap_navi')
+        if not has_navi and loc.get('lng') and loc.get('lat'):
+            name = loc.get('name') or item.get('title', '')
+            item['navi_url'] = (
+                f"https://uri.amap.com/marker?position={loc['lng']},{loc['lat']}"
+                f"&name={quote(str(name)[:30])}&coordinate=gaode&callnative=1"
+            )
+            auto_navi += 1
+    if auto_navi:
+        print(f"   🧭 自动补导航链接: {auto_navi} 项（uri.amap.com/marker 从坐标生成）")
+
     # 读取 HTML 模板
     template_path = os.path.join(skill_root, 'assets', 'template.html')
     with open(template_path, 'r', encoding='utf-8') as f:

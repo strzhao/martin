@@ -593,6 +593,138 @@ footer {
 #font-switch .ft-label { font-size: 0.72rem; opacity: .92; }
 #back-top { bottom: 4.5rem; font-size: 1.3rem; display: none; }
 
+/* === 09-06 产品审查批次：时长徽章 / 双向锚点 / Plan B / 天气折叠 / 预算切换反馈 === */
+.dur-badge {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted-dark);
+  background: var(--hairline);
+  border-radius: 0.8rem;
+  padding: 0.05rem 0.5rem;
+  vertical-align: 0.08rem;
+  white-space: nowrap;
+}
+.link-torest { background: var(--sky-soft); color: var(--sky); }
+.back-link {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--sky);
+  text-decoration: none;
+  margin-left: 0.5rem;
+  white-space: nowrap;
+}
+.alt-card { border-left: 0.17rem solid var(--amber); }
+.alt-when {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--amber-dark);
+  background: var(--amber-soft);
+  border-radius: 0.8rem;
+  padding: 0.08rem 0.55rem;
+  margin-top: 0.3rem;
+}
+.weather-more { margin-top: 0.25rem; }
+.weather-more summary {
+  font-size: 0.85rem;
+  color: var(--sky);
+  cursor: pointer;
+  list-style: none;
+  min-height: 1.8rem;
+}
+.weather-more summary::-webkit-details-marker { display: none; }
+.weather-more summary::after { content: ' ▾'; }
+.weather-more[open] summary::after { content: ' ▴'; }
+.tier-flash { animation: tierFlash 1.2s ease; border-radius: 0.5rem; }
+@keyframes tierFlash {
+  0% { background: var(--amber-soft); }
+  100% { background: transparent; }
+}
+.copy-addr {
+  font-size: 0.85rem;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 1rem;
+  border-radius: 1.2rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 0.055rem solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+}
+.copy-addr:active { transform: scale(0.97); }
+.offline-note { margin-top: 0.3rem; font-size: 0.78rem; color: var(--muted); }
+
+/* === 描述结构化（09-06 三轮审查）：结论卡 / 注意卡 / 紧凑 bullet / 折叠详情 / 照片条 === */
+.tip-callout, .warn-callout {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.7rem;
+  margin-top: 0.4rem;
+}
+.tip-callout { background: var(--accent-soft); color: var(--text); }
+.tip-callout::before { content: '💡 '; }
+.warn-callout { background: var(--amber-soft); color: var(--text); }
+.warn-callout::before { content: '⚠️ '; }
+.hl-list, .desc-bullets {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-top: 0.3rem;
+  padding-left: 1.1rem;
+}
+.hl-list { color: var(--text); }
+.hl-list li::marker { color: var(--accent); }
+.desc-bullets li::marker { color: var(--muted); }
+.desc-more { margin-top: 0.35rem; }
+.desc-more summary {
+  font-size: 0.85rem;
+  color: var(--sky);
+  cursor: pointer;
+  list-style: none;
+  min-height: 1.8rem;
+  font-weight: 600;
+}
+.desc-more summary::-webkit-details-marker { display: none; }
+.desc-more summary::after { content: ' ▾'; }
+.desc-more[open] summary::after { content: ' ▴'; }
+
+/* === 内容丰富化（09-06）：实用信息块 / 怎么玩 / 带娃 / 真实声音 === */
+.info-grid { margin-top: 0.5rem; border-top: 1px dashed var(--hairline); padding-top: 0.4rem; }
+.info-row { display: flex; gap: 0.45rem; font-size: 0.85rem; line-height: 1.65; margin-top: 0.15rem; }
+.info-row .info-ico { flex: 0 0 auto; }
+.info-row .info-label { flex: 0 0 auto; color: var(--muted); }
+.info-row .info-val { flex: 1; color: var(--text-secondary); }
+.play-guide { margin-top: 0.55rem; }
+.play-guide .pg-label { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+.play-guide ol { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.7; margin: 0.25rem 0 0; padding-left: 1.2rem; }
+.play-guide li::marker { color: var(--accent); font-weight: 600; }
+.kid-line { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.45rem; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 0.4rem 0.65rem; line-height: 1.6; }
+.voice-card { font-size: 0.85rem; line-height: 1.6; margin-top: 0.35rem; padding: 0.4rem 0.65rem; border-left: 3px solid var(--hairline); color: var(--text-secondary); }
+.voice-card.good { border-left-color: var(--accent); }
+.voice-card.bad { border-left-color: var(--amber); }
+.voice-card .voice-src { color: var(--muted); font-size: 0.78rem; }
+.photo-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.45rem 0 0.1rem;
+  scroll-snap-type: x mandatory;
+}
+.photo-strip img {
+  flex: 0 0 auto;
+  width: 8.2rem;
+  height: 6.2rem;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  scroll-snap-align: start;
+  background: var(--hairline);
+}
+
 /* === 响应式 === */
 @media (min-width: 35.6rem) {
   body { padding: 0 0 2.2rem; }
@@ -624,9 +756,13 @@ footer {
 <div class="section-title chapter-title" id="restaurant-section-title" style="display:none">🍜 餐厅总览</div>
 <div id="restaurant-list" class="restaurant-list"></div>
 
+<div class="section-title chapter-title" id="alt-section-title" style="display:none">🌂 Plan B · 备选方案</div>
+<div id="alt-list" class="restaurant-list"></div>
+
 <footer>
   <div id="footer-sources" style="display:none">信息来源 &middot; <span id="source-list"></span></div>
   <div id="gen-time"></div>
+  <div class="offline-note">本页为自包含文件，无网可读 · 建议微信浮窗/收藏</div>
 </footer>
 
 <button id="back-top" class="float-btn" onclick="scrollTop()" aria-label="回到顶部">&#8593;</button>
@@ -635,6 +771,9 @@ footer {
 <script>
 var TRIP_DATA = __TRIP_DATA__;
 var currentBudget = 'economy';
+/* 微信 WebView 无法可靠唤起导航 App（行业实测+高德官方文档）：微信内 navi 降级为
+   「打开地图」（uri.amap.com 网页版可用），浏览器内为「导航去这里」（自动唤起 App） */
+var IS_WECHAT = /micromessenger/i.test(navigator.userAgent || '');
 
 /* ---------- 小工具 ---------- */
 function $(id) { return document.getElementById(id); }
@@ -769,6 +908,135 @@ function uniqueDayCount(groups) {
 }
 
 /* ---------- 行程项渲染 ---------- */
+/* ---------- 行程项描述：句子级结构化（09-06 三轮产品审查：大段文字决策成本高） ----------
+ * 生成方写的是叙述散文，但决策需要的是分级信息：
+ *   💡 句 → 苔绿「结论卡」（核实结论/建议动作）
+ *   ⚠️ 句 → 琥珀「注意卡」（风险/营业时间/天气影响）
+ *   其余 → 紧凑 bullet；超 120 字时 bullet 折叠进「详情」
+ * 有 highlights/tips 结构化字段时优先生效，description 整体降级为「完整说明」折叠。 */
+function splitSentences(s) {
+  return String(s || '').match(/[^。；!！?？]+[。；!！?？]?/g) || [];
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+
+function descHtml(item) {
+  var desc = String(item.description || '');
+  var hl = item.highlights || [];
+  var tips = item.tips || [];
+  var html = '';
+
+  // 结构化 highlights：决策要点直接成 bullet（最高优先）
+  if (hl.length) {
+    html += '<ul class="hl-list">' + hl.map(function (h) {
+      return '<li>' + h + '</li>';
+    }).join('') + '</ul>';
+  }
+  // 结构化 tips → 注意卡
+  for (var ti = 0; ti < tips.length; ti++) {
+    html += '<div class="warn-callout">' + tips[ti] + '</div>';
+  }
+
+  // 散文兜底：句子级分类
+  var rest = '';
+  if (desc) {
+    var sens = splitSentences(desc);
+    var callouts = '';
+    var bullets = [];
+    for (var i = 0; i < sens.length; i++) {
+      var s = sens[i].replace(/^\s+|\s+$/g, '');
+      if (!s) continue;
+      s = s.replace(/\*\*/g, ''); // 生成方散文常带 markdown 加粗标记，页面非 md 渲染会露出星号
+      if (s.indexOf('⚠️') >= 0) {
+        callouts += '<div class="warn-callout">' + s.replace(/^⚠️\s*/, '') + '</div>';
+      } else if (s.indexOf('💡') >= 0) {
+        callouts += '<div class="tip-callout">' + s.replace(/^💡\s*/, '') + '</div>';
+      } else {
+        bullets.push(s);
+      }
+    }
+    if (bullets.length) {
+      var bl = '<ul class="desc-bullets">' + bullets.map(function (b) {
+        return '<li>' + b + '</li>';
+      }).join('') + '</ul>';
+      // 折叠规则：有结构化字段时 description 全折；否则 bullet 总长大于阈值才折
+      var bulletLen = bullets.join('').length;
+      var foldLabel = hl.length ? '完整说明' : '详情';
+      if (hl.length || (bulletLen > 120 && bullets.length > 1)) {
+        bl = '<details class="desc-more"><summary>' + foldLabel + ' · ' + bullets.length + ' 条</summary>' + bl + '</details>';
+      }
+      rest = callouts + bl;
+    } else {
+      rest = callouts;
+    }
+  }
+  return html + rest;
+}
+
+/* 照片条：横向滑动、懒加载、加载失败静默移除（图源防盗链是常态，纯增强不阻塞） */
+function photosHtml(item) {
+  var ph = item.photos || [];
+  if (!ph.length) return '';
+  var imgs = '';
+  for (var i = 0; i < ph.length; i++) {
+    imgs += '<img src="' + escAttr(ph[i]) + '" loading="lazy" referrerpolicy="no-referrer" ' +
+      'alt="" onerror="this.remove()">';
+  }
+  return '<div class="photo-strip">' + imgs + '</div>';
+}
+
+/* 实用信息块：营业时间/门票/预约/停车/人流——自驾+带娃的硬信息（09-06 内容丰富化） */
+function infoHtml(item) {
+  var info = item.info || {};
+  var defs = [
+    ['hours', '🕐', '营业'],
+    ['ticket', '🎫', '门票'],
+    ['reservation', '📱', '预约'],
+    ['parking', '🅿️', '停车'],
+    ['crowd', '👥', '人流']
+  ];
+  var rows = '';
+  for (var i = 0; i < defs.length; i++) {
+    var v = info[defs[i][0]];
+    if (!v) continue;
+    rows += '<div class="info-row"><span class="info-ico">' + defs[i][1] + '</span>' +
+      '<span class="info-label">' + defs[i][2] + '</span>' +
+      '<span class="info-val">' + v + '</span></div>';
+  }
+  return rows ? '<div class="info-grid">' + rows + '</div>' : '';
+}
+
+/* 怎么玩/怎么吃：动线、必看点、推荐菜——与 highlights（选不选它）互补（09-06） */
+function playGuideHtml(item) {
+  var pg = item.play_guide || [];
+  if (!pg.length) return '';
+  return '<div class="play-guide"><div class="pg-label">🧭 怎么玩</div><ol>' +
+    pg.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol></div>';
+}
+
+/* 带娃适配一行：推车/母婴室/适龄/午睡兼容（09-06） */
+function kidHtml(item) {
+  if (!item.kid) return '';
+  return '<div class="kid-line">👶 ' + item.kid + '</div>';
+}
+
+/* 真实声音：一好一差两条代表性实评（带来源，比评分数字立体）（09-06） */
+function voicesHtml(item) {
+  var vs = item.voices || [];
+  if (!vs.length) return '';
+  var html = '';
+  for (var i = 0; i < vs.length; i++) {
+    var v = vs[i];
+    if (!v || !v.quote) continue;
+    var tone = v.tone === 'bad' ? 'bad' : 'good';
+    html += '<div class="voice-card ' + tone + '">&ldquo;' + v.quote + '&rdquo;' +
+      (v.source ? ' <span class="voice-src">— ' + v.source + '</span>' : '') + '</div>';
+  }
+  return html;
+}
+
 function itemHtml(item) {
   // 聚合口碑：各字段缺失时跳过对应行；整体折叠进「为什么推荐」
   var aggHtml = '';
@@ -807,7 +1075,15 @@ function itemHtml(item) {
       rows += aggRow('&sect;', '小红书：' + ag.xhs_likes + ' 人推荐');
     }
     if (rows) {
-      aggHtml = '<details class="evidence"><summary>为什么推荐</summary>' +
+      // hook：折叠入口直接亮出最强信号（09-06 产品审查：多源交叉验证是核心资产，不应全藏）
+      var hookParts = [];
+      if (ag.primary && ag.primary.dianping_score) hookParts.push('★' + ag.primary.dianping_score);
+      else if (ag.dianping && ag.dianping.score) hookParts.push('点评 ' + ag.dianping.score);
+      if (ag.bilibili_views) hookParts.push('B站 ' + fmtViews(ag.bilibili_views));
+      if (ag.xhs_likes) hookParts.push('小红书 ' + ag.xhs_likes + ' 赞');
+      aggHtml = '<details class="evidence"><summary>为什么推荐' +
+        (hookParts.length ? ' · ' + hookParts.slice(0, 3).join(' · ') : '') +
+        '</summary>' +
         '<div class="agg-card">' + rows + '</div></details>';
     }
   }
@@ -817,13 +1093,26 @@ function itemHtml(item) {
   var naviUrl = links.amap_navi || item.navi_url || '';
   var actionHtml = '';
   if (naviUrl) {
-    actionHtml += '<a class="navi-btn" href="' + naviUrl + '" target="_blank" rel="noopener">🧭 导航去这里</a>';
+    actionHtml += '<a class="navi-btn" href="' + naviUrl + '" target="_blank" rel="noopener">' +
+      (IS_WECHAT ? '🧭 打开地图' : '🧭 导航去这里') + '</a>';
   }
   var pills = '';
+  // 司机场景刚需：地址一键复制（微信内粘到高德搜索框是最可靠的兜底路径）；
+  // address 缺失时回退 location.name（真实数据 0/7 项有 address——字段约定未落实）
+  var addrText = item.address || (item.location && item.location.name) || '';
+  if (addrText) {
+    pills += '<button type="button" class="copy-addr" data-addr="' +
+      String(addrText).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') +
+      '">📋 复制地址</button>';
+  }
   if (links.dianping) pills += '<a class="link-dianping" href="' + links.dianping + '" target="_blank" rel="noopener">点评</a>';
   if (links.dianping_wang) pills += '<a class="link-dianping" href="' + links.dianping_wang + '" target="_blank" rel="noopener">点评</a>';
   if (links.bilibili) pills += '<a class="link-bilibili" href="' + links.bilibili + '" target="_blank" rel="noopener">B站</a>';
   if (links.xhs) pills += '<a class="link-xhs" href="' + links.xhs + '" target="_blank" rel="noopener">小红书</a>';
+  // food 项 ↔ 餐厅总览双向锚点（09-06 产品审查：到饭点看时间线时必须一键到选餐厅区）
+  if (item.type === 'food' && (TRIP_DATA.restaurants || []).length) {
+    pills += '<a class="link-torest" href="#restaurant-section-title">↓ 选餐厅</a>';
+  }
   if (pills) actionHtml += '<div class="link-row">' + pills + '</div>';
 
   // 徽章行：人均¥X / ★评分 / features 胶囊
@@ -842,10 +1131,16 @@ function itemHtml(item) {
 
   return '<div class="timeline-item ' + (item.type || '') + '">' +
     '<div class="type-icon">' + (item.icon || '●') + '</div>' +
-    '<div class="time-label">' + (item.time || '') + '</div>' +
+    '<div class="time-label">' + (item.time || '') +
+      (item.duration_min ? ' <span class="dur-badge">约' + fmtDuration(item.duration_min) + '</span>' : '') + '</div>' +
     '<div class="item-title">' + displayTitle + '</div>' +
-    (item.description ? '<div class="item-desc">' + item.description + '</div>' : '') +
+    photosHtml(item) +
+    descHtml(item) +
+    playGuideHtml(item) +
+    voicesHtml(item) +
     (badges ? '<div class="badge-row">' + badges + '</div>' : '') +
+    kidHtml(item) +
+    infoHtml(item) +
     (item.address ? '<div class="item-address">📍 ' + item.address + '</div>' : '') +
     actionHtml + aggHtml +
     '</div>';
@@ -928,12 +1223,21 @@ function render() {
     var descParts = [];
     if (w.wind) descParts.push(w.wind);
     if (w.tip) descParts.push(w.tip);
-    if (w.note) descParts.push(w.note);
+    // 长天气备注折叠（09-06 产品审查：sanya 实例 note 一大段话把天气卡撑成文本块）
+    var noteHtml = '';
+    if (w.note) {
+      if (w.note.length > 40) {
+        noteHtml = '<details class="weather-more"><summary>天气详情</summary><div class="desc">' + w.note + '</div></details>';
+      } else {
+        descParts.push(w.note);
+      }
+    }
     wc.innerHTML =
       '<div class="icon">' + getWeatherIcon(w.condition) + '</div>' +
       '<div class="info">' +
         '<div class="temp">' + tempLine + '</div>' +
         (descParts.length ? '<div class="desc">' + descParts.join(' &middot; ') + '</div>' : '') +
+        noteHtml +
       '</div>';
   } else {
     wc.style.display = 'none';
@@ -1047,7 +1351,6 @@ function render() {
     rList.style.display = 'none';
     rList.innerHTML = '';
   } else {
-    rTitle.textContent = '🍜 餐厅总览 · ' + restaurants.length + ' 家';
     rTitle.style.display = '';
     rList.style.display = '';
     var cards = '';
@@ -1093,6 +1396,32 @@ function render() {
         '</div>';
     }
     rList.innerHTML = cards;
+    // 餐厅区头部加「回到行程」反链（与 food 项的「↓ 选餐厅」对偶）
+    rTitle.innerHTML = '🍜 餐厅总览 · ' + restaurants.length + ' 家' +
+      ' <a class="back-link" href="#timeline">↑ 回到行程</a>';
+  }
+
+  // Plan B 备选方案（09-06 产品审查：alternatives 之前采了不渲染——雨天/带娃场景 Plan B 是刚需）
+  var alts = d.alternatives || [];
+  var aTitle = $('alt-section-title');
+  var aList = $('alt-list');
+  if (!alts.length) {
+    aTitle.style.display = 'none';
+    aList.style.display = 'none';
+    aList.innerHTML = '';
+  } else {
+    aTitle.style.display = '';
+    aList.style.display = '';
+    var aCards = '';
+    for (var k = 0; k < alts.length; k++) {
+      var a = alts[k];
+      aCards += '<div class="rest-card alt-card">' +
+        '<div class="rest-name">' + (a.name || '') + '</div>' +
+        (a.when ? '<div class="alt-when">当「' + a.when + '」时</div>' : '') +
+        (a.detail ? '<div class="rest-meta">' + a.detail + '</div>' : '') +
+        '</div>';
+    }
+    aList.innerHTML = aCards;
   }
 
   // 页脚
@@ -1104,16 +1433,53 @@ function render() {
   } else {
     srcRow.style.display = 'none';
   }
-  $('gen-time').textContent = '旅行助手生成于 ' + fmtNow();
+  // 生成时间：取 inject 时烙入的 generated_at（数据真实新鲜度），绝不显示"打开时间"——
+  // 每次打开都印当下时间会谎称数据新鲜度（09-06 产品审查发现）；旧数据无此字段则如实标注
+  if (d.generated_at) {
+    $('gen-time').textContent = '数据采集于 ' + d.generated_at;
+  } else {
+    $('gen-time').textContent = '数据采集时间未知（旧版数据）';
+  }
 
   // scroll-spy（纯增强：无 IntersectionObserver 静默跳过，锚点本身仍可用）
   initScrollSpy();
 }
 
 function switchBudget(level) {
+  var before = tierSignature();
   currentBudget = level;
+  try { localStorage.setItem('tp-budget', level); } catch (e) {}
   render();
   highlightActiveItem(false);
+  flashChangedTiers(before);
+}
+
+/* 预算档位持久化 + 切换可见反馈（09-06 产品审查：切换后页面几乎不变 → "按了没反应"） */
+try {
+  var savedBudget = localStorage.getItem('tp-budget');
+  if (savedBudget === 'economy' || savedBudget === 'standard' || savedBudget === 'premium') {
+    currentBudget = savedBudget;
+  }
+} catch (e) {}
+
+function tierSignature() {
+  var tl = (TRIP_DATA && TRIP_DATA.timeline) || [];
+  var sig = [];
+  for (var i = 0; i < tl.length; i++) {
+    var it = tl[i];
+    sig.push((getTierProp(it, 'name') || '') + '|' + (getTierProp(it, 'price') || ''));
+  }
+  return sig;
+}
+
+function flashChangedTiers(before) {
+  try {
+    var after = tierSignature();
+    var items = document.querySelectorAll('#timeline .timeline-item');
+    for (var i = 0; i < after.length; i++) {
+      if (before[i] !== after[i] && items[i]) items[i].classList.add('tier-flash');
+    }
+  } catch (e) { /* 纯增强 */ }
 }
 
 /* ---------- 「进行中」定位（全防御式：任何异常返回 null） ---------- */
@@ -1272,7 +1638,31 @@ function scrollTop() {
 
 document.addEventListener('DOMContentLoaded', function () {
   render();
-  highlightActiveItem(true);
+  // 不自动滚动（09-06 产品审查：打开即跳转会打断从封面开始的阅读起点），仅高亮当前项
+  highlightActiveItem(false);
+});
+
+/* ---------- 复制地址（事件委托；clipboard API + execCommand 兜底） ---------- */
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('.copy-addr') : null;
+  if (!b) return;
+  var text = b.getAttribute('data-addr') || '';
+  var done = function () {
+    var orig = b.textContent;
+    b.textContent = '✓ 已复制';
+    setTimeout(function () { b.textContent = orig; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, done);
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (err) {}
+    document.body.removeChild(ta);
+    done();
+  }
 });
 </script>
 </body>

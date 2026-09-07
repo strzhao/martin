@@ -104,7 +104,16 @@ def lint(data_path):
             links = item.get('links') or {}
             has_navi = item.get('navi_url') or links.get('amap_navi')
             if not has_navi:
-                warnings.append(f'{prefix} 有坐标但无导航链接')
+                warnings.append(f'{prefix} 有坐标但无导航链接（inject 会自动补全，但建议生成时带上）')
+
+        # 时长 — sight/food 缺 duration_min 页面无法显示时长徽章（09-06 产品审查）
+        if item.get('type') in ('sight', 'food') and not item.get('duration_min'):
+            warnings.append(f'{prefix} 缺 duration_min（带娃节奏感的关键信息）')
+
+        # 描述结构化 — 长散文 + 无 highlights = 决策成本高（09-06 三轮产品审查）
+        desc_len = len(item.get('description') or '')
+        if desc_len > 150 and not item.get('highlights'):
+            warnings.append(f'{prefix} description {desc_len} 字且无 highlights——建议写 3-4 条决策要点替代大段文字')
 
         # 聚合数据一致性
         agg = item.get('aggregation', {})
@@ -176,9 +185,14 @@ def lint(data_path):
                 pass
 
     # === restaurants ===
+    # 09-06 均衡整改：不再对「无 food」告警——纯游玩行程合法；
+    # 反向场景（有 food 项但 restaurants 为空，餐厅总览将缺失）才提醒
     rs = data.get('restaurants', [])
-    if not rs and not any(i.get('type') == 'food' for i in tl):
-        warnings.append('无 restaurants 数组且 timeline 无 food 类型项')
+    has_food = any(i.get('type') == 'food' for i in tl)
+    if has_food and not rs:
+        warnings.append('timeline 有 food 项但 restaurants 为空——「餐厅总览」章节将缺失')
+    if not has_food:
+        warnings.append('timeline 无 food 项——确认是半日行程，还是漏排了用餐')
 
     for i, r in enumerate(rs):
         prefix = f'restaurants[{i}]'
