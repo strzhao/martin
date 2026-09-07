@@ -30,6 +30,21 @@ RQ="$MARTIN/scripts/contrib/rq.sh"
 NOTIFY="$MARTIN/scripts/contrib/notify.sh"
 APPROVED_LOG="${APPROVED_LOG:-$MARTIN/approved.log}"
 GH_BIN="${GH_BIN:-gh}"
+# tunnel CLI 装在 nvm node bin（launchd PATH 极简找不到——09-06 装载后实证 rc=127）：
+# env seam 优先 → PATH 查找 → nvm 布局探测（同 collect.sh；被 collect 调起时继承其 export）
+TUNNEL_BIN="${TUNNEL_BIN:-}"
+if [[ -z "$TUNNEL_BIN" ]]; then
+  TUNNEL_BIN="$(command -v tunnel 2>/dev/null || true)"
+fi
+if [[ -z "$TUNNEL_BIN" ]]; then
+  _tw_cand="$(ls -t "$HOME"/.nvm/versions/node/*/bin/tunnel 2>/dev/null | head -1 || true)"
+  if [[ -n "$_tw_cand" ]]; then
+    TUNNEL_BIN="$_tw_cand"
+    # tunnel 是 node 包装脚本（exec node …）——node 本体也要可达，把 nvm bin 目录一并进 PATH
+    PATH="$(dirname "$_tw_cand"):$PATH"
+    export PATH
+  fi
+fi
 TUNNEL_BIN="${TUNNEL_BIN:-tunnel}"
 # DRY_RUN=true → 一切写路径只打印（C7）；默认 false
 DRY_RUN="${APPROVAL_DRY_RUN:-false}"
@@ -76,7 +91,9 @@ fail() { # <原因> → 置 failed（仅当前态允许时）+ pipeline-failure 
 }
 
 # strip_leading_comments <file> → stdout
-# 剥离头部 `<!-- ... -->` 注释块（可多块，块间空行一并跳过），其余行逐字输出（C8）
+# 剥离头部 `<!-- ... -->` 注释块（可多块，块间空行一并跳过），其余行逐字输出（C8）；
+# 并截掉「## 内部备注」起的尾部段（09-06 投递事故复盘：103568 草稿含内部备注段，
+# 若不截断会随评论外泄——与审批页 payload 口径一致）
 strip_leading_comments() {
   awk '
     BEGIN { scanning = 1; inblock = 0 }
@@ -89,6 +106,7 @@ strip_leading_comments() {
       }
       scanning = 0
     }
+    /^## 内部备注/ { exit }
     { print }
   ' "$1"
 }
@@ -121,7 +139,13 @@ ttl_verify() {
     return 1
   fi
   # 2) in-body 无新占坑 PR（自身 item.pr 豁免；数组形=gh pr list 现状，items 包裹形=搜索 API 兼容）
+  # 09-06 语义修正：占坑检查只对 own-PR/probe-salvage 有意义（别人在建=我不建）；
+  # review-evidence 的 PR 引用恰恰是评论对象/背景（「出现竞品→改判 review-evidence」既定打法），
+  # 否则 teknium salvage 竞品这种最优解会被误判 premise 死亡（104067b 误杀实证）
   local prs own="${ITEM_PR}" foreign="" p
+  if [[ "${DISPOSITION:-}" == "review-evidence" ]]; then
+    prs=""
+  else
   prs="$(GH_REPO="$REPO" "$GH_BIN" pr list --search "${ISSUE} in:body" --state open --json number 2>>"$LOG" \
     | jq -r 'if type == "array" then ([.[].number | tostring] | join(","))
              elif (type == "object") and has("items") then ([.items[]?.number | tostring] | join(","))
@@ -129,6 +153,7 @@ ttl_verify() {
   if [[ "$prs" == "SHAPE_ERROR" ]]; then
     TTL_FAIL_REASON="issue #${ISSUE} gh pr list 响应形状异常（复验失败不放行）"
     return 1
+  fi
   fi
   if [[ -n "$prs" ]]; then
     local old_ifs="$IFS"
@@ -179,15 +204,19 @@ do_approved() {
       fail "TTL 复验未过: ${TTL_FAIL_REASON}"
       return 0
     fi
+    # 落点（09-06 事故修复）：review-evidence 的载荷是 PR 评审，须落 item.pr（占坑车作者
+    # 才会收到）；无 pr 锚（probe-salvage 等）才落 issue。TTL 复验仍锚 issue（premise 源）。
+    local TARGET_NUM="${ITEM_PR:-$ISSUE}"
     if [[ "$DRY_RUN" == "true" ]]; then
-      echo "[dry-run] gh api -X POST repos/${REPO}/issues/${ISSUE}/comments -f body=- < ${BODY_FILE}"
+      echo "[dry-run] gh api -X POST repos/${REPO}/issues/${TARGET_NUM}/comments -F body=@${BODY_FILE}"
       URL="dryrun://comment/${ID}"
     else
-      # 投递走 stdin 字段（gh 官方语义：field 值 `-` = 从标准输入读），字节逐字、无 ARG_MAX 上限
+      # 投递走 -F @file（gh 官方语义：-F 的 @路径=读文件；`-f body=-` 会把字面量 "-" 当正文——
+      # 09-06 实证：-f 是 string field 不读 stdin，读 stdin 的 `-` 语义只属于 -F）
       local resp rc_gh
-      resp="$(cat "$BODY_FILE" | "$GH_BIN" api -X POST "repos/${REPO}/issues/${ISSUE}/comments" -f body=- 2>>"$LOG")" \
+      resp="$("$GH_BIN" api -X POST "repos/${REPO}/issues/${TARGET_NUM}/comments" -F body=@"$BODY_FILE" 2>>"$LOG")" \
         && rc_gh=0 || rc_gh=$?
-      (( rc_gh != 0 )) && { fail "gh 投递失败（issue #${ISSUE}，rc=${rc_gh}）"; return 0; }
+      (( rc_gh != 0 )) && { fail "gh 投递失败（#${TARGET_NUM}，rc=${rc_gh}）"; return 0; }
       URL="$(jq -r 'if (type == "object") and ((.html_url? // "") | length > 0) then .html_url else "" end' <<<"$resp" 2>/dev/null)"
       if [[ -z "$URL" ]]; then
         # 形状容错：正常 gh 必回 html_url；异常形状以 issue 锚点兜底并显式标注未确认（不伪造评论锚）
@@ -198,9 +227,16 @@ do_approved() {
   fi
 
   # approved.log 追加（5 列不变；drill 跳过）
+  # 批准方式列随渠道区分：EXEC_CHANNEL=auto（deep-check 自动批准路）→ L2-auto 标记，供审计区分人工/自动
+  local channel_label="L2-A tunnel 短码批准（slug=${SLUG}）"
+  local receipt_verb="已按短码批准投递"
+  if [[ "${EXEC_CHANNEL:-}" == "auto" ]]; then
+    channel_label="L2-auto AI 高置信自动批准（auto-gate 放行）"
+    receipt_verb="已自动批准并投递（AI 高置信，详见 runs/deep-check/${ID}/verdict.json）"
+  fi
   if (( IS_DRILL == 0 )); then
     local line
-    line="$(date "+%Y-%m-%dT%H:%M:%S%z") | hermes-contrib | issue #${ISSUE} ${DISP_CN}（tunnel 短码批准执行，rq ${ID}） | L2-A tunnel 短码批准（slug=${SLUG}） | ${URL}"
+    line="$(date "+%Y-%m-%dT%H:%M:%S%z") | hermes-contrib | issue #${ISSUE} ${DISP_CN}（${channel_label}执行，rq ${ID}） | ${channel_label} | ${URL}"
     if [[ "$DRY_RUN" == "true" ]]; then
       echo "[dry-run] approved.log += ${line}"
     else
@@ -212,7 +248,7 @@ do_approved() {
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "[dry-run] rq.sh set ${ID} executed --note ${URL}"
     [[ -n "$SLUG" ]] && { echo "[dry-run] tunnel rm ${SLUG}"; echo "[dry-run] rq.sh tunnel-removed ${ID}"; }
-    echo "[dry-run] notify.sh receipt ${ID} --summary 已按短码批准投递 ${URL}"
+    echo "[dry-run] notify.sh receipt ${ID} --summary ${receipt_verb} ${URL}"
     return 0
   fi
   "$RQ" set "$ID" executed --note "$URL" >>"$LOG" 2>&1 || { fail "rq set executed 失败"; return 0; }
@@ -223,7 +259,7 @@ do_approved() {
       log "tunnel rm ${SLUG} 失败（7 天 sweep 兜底）"
     fi
   fi
-  "$NOTIFY" receipt "$ID" --summary "已按短码批准投递 ${URL}" >>"$LOG" 2>&1 \
+  "$NOTIFY" receipt "$ID" --summary "${receipt_verb} ${URL}" >>"$LOG" 2>&1 \
     || log "receipt ${ID} 发送失败（记账与状态推进不受影响）"
   log "executed ${ID}（verdict=approved，drill=${IS_DRILL}，url=${URL}）"
   return 0
@@ -309,6 +345,37 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
   else
     "$NOTIFY" event approval-manual-required --key "own-pr-${ID}-$(date +%F)" \
       --summary "own-PR ${ID} 短码已批，确定性执行器不投递（push 闸门+分支上下文），请会话路执行" >>"$LOG" 2>&1 || true
+  fi
+  # lane 模式薄适配（2026-09-07）：同步建 contrib-cc kanban 卡，把「等会话路执行」变成
+  # kanban 上可 claim 的任务卡。幂等由 --idempotency-key 保证（重复消费零重复卡）；
+  # 建卡失败只记日志、绝不阻断原事件链（exit 0 不变）。留痕在本日志（rq.sh amend
+  # 不支持纯 note，不动 rq.sh）。
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[dry-run] hermes kanban create --assignee contrib-cc --idempotency-key ${ID}（own-PR ${ID} 已批卡）"
+  else
+    HERMES_BIN="${HERMES_BIN:-}"
+    if [[ -z "$HERMES_BIN" ]]; then
+      HERMES_BIN="$(command -v hermes 2>/dev/null || true)"
+    fi
+    if [[ -z "$HERMES_BIN" && -x "$HOME/.local/bin/hermes" ]]; then
+      HERMES_BIN="$HOME/.local/bin/hermes"
+    fi
+    if [[ -n "$HERMES_BIN" ]]; then
+      CARD_BODY="own-PR 已批待执行（L2 已过，approved.log 有凭据），等会话路 claim 执行。
+rq-id: ${ID} | issue: #${ISSUE} | pr: ${ITEM_PR:--} | disposition: ${DISPOSITION}
+成稿（逐字投递载荷）: ${DRAFT}
+执行要求: 会话内核验成稿与分支现状后 push fork + gh pr create。红线: ① push 前查 ${CONTRIB}/config.json 的 allow_own_pr_push（默认 false=仍不可 push，只做本地复核与准备）；② approved.log 近 20 行去重防重复执行；③ commit 一律不带 Co-Authored-By；④ 完成后 rq.sh set ${ID} executed（或按实际结果走 revise/rejected 并 --note 说明）。"
+      CARD_ID="$("$HERMES_BIN" kanban create "执行 own-PR: ${ID}（#${ITEM_PR:-issue ${ISSUE}}）" \
+        --assignee contrib-cc --idempotency-key "${ID}" \
+        --body "$CARD_BODY" 2>>"$LOG" | grep -oE 't_[0-9a-f]+' | head -1 || true)"
+      if [[ -n "${CARD_ID:-}" ]]; then
+        log "own-PR ${ID}: contrib-cc 卡已建 ${CARD_ID}（idempotency-key=${ID}）"
+      else
+        log "own-PR ${ID}: contrib-cc 卡创建失败（hermes CLI rc 非 0 或无卡 id），事件链保留"
+      fi
+    else
+      log "own-PR ${ID}: hermes CLI 不可达（PATH 与 ~/.local/bin 均无），跳过 contrib-cc 建卡，事件链保留"
+    fi
   fi
   exit 0
 fi

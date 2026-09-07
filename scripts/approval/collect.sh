@@ -30,7 +30,23 @@ CONFIG="$CONTRIB/config.json"
 RQ="$MARTIN/scripts/contrib/rq.sh"
 NOTIFY="$MARTIN/scripts/contrib/notify.sh"
 EXECUTE="$MARTIN/scripts/approval/execute.sh"
+# tunnel CLI 装在 nvm node bin（launchd PATH 极简找不到——09-06 装载后实证 rc=127）：
+# env seam 优先 → PATH 查找 → nvm 布局探测（同 run-watch.sh 的 claude 探测先例）
+TUNNEL_BIN="${TUNNEL_BIN:-}"
+if [[ -z "$TUNNEL_BIN" ]]; then
+  TUNNEL_BIN="$(command -v tunnel 2>/dev/null || true)"
+fi
+if [[ -z "$TUNNEL_BIN" ]]; then
+  _tw_cand="$(ls -t "$HOME"/.nvm/versions/node/*/bin/tunnel 2>/dev/null | head -1 || true)"
+  if [[ -n "$_tw_cand" ]]; then
+    TUNNEL_BIN="$_tw_cand"
+    # tunnel 是 node 包装脚本（exec node …）——node 本体也要可达，把 nvm bin 目录一并进 PATH
+    PATH="$(dirname "$_tw_cand"):$PATH"
+    export PATH
+  fi
+fi
 TUNNEL_BIN="${TUNNEL_BIN:-tunnel}"
+export TUNNEL_BIN   # execute.sh 子进程继承同一解析结果（它自己的默认 tunnel 在 launchd PATH 下不可达）
 GH_BIN="${GH_BIN:-gh}"
 APPROVED_LOG="${APPROVED_LOG:-$MARTIN/approved.log}"
 DRY_RUN="${APPROVAL_DRY_RUN:-false}"

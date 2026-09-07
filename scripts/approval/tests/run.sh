@@ -81,6 +81,15 @@ STUB
 LOG_DIR="${STUB_STATE:?STUB_STATE required}/calls"
 mkdir -p "$LOG_DIR"
 { printf '=== gh %s\n' "$*"; if [ -t 0 ]; then :; else perl -e 'alarm 2; exec @ARGV' cat 2>/dev/null || cat; printf '\n'; fi; } >> "$LOG_DIR/gh.log"
+# -F body=@<file> 载荷倾倒（09-06 事故回归：投递正文断言不得依赖 stdin 单通道）
+for a in "$@"; do
+  case "$a" in
+    body=@*)
+      f="${a#body=@}"
+      if [ -f "$f" ]; then { printf -- '--- body-file %s ---\n' "$f"; cat "$f"; printf '\n'; } >> "$LOG_DIR/gh.log"; fi
+      ;;
+  esac
+done
 if [[ "${GH_STUB_MODE:-ok}" == "fail" ]]; then
   echo "gh stub: forced failure" >&2
   exit 1
@@ -263,19 +272,21 @@ check_contains "$OUT_TEXT" "💬 微信备用: 批/否 #${A_ID}；改 #${A_ID}: 
 PAGE="${A_DRAFT}.page.md"
 check_eq "T4 page.md 路径 = draft+.page.md" "$( [[ -f "$PAGE" ]] && echo yes || echo no )" "yes"
 PAGE_TEXT="$(cat "$PAGE")"
+check_contains "$PAGE_TEXT" '<!-- twq:submit-here -->' "09-06 二轮：提交栏定点指令（组件之后、正文之前）"
 check_contains "$PAGE_TEXT" '```interactive' "C8 页首含 interactive fence"
 check_contains "$PAGE_TEXT" "id: verdict" "C2 radio id:verdict"
 check_contains "$PAGE_TEXT" "type: radio" "C2 radio type"
 check_contains "$PAGE_TEXT" "id: comment" "C2 text id:comment"
 check_regex "C2 三选项固定顺序 批准→否决→需修改" \
   "$(printf '%s' "$PAGE_TEXT" | tr -d '\n' | grep -oE '  - 批准.*  - 否决.*  - 需修改' | head -1)" '.*  - 批准.*  - 否决.*  - 需修改.*'
-check_contains "$PAGE_TEXT" "# L2 审批 #${A_ID}" "B1 中文 BLUF 头"
-check_contains "$PAGE_TEXT" "目标 issue: NousResearch/hermes-agent#${A_ISSUE}" "B1 BLUF 目标 issue"
-check_contains "$PAGE_TEXT" "审批截止:" "B1 BLUF 截止时间"
-check_contains "$PAGE_TEXT" "| claim | evidence |" "B1 证据表表头"
-check_contains "$PAGE_TEXT" "turn_usage 前提仍成立" "B1 证据表 claim 行取自 rq premises"
-check_contains "$PAGE_TEXT" "run_usage.py:111-116 receipt" "B1 证据表 evidence 行"
-check_contains "$PAGE_TEXT" "机器稿原文，逐字附录" "B1 ④原文附录标题"
+check_contains "$PAGE_TEXT" "# 审批：在" "B1 人话动作标题（09-06 决策单重构）"
+check_contains "$PAGE_TEXT" "[issue #${A_ISSUE}](https://github.com/NousResearch/hermes-agent/issues/${A_ISSUE})" "B1 复核锚点目标链接"
+check_contains "$PAGE_TEXT" "前有效（逾期自动搁置）" "B1 时效行"
+check_contains "$PAGE_TEXT" "这条评论说了什么" "B1 L1 中文摘要节"
+check_contains "$PAGE_TEXT" "| 结论 | 依据 |" "B1 复核锚点表头"
+check_contains "$PAGE_TEXT" "turn_usage 前提仍成立" "B1 锚点表 claim 行取自 rq premises"
+check_contains "$PAGE_TEXT" "run_usage.py:111-116 receipt" "B1 锚点表 evidence 行"
+check_contains "$PAGE_TEXT" "英文原文附录（批准后将逐字发出" "B1 ④原文附录标题（details 折叠）"
 check_contains "$PAGE_TEXT" "这是 ${A_ID} 的机器稿正文，投递时须逐字保留。" "B1 ④机器稿全文 verbatim 入附录"
 check_eq "红线④ 机器稿本体未被加 fence（sha 不变）" "$(shasum -a 256 "$A_DRAFT" | awk '{print $1}')" "$A_DRAFT_SHA"
 check_not_contains "$(cat "$A_DRAFT")" '```interactive' "红线④ 机器稿本体无 interactive fence"
@@ -320,6 +331,18 @@ check_regex "非 dry 交互路 url 取自 tunnel stub 输出" "$(q_field "$ND_ID
 check_eq "非 dry 交互路 tunnel approve 被调 1 次" "$(stub_count tunnel 'drops approve')" "1"
 check_eq "非 dry 交互路 hermes stub 发送 1 次（无真实微信）" "$(stub_count hermes 'send')" "1"
 check_regex "非 dry 交互路 page.md 由机器稿派生" "$(q_field "$ND_ID" '.draft')" '.+'
+sb_done
+
+# 回归（09-06 drill 事故）：rq 登记相对路径 draft 时，notify 须锚定工作区根转绝对再调 tunnel——
+# 真实 tunnel bin 会先 cd 到 tunnel-cli 仓再 exec，相对参数会被错解析致静默降级旧卡路
+sb_new true
+make_item review-evidence deep
+REL_ID="$ID"
+rq set-draft "$REL_ID" "contrib-data/pending/$REL_ID.md" >/dev/null   # 相对形式（agent 侧 set-draft 曾真实出现）
+NDRY=false notify_cmd approve "$REL_ID" > /dev/null 2>&1
+check_eq "回归 相对 draft 转绝对后 tunnel approve 被调" "$(stub_count tunnel 'drops approve')" "1"
+check_contains "$(cat "$SB/stub/calls/tunnel.log")" "drops approve $SB/contrib-data/pending/$REL_ID.md.page.md" "回归 tunnel 收到绝对路径 page"
+check_regex "回归 相对 draft 交互路登记成功（未降级）" "$(q_field "$REL_ID" '.tunnel.url')" '^https://pages\.example/[a-z0-9]{10}$'
 sb_done
 
 # ================= B 组：collect → execute 全链（场景 6/7/9） =================
@@ -473,6 +496,117 @@ check_eq "T5 revise 路 状态=revise" "$(q_field "$V_ID" '.state')" "revise"
 check_contains "$(jq -r --arg id "$V_ID" '.items[] | select(.id == $id) | [.history[] | select(.event == "revise") | .note] | join(" ")' "$SB/contrib-data/ready-queue.json")" \
   "第 2 段证据请补 file:line" "T5 revise 意见入 rq note"
 check_eq "T5 revise 路不进 approved.log" "$(ledger_lines)" "0"
+sb_done
+
+# ================= D 组：auto-gate 确定性闸门（09-06 默认自动/例外升级） =================
+echo "===== D 组：auto-gate 自动批准闸门 ====="
+
+GATE="$MARTIN/scripts/approval/auto-gate.sh"
+gate_run() { # <id> → 全局 GATE_RC/GATE_OUT
+  GATE_OUT="$(cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" MARTIN_DIR="$SB/martin" \
+    bash "$GATE" "$1" 2>&1)"; GATE_RC=$?
+}
+write_verdict() { # <id> <decision> <confidence> <risk> [reasons-json]
+  local d="$SB/contrib-data/runs/deep-check/$1"
+  mkdir -p "$d"
+  jq -n --arg dec "$2" --arg conf "$3" --arg risk "$4" --argjson reasons "${5:-[]}" \
+    '{decision:$dec, confidence:$conf, risk_level:$risk, reasons:$reasons}' > "$d/verdict.json"
+}
+
+# D1: verdict 缺失 → 升级（无意见不自动）
+sb_new true
+make_item review-evidence deep
+gate_run "$ID"
+check_eq "D1 verdict 缺失 → rc=1 升级" "1" "$GATE_RC"
+check_contains "$GATE_OUT" "verdict.json 缺失" "D1 升级原因写明缺 verdict"
+
+# D2: 全条件满足 → 自动放行
+write_verdict "$ID" auto high low
+gate_run "$ID"
+check_eq "D2 auto+high+low+评论类+12分 → rc=0" "0" "$GATE_RC"
+check_contains "$GATE_OUT" "AUTO|" "D2 输出 AUTO 标记"
+
+# D3: own-PR 永不自动（即使 LLM 判 auto/high/low）
+make_item own-PR deep
+write_verdict "$ID" auto high low
+gate_run "$ID"
+check_eq "D3 own-PR → rc=1（push 闸门不破）" "1" "$GATE_RC"
+check_contains "$GATE_OUT" "own-PR" "D3 原因点明 own-PR"
+
+# D4: 低分 → 升级
+make_item review-evidence deep
+jq --arg id "$ID" '(.items[] | select(.id == $id) | .score) = 10' \
+  "$SB/contrib-data/ready-queue.json" > "$SB/contrib-data/ready-queue.json.tmp" \
+  && mv "$SB/contrib-data/ready-queue.json.tmp" "$SB/contrib-data/ready-queue.json"
+write_verdict "$ID" auto high low
+gate_run "$ID"
+check_eq "D4 score=10 < 12 → rc=1" "1" "$GATE_RC"
+
+# D5: LLM 判 escalate + reasons → 升级且理由透传
+make_item review-evidence deep
+write_verdict "$ID" escalate medium medium '["拿不准维护者对 breaking change 的容忍度"]'
+gate_run "$ID"
+check_eq "D5 LLM escalate → rc=1" "1" "$GATE_RC"
+check_contains "$GATE_OUT" "拿不准维护者" "D5 升级理由人话透传"
+
+# D6: 置信/风险不达双门槛 → 升级
+make_item review-evidence deep
+write_verdict "$ID" auto medium low
+gate_run "$ID"
+check_eq "D6 auto 但 confidence=medium → rc=1" "1" "$GATE_RC"
+
+# D7: 总开关关闭 → 一切升级
+jq '. + {auto_approve: false}' "$SB/contrib-data/config.json" > "$SB/contrib-data/config.json.tmp" \
+  && mv "$SB/contrib-data/config.json.tmp" "$SB/contrib-data/config.json"
+make_item review-evidence deep
+write_verdict "$ID" auto high low
+gate_run "$ID"
+check_eq "D7 auto_approve=false → rc=1" "1" "$GATE_RC"
+sb_done
+
+# D8/D9: 占坑语义分 disposition（104067b 误杀回归：review-evidence 的 PR 引用是评论对象，不是威胁）
+sb_new true
+# 沙箱 gh stub：pr list 返回一个外人占坑 PR（覆盖默认 [] 行为）
+cat > "$SB/bin/gh-occupier" <<'STUB'
+#!/bin/bash
+LOG_DIR="${STUB_STATE:?}/calls"; mkdir -p "$LOG_DIR"
+printf '=== gh %s\n' "$*" >> "$LOG_DIR/gh-occ.log"
+for a in "$@"; do
+  case "$a" in body=@*) f="${a#body=@}"; [ -f "$f" ] && { printf -- '--- body-file %s ---\n' "$f"; cat "$f"; printf '\n'; } >> "$LOG_DIR/gh-occ.log" ;; esac
+done
+case "$*" in
+  *"issue view"*)        echo '{"state":"OPEN"}' ;;
+  *"pr list"*)           echo '[{"number":99999}]' ;;   # 外人占坑 PR 恒在
+  *"comments?per_page"*) echo '[]' ;;
+  *"-X POST"*)           echo '{"html_url":"https://github.com/NousResearch/hermes-agent/issues/1#issuecomment-1"}' ;;
+  *)                     echo '{}' ;;
+esac
+STUB
+chmod +x "$SB/bin/gh-occupier"
+
+exec_in_sb() { # <id> —— execute.sh 走全真链路（stub 命令 + 沙箱台账）
+  ( cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" \
+      NOTIFY_LOCK="$SB/locks/notify2" TUNNEL_BIN="$SB/bin/tunnel" GH_BIN="$SB/bin/gh-occupier" \
+      HERMES_BIN="$SB/bin/hermes" NOTIFY_SEND_LAST="$SB/send-last.json" NOTIFY_DRY_RUN=true \
+      APPROVED_LOG="$SB/approved.log" STUB_STATE="$SB/stub" \
+      bash "$MARTIN/scripts/approval/execute.sh" "$1" approved ) >/dev/null 2>&1
+  return 0
+}
+
+# D8: review-evidence + 外人占坑 PR → 必须照常投递（PR 是评论对象）
+make_item review-evidence deep
+rq set "$ID" approved >/dev/null
+exec_in_sb "$ID"
+check_eq "D8 review-evidence 遇占坑 PR 仍执行（104067b 误杀回归）" \
+  "$(cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" TUNNEL_BIN="$SB/bin/tunnel" bash "$RQ" show "$ID" --json | jq -r .state)" "executed"
+check_contains "$(cat "$SB/stub/calls/gh-occ.log" 2>/dev/null)" "-X POST" "D8 评论已真实投递"
+
+# D9: probe-salvage + 外人占坑 PR → 必须拦截（占坑语义保留）
+make_item probe-salvage probe
+rq set "$ID" approved >/dev/null
+exec_in_sb "$ID"
+check_ne "D9 probe-salvage 遇占坑 PR 不执行" \
+  "$(cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" TUNNEL_BIN="$SB/bin/tunnel" bash "$RQ" show "$ID" --json | jq -r .state)" "executed"
 sb_done
 
 # ================= C 组：静态门 + 生产零触碰 =================

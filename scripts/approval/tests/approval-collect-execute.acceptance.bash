@@ -136,11 +136,21 @@ echo "tunnel-stub: unsupported args: $*" >&2
 exit 64
 STUB
 
-# ── stub：gh（只读罐装响应；GH_FAIL=1 时全失败；argv+stdin 全量记账供投递正文断言）──
+# ── stub：gh（只读罐装响应；GH_FAIL=1 时全失败；argv+stdin+@file 全量记账供投递正文断言）──
 cat > "$STUBS/gh" <<'STUB'
 #!/bin/bash
 LOG="${GH_CALL_LOG:?}"
 { printf '=== gh'; printf ' %s' "$@"; printf '\n'; if [ -t 0 ]; then :; else perl -e 'alarm 2; exec @ARGV' cat 2>/dev/null || cat; fi; printf '\n'; } >> "$LOG"
+# -F body=@<file> 语义落地（09-06 事故回归：-f body=- 曾把字面量当正文且无断言拦截）——
+# @file 载荷同样倒进调用账，供「投递正文逐字/无注释块/无内部备注」断言
+for a in "$@"; do
+  case "$a" in
+    body=@*)
+      f="${a#body=@}"
+      if [ -f "$f" ]; then { printf -- '--- body-file %s ---\n' "$f"; cat "$f"; printf '\n'; } >> "$LOG"; fi
+      ;;
+  esac
+done
 if [[ "${GH_FAIL:-0}" == "1" ]]; then exit 9; fi
 args="$*"
 case "$args" in
@@ -371,7 +381,9 @@ check_eq "6.P2: 全程零真实微信（hermes stub 0 次）" "0" "$(grep -c '==
 printf '=== 直接执行器：C8 投递正文逐字（execute.sh <id> approved）===\n'
 ID_L="$(mk_item 103910 l3t7tq9u5v S7KT4M approved deep)"   # 直接驱动：种子为 approved 态，collect 不碰
 DRAFT_L="$CONTRIB/pending/$ID_L.md"
-printf '<!-- PR-DRAFT id=%s generator=run-deepcheck -->\n<!-- meta-line-should-be-stripped -->\n投递正文行一（%s）。\n投递正文行二：含中文、竖线 | 与反引号 `jq`。\n' "$ID_L" "$ID_L" > "$DRAFT_L"
+printf '<!-- PR-DRAFT id=%s generator=run-deepcheck -->\n<!-- meta-line-should-be-stripped -->\n投递正文行一（%s）。\n投递正文行二：含中文、竖线 | 与反引号 `jq`。\n\n---\n\n## 内部备注（不随评论发出）\n\n- 内部备注行：绝不可外泄（%s）。\n' "$ID_L" "$ID_L" "$ID_L" > "$DRAFT_L"
+# 09-06 事故回归①：review-evidence 载荷须落 item.pr（非 issue）——种子 pr=103582 与 issue=103910 区分
+jq --arg id "$ID_L" '(.items[] | select(.id == $id) | .pr) = 103582' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
 GH_PREMISE_FILE="$SB/premises-l.txt"
 printf '投递正文行一（%s）。\n' "$ID_L" > "$GH_PREMISE_FILE"
 export GH_PREMISE_FILE
@@ -384,10 +396,14 @@ settle_wait
 check_eq "C8: execute.sh approved 退出码 0" "0" "$L_RC"
 check_eq "C8: L 终态 executed" "executed" "$(state_of "$ID_L")"
 GH_NEW_L="$(tail -n +$(( GH_BEFORE_L + 1 )) "$GH_CALL_LOG")"
+check_contains "C8: 投递落点=item.pr（-X POST issues/103582/comments）" "-X POST repos/NousResearch/hermes-agent/issues/103582/comments" "$GH_NEW_L"
+check_contains "C8: 投递走 -F body=@file（非 -f 字面量）" "-F body=@" "$GH_NEW_L"
+check_not_contains "09-06 事故回归②: 不得再用 -f body=-（字面量事故）" "-f body=-" "$GH_NEW_L"
 check_contains "C8: 投递正文含正文行一（逐字）" "投递正文行一（${ID_L}）。" "$GH_NEW_L"
 check_contains "C8: 投递正文含正文行二（逐字，含竖线/反引号）" "投递正文行二：含中文、竖线 | 与反引号 \`jq\`。" "$GH_NEW_L"
 check_not_contains "C8: 投递正文不含头部注释块 meta 行" "meta-line-should-be-stripped" "$GH_NEW_L"
 check_not_contains "C8: 投递正文不含头部注释块 PR-DRAFT 行" "PR-DRAFT id=" "$GH_NEW_L"
+check_not_contains "09-06 事故回归③: 投递正文不含内部备注段" "绝不可外泄" "$GH_NEW_L"
 LEDGER_DELTA_L=$(( $(ledger_lines "$APPROVED_LOG") - LEDGER_BEFORE_L ))
 check_eq "C8: L 台账增量 == 1" "1" "$LEDGER_DELTA_L"
 NEWLINE_L="$(grep -F "$ID_L" "$APPROVED_LOG" | tail -1)"
@@ -485,6 +501,53 @@ check_eq "7.P1: 判定调用 0 次" "0" "$(grep -c 'drops decision' "$IDLE_LOG" 
 IDLE_LEDGER="$(ledger_lines "$SB2/approved.log")"
 check_eq "7.P1: 台账零增量（空转零副作用）" "0" "$IDLE_LEDGER"
 rm -rf "$SB2"
+
+printf '=== 场景10：own-PR 已批 → contrib-cc 卡（lane 模式薄适配）===\n'
+# 独立沙箱：造 own-PR disposition 的 approved 项，直调 execute.sh。
+# 断言：①kanban create 调用带 --assignee contrib-cc + --idempotency-key（幂等锚点）
+#       ②事件链保留（approval-manual-required 仍入账）③零投递（台账/gh 均零增量）
+#       ④状态保持 approved（确定性执行器不越权）⑤dry-run 只打印零 CLI 调用
+SB3="$(mktemp -d "${TMPDIR:-/tmp}/approval-ownpr-card.XXXXXX")"
+cat > "$SB3/hermes-card" <<'STUB'
+#!/bin/bash
+printf '=== hermes %s\n' "$*" >> "${HERMES_CALL_LOG:?}"
+printf 'Created t_ownpr0deadbeef  (ready, assignee=contrib-cc)\n'
+exit 0
+STUB
+chmod +x "$SB3/hermes-card"
+EV3="$SB3/data/events.jsonl"
+# env 前缀用数组 + env 命令逐条展开（7.P1 同款手写风格；不能用「函数体裸赋值」——
+# 那只是 shell 变量赋值，不 export 进子进程，rq.sh/execute.sh 会静默落回真实路径）
+RQ_ENV=(MARTIN_DIR="$MARTIN_ROOT" CONTRIB_DATA_DIR="$SB3/data" NOTIFY_LOCK="$SB3/n.lock" RQ_LOCKDIR="$SB3/rq.lock"
+  NOTIFY_SEND_LAST="$SB3/send.json" HERMES_BIN="$SB3/hermes-card" TUNNEL_BIN="$STUBS/tunnel" GH_BIN="$STUBS/gh"
+  OSASCRIPT_BIN="$STUBS/osascript" APPROVED_LOG="$SB3/approved.log" TUNNEL_CALL_LOG="$SB3/t.log"
+  GH_CALL_LOG="$SB3/gh.log" HERMES_CALL_LOG="$SB3/h.log" DECISION_DIR="$DEC" NOTIFY_DRY_RUN=true)
+env "${RQ_ENV[@]}" bash "$RQ" init >/dev/null 2>&1
+ID_K="$(env "${RQ_ENV[@]}" bash "$RQ" add --issue 103914 --disposition own-PR --score 14 --title "own-PR 项 103914" --lane deep)"
+DRAFT_K="$SB3/data/pending/$ID_K.md"
+printf '<!-- 内部备注 -->\nown-PR 投递载荷。\n' > "$DRAFT_K"
+env "${RQ_ENV[@]}" bash "$RQ" set-draft "$ID_K" "$DRAFT_K" >/dev/null
+env "${RQ_ENV[@]}" bash "$RQ" set "$ID_K" awaiting-approval >/dev/null
+env "${RQ_ENV[@]}" bash "$RQ" set "$ID_K" approved >/dev/null
+: > "$SB3/h.log"; : > "$SB3/gh.log"
+LEDGER_BEFORE_K="$(ledger_lines "$SB3/approved.log" 2>/dev/null || echo 0)"
+K_RC=0
+env "${RQ_ENV[@]}" bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || K_RC=$?
+check_eq "10: execute 退出码 0" "0" "$K_RC"
+check_contains "10: kanban create 带 --assignee contrib-cc" "--assignee contrib-cc" "$(cat "$SB3/h.log")"
+check_contains "10: kanban create 带 --idempotency-key=<id>（幂等锚点）" "--idempotency-key $ID_K" "$(cat "$SB3/h.log")"
+check_contains "10: 卡 title 含 rq-id" "执行 own-PR: $ID_K" "$(cat "$SB3/h.log")"
+check_eq "10: 零 gh 投递（own-PR 不进确定性执行器）" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
+check_eq "10: 台账零增量" "0" "$(( $(ledger_lines "$SB3/approved.log") - LEDGER_BEFORE_K ))"
+check_eq "10: 状态保持 approved（不 set executed）" "approved" \
+  "$(jq -r --arg id "$ID_K" '.items[] | select(.id == $id) | .state' "$SB3/data/ready-queue.json")"
+check_contains "10: 事件链保留（approval-manual-required 入账）" "approval-manual-required" "$(cat "$EV3" 2>/dev/null)"
+# dry-run：只打印，零 CLI 调用
+: > "$SB3/h.log"
+DRY_OUT="$(env "${RQ_ENV[@]}" APPROVAL_DRY_RUN=true bash "$EXECUTE" "$ID_K" approved 2>&1)"
+check_contains "10: dry-run 打印建卡意图" "[dry-run] hermes kanban create" "$DRY_OUT"
+check_eq "10: dry-run 零 hermes CLI 调用" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+rm -rf "$SB3"
 
 printf '\n==== 汇总 ====\n'
 printf 'PASS %d checks\n' "$PASS"
