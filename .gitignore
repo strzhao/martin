@@ -24,3 +24,9 @@ contrib-data/
 
 # hermes cron 工程任务的本地覆盖配置（设计上不受 git 管理，工具自动生成）
 local-config.json
+
+# L2 审批台账 / contrib 草稿工作区 / cron 会话转储（本地运行时产物）
+approved.log
+contrib-94862/
+cron_*
+l4-juejin-*.md
