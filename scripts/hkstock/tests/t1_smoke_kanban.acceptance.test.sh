@@ -51,7 +51,7 @@ fi
 show_out="$("$HERMES_BIN" kanban show "$TASK_ID" 2>&1)"
 show_rc=$?
 if [[ $show_rc -ne 0 ]]; then
-  fail "2.P1" "hermes kanban show $TASK_ID 退出码 $show_rc，输出: ${show_out:0:300}"
+  fail "2.P1" "hermes kanban show $TASK_ID 退出码 ${show_rc}，输出: ${show_out:0:300}"
   fail "2.P2" "同上（kanban show 失败，无法核 status）"
 else
   # assignee 断言：整词匹配（防止 hkstock-cc 等 lane 名误配）

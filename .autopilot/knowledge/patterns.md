@@ -381,3 +381,11 @@ launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退�
 <!-- tags: qa, vacuous-assertion, telemetry, predicate, hkstock, forensics -->
 ## [2026-09-08] 遥测类弱断言是 vacuous PASS：推送正证据必须「订阅存在 ∧ 终态窗口内 send ok」双闸
 「forensics summary 输出非空」类断言对任何健康时段都成立（本次 199 条 poll 事件让它 vacuous PASS，掩盖了真实未推送）。遥测断言三坑：①窗口绑定——`completed_at` 是 epoch 秒（kanban show --json 的 task 键内），timeline 行是本地时间 `2026-09-08 15:55:22`，比较前须换算同构（宽容 60s 时钟偏移）；②形态——timeline 是 key=value（`ok=true`）非 JSON（`"ok":true`），两种都要匹配；③结构——`kanban show --json` 有 `task` 嵌套层，取顶层键得 None 静默失败。正证据双闸 = `kanban notify-list <task_id>` 有订阅记录 ∧ timeline 终态窗口内存在 send_result ok=true。
+
+<!-- tags: hermes, cron, bot-chat, delivery, kanban, subscribe, hkstock -->
+## [2026-09-08] cron --deliver bot-chat 投递≠唤醒 bot：定时链路要「cron 直建+显式补订」而非「bot-chat 中转」
+`--deliver bot-chat` 只把输出写进 canonical Bot Chat 会话文件（"delivered"），**不触发 agent turn**（实证：18:29 投递后零 agent 活动）；且非微信会话起源的 kanban_create 不触发 `_maybe_auto_subscribe`（kanban_tools.py:1514 CLI/cron 明载 no-op）——「bot-chat 中转→微信侧 agent 建卡→auto-subscribe 天然生效」设计两环皆不成立。稳健路径（已实证 140s 全链）：cron agent 直接 `hermes kanban create --idempotency-key <key>` + 立即 `hermes kanban notify-subscribe <新卡id> --platform weixin --chat-id <dm> --delivery-mode notify+wake`，`--deliver weixin:<chat_id>` 直推（失败摘要可达用户，成功路径 [SILENT] 由订阅推送）。
+
+<!-- tags: hermes, anthropic, env-pollution, 401, cc-shell, hkstock -->
+## [2026-09-08] CC shell 的 ANTHROPIC_* 劫持 hermes LLM 调用：CC 侧调 hermes 必须 env -u
+CC/claude shell 导出的 `ANTHROPIC_AUTH_TOKEN`（cc-switch 的 token）+ `ANTHROPIC_BASE_URL` 会被 hermes 的 anthropic_messages transport 优先采用 → 全部 LLM 调用打到 cc-switch 代理报 401（key 尾号 316K）。cron job 从 CC shell 触发（`hermes cron run`）会继承污染 → delivery_history 401 假败。修复：CC 侧任何 hermes 调用一律 `env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL -u ANTHROPIC_API_KEY`；gateway 内 cron scheduler/worker 进程环境干净不受累。

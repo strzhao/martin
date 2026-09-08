@@ -53,3 +53,5 @@
 
 - [2026-09-08] kanban CLI 建卡零订阅→终态不推微信（notify-subscribe 补订三解） | tags: hermes, kanban, subscribe, weixin, hkstock | → patterns.md
 - [2026-09-08] 遥测弱断言 vacuous PASS：推送正证据=订阅存在∧终态窗口 send ok 双闸 | tags: qa, vacuous-assertion, telemetry, hkstock | → patterns.md
+- [2026-09-08] cron bot-chat 投递≠唤醒：定时链路=cron 直建卡+notify-subscribe 补订 | tags: hermes, cron, bot-chat, subscribe, hkstock | → patterns.md
+- [2026-09-08] CC shell ANTHROPIC_* 劫持 hermes LLM（401）：env -u 铁律 | tags: hermes, anthropic, env, 401 | → patterns.md

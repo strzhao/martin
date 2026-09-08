@@ -3,7 +3,8 @@
 #
 # 三关：① bash -n / zsh -n 语法门（按 shebang 分流）② shellcheck -x -S warning（仅 bash 系，zsh 豁免）
 #       ③ 全角 regex 门（regex 单源 lib/fullwidth-pattern.txt，perl 字节模式契约冻结）
-# 覆盖集：scripts/contrib/**/*.sh ∪ scripts/approval/**/*.sh（find 圈定，非硬编码）
+# 覆盖集：scripts/contrib/**/*.sh ∪ scripts/approval/**/*.sh ∪ scripts/hkstock/**/*.sh
+# （find 圈定，非硬编码；hkstock 于 2026-09-08 T2 纳入，constraint 6 欠账清偿）
 # 退出码闭集：0=全绿 1=有发现 2=依赖缺失。聚合不短路：收集全部发现一次报告。
 # 零仓内写入（不落任何临时文件进仓）；stdout 承载全部结论，stderr 仅意外错误。
 # MARTIN_GATE_TARGET=<dir> 覆盖覆盖集根（mutation 自证/沙箱复现用，契约内旋钮）；
@@ -53,7 +54,7 @@ if [[ -n "${MARTIN_GATE_TARGET:-}" ]]; then
 elif [[ -n "$TARGET_FLAG" ]]; then
   ROOTS=("$TARGET_FLAG")
 else
-  ROOTS=("$REPO_ROOT/scripts/contrib" "$REPO_ROOT/scripts/approval")
+  ROOTS=("$REPO_ROOT/scripts/contrib" "$REPO_ROOT/scripts/approval" "$REPO_ROOT/scripts/hkstock")
 fi
 bad_root=0
 for r in ${ROOTS[@]+${ROOTS[@]}}; do

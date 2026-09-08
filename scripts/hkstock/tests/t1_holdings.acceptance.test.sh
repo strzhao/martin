@@ -36,7 +36,7 @@ ci_rc=$?
 if [[ $ci_rc -eq 0 ]]; then
   pass "3.P1"
 else
-  fail "3.P1" "git check-ignore -v 退出码 $ci_rc（要求 0），输出: ${ci_out:0:300}"
+  fail "3.P1" "git check-ignore -v 退出码 ${ci_rc}（要求 0），输出: ${ci_out:0:300}"
 fi
 
 # --- 3.P2: holdings 合法 YAML ∧ accounts 键存在 ---
@@ -64,7 +64,7 @@ PYEOF
   esac
 fi
 
-# --- 3.P3: git 追踪文件检索 hkstock-data 命中数 == 0 ---
+# --- 3.P3: git 追踪文件检索 hkstock-data 命中数 == 0（路径级） ---
 tracked="$(git -C "$MARTIN_ROOT" ls-files)"
 hits="$(printf '%s\n' "$tracked" | grep -c 'hkstock-data' || true)"
 if [[ "$hits" -eq 0 ]]; then
@@ -72,6 +72,89 @@ if [[ "$hits" -eq 0 ]]; then
 else
   fail "3.P3" "git 追踪文件中 hkstock-data 命中 $hits 条（要求 0）: $(printf '%s\n' "$tracked" | grep 'hkstock-data' | head -5 | tr '\n' ' ')"
 fi
+
+# --- 3.P3b: 内容级敏感字段扫描 == 0（T2 升级：双层断言之内容层，只加强不弱化） ---
+# 从真实 holdings.yaml 提取敏感值（positions/watchlist 的 symbol+name、accounts 的 name），
+# 在全部 git 追踪文件内容中扫描，要求零命中——持仓内容不入任何入库文件。
+# 边界规则：纯数字 symbol 仅在「前邻非 [0-9.] 或行首、且后邻非数字」时判命中——
+# 排除行情代码碰撞（探活 URL secids=1.000001）与流水号碰撞（rq-…-000001）这类语义无关数字串；
+# 真实泄漏形态（yaml/json/正文）总有引号/空格/冒号等强边界。非数字值按原文子串扫描。
+# 元自证（防 vacuous-pass）：先对扫描器跑 4 条合成样例，任一误判即整条 FAIL。
+content_scan_rc="$(python3 - "$HOLDINGS" "$MARTIN_ROOT" "$0" <<'PYEOF'
+import os, re, subprocess, sys
+
+try:
+    import yaml
+    data = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+except Exception as exc:
+    print(f"SCAN_ERROR holdings unreadable: {exc}")
+    sys.exit(3)
+
+values = set()
+for acc in data.get("accounts") or []:
+    if isinstance(acc, dict) and acc.get("name"):
+        values.add(str(acc["name"]))
+    for pos in acc.get("positions") or [] if isinstance(acc, dict) else []:
+        if isinstance(pos, dict):
+            for f in ("symbol", "name"):
+                if pos.get(f):
+                    values.add(str(pos[f]))
+for w in data.get("watchlist") or []:
+    if isinstance(w, dict):
+        for f in ("symbol", "name"):
+            if w.get(f):
+                values.add(str(w[f]))
+values.discard("None")
+
+def hit(value, text):
+    if value.isdigit():
+        return re.search(r"(?:^|[^0-9.\-])" + re.escape(value) + r"(?:$|[^0-9])", text) is not None
+    return value in text
+
+# 元自证样例：(value, text, expect_hit)
+probes = [
+    ("000001", "secids=1.000001&fields=f2", False),
+    ("000001", "seed_queue_item rq-2026-000001 queued", False),
+    ("000001", "symbol: \"000001\"", True),
+    ("贵州茅台", "name: 贵州茅台", True),
+]
+for v, t, expect in probes:
+    if hit(v, t) is not expect:
+        print(f"SCAN_ERROR self-probe misjudged: value={v} text={t} expect={expect}")
+        sys.exit(4)
+
+tracked = subprocess.run(
+    ["git", "-C", sys.argv[2], "ls-files"], capture_output=True, text=True
+).stdout.split()
+# 自指豁免：本测试文件源码内含探针样例字面量（元自证所需），无法自扫——
+# 其路径级检查由 3.P3 覆盖，内容级扫描排除自身。
+self_real = os.path.realpath(sys.argv[3])
+for path in tracked:
+    fp = os.path.join(sys.argv[2], path)
+    if os.path.realpath(fp) == self_real:
+        continue
+    if not os.path.isfile(fp) or os.path.getsize(fp) > 5_000_000:
+        continue
+    try:
+        text = open(fp, encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for v in values:
+        if hit(v, text):
+            print(f"HIT {v} in {path}")
+            sys.exit(1)
+print("CLEAN")
+sys.exit(0)
+PYEOF
+)"
+cs_rc=$?
+case $cs_rc in
+  0) pass "3.P3b" ;;
+  1) fail "3.P3b" "持仓敏感值泄漏入库文件: $(printf '%s\n' "$content_scan_rc" | head -3 | tr '\n' ' ')" ;;
+  3) fail "3.P3b" "holdings.yaml 无法读取，内容级扫描未执行: ${content_scan_rc:0:200}" ;;
+  4) fail "3.P3b" "扫描器元自证失败（合成样例误判）: ${content_scan_rc:0:200}" ;;
+  *) fail "3.P3b" "内容级扫描异常 rc=$cs_rc" ;;
+esac
 
 # --- 3.P4: validate_holdings.py CLI 契约（fixture 全部 /tmp 自建） ---
 if [[ ! -f "$VALIDATOR" ]]; then
@@ -152,7 +235,7 @@ YEOF
   if [[ $v_rc -eq 0 && "$v_out" == *valid* ]]; then
     pass "3.P4 valid-exit0"
   else
-    fail "3.P4" "合法样例 rc=$v_rc（要求 0），stdout=[$v_out]（要求含 valid）"
+    fail "3.P4" "合法样例 rc=${v_rc}（要求 0），stdout=[$v_out]（要求含 valid）"
   fi
 
   # 非法样例 ×4：exit != 0 ∧ stderr 非空（stderr 需指明违规字段——契约字面：stderr 非空为硬断言底线）
@@ -163,7 +246,7 @@ YEOF
     if [[ $e_rc -ne 0 && -n "$e_err" ]]; then
       pass "3.P4 $fx"
     else
-      fail "3.P4" "非法 fixture $fx: rc=$e_rc（要求非 0），stderr 长度=${#e_err}（要求非空）"
+      fail "3.P4" "非法 fixture $fx: rc=${e_rc}（要求非 0），stderr 长度=${#e_err}（要求非空）"
     fi
   done
 
@@ -173,7 +256,7 @@ YEOF
   if [[ $m_rc -eq 2 ]]; then
     pass "3.P4 missing-file-exit2"
   else
-    fail "3.P4" "不存在路径 rc=$m_rc（要求 2）"
+    fail "3.P4" "不存在路径 rc=${m_rc}（要求 2）"
   fi
 fi
 

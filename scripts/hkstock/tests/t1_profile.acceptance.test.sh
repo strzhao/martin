@@ -54,7 +54,7 @@ if [[ -n "$HERMES_BIN" ]]; then
   p1_out="$("$HERMES_BIN" profile list 2>&1)"
   p1_rc=$?
   if [[ $p1_rc -ne 0 ]]; then
-    fail "1.P1" "hermes profile list 退出码 $p1_rc，输出: ${p1_out:0:300}"
+    fail "1.P1" "hermes profile list 退出码 ${p1_rc}，输出: ${p1_out:0:300}"
   elif printf '%s' "$p1_out" | grep -q 'hkstock'; then
     pass "1.P1"
   else
