@@ -105,6 +105,38 @@ run_gate
 assert_exit 0 $RC
 assert_eq "$(jq 'length' "$PENDING")" "0" "零重复消费"
 
+t_case "真实渲染形态：无 Message-ID 头，ID 只在正文页脚 → 仍 exit 10 + 页脚提取"
+new_sb
+printf '{"last_id":8100,"initialized":"t"}\n' > "$CURSOR"
+printf '[%s]\n' "$(env_row 8101 "hermes-agent@noreply.github.com" "Re: [NousResearch/hermes-agent] 页脚形态 (PR #102)")" > "$STUB/envelopes.json"
+cat > "$STUB/read-8101.txt" <<'READEOF'
+From: Hao Zhe <notifications@github.com>
+To: NousResearch/hermes-agent <hermes-agent@noreply.github.com>
+Cc: strzhao <StringZhao@foxmail.com>
+Subject: Re: [NousResearch/hermes-agent] 页脚形态 (PR #102)
+
+@someone commented on this pull request.
+
+正文第一行。
+
+--
+Reply to this email directly or view it on GitHub.
+
+Message ID: <pr102-a@github.com>
+READEOF
+run_gate
+assert_exit 10 $RC
+assert_eq "$(jq -r '.[0].message_id' "$PENDING")" "pr102-a@github.com" "message_id 从正文页脚提取"
+
+t_case "极端形态：全文无任何 Message ID → 不杀脚本，message_id 容忍空值"
+new_sb
+printf '{"last_id":8110,"initialized":"t"}\n' > "$CURSOR"
+printf '[%s]\n' "$(env_row 8111 "hermes-agent@noreply.github.com" "Re: [NousResearch/hermes-agent] 无ID形态 (PR #103)")" > "$STUB/envelopes.json"
+printf 'From: a <notifications@github.com>\nSubject: Re: [N/hermes-agent] x (PR #103)\n\n纯正文，无页脚。\n' > "$STUB/read-8111.txt"
+run_gate
+assert_exit 10 $RC
+assert_eq "$(jq -r '.[0].message_id' "$PENDING")" "" "无 ID 时 message_id 为空、pending 照常产出"
+
 t_case "上轮遗留 pending + 本轮无新邮件 → 仍 exit 10（不卡死遗留）"
 new_sb
 printf '{"last_id":8005,"committed":"t"}\n' > "$CURSOR"

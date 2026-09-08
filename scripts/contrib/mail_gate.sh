@@ -107,7 +107,11 @@ while IFS= read -r row; do
   [[ -z "$row" ]] && continue
   mid="$(jq -r '.id' <<<"$row")"
   full="$("$HIMAIL" message read "$mid" -p 2>/dev/null | head -c "$PREVIEW_BYTES" || true)"
-  msg_id="$(grep -i '^Message-ID:' <<<"$full" | head -1 | sed 's/^[Mm]essage-[Ii][Dd]:[[:space:]]*//' | tr -d '<>')"
+  # himalaya -p 渲染体只有 From/To/Cc/Subject 四个头，无 Message-ID 头——ID 只在
+  # GitHub 正文页脚（"Message ID: <...>" 无连字符；body>PREVIEW_BYTES 截尾时会丢，容忍空值）。
+  # grep no-match 若不兜底会被 set -e+pipefail 杀脚本（09-08 实证：10 封邮件连续 10 轮 rc=1）
+  msg_id="$(grep -iE '^message-? ?id:' <<<"$full" | head -1 | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/^message-? ?id:[[:space:]]*//' | tr -d '<>' || true)"
   body="$(printf '%s' "$full" | awk 'p; /^$/{p=1}' | head -c "$PREVIEW_BYTES")"
   payload="$(jq -cn --argjson acc "$payload" --argjson item \
     "$(jq -c --arg body "$body" --arg msg_id "$msg_id" \
