@@ -336,46 +336,95 @@ if [[ -z "$DRAFT" || ! -f "$DRAFT" ]]; then
   exit 1
 fi
 
-# own-PR 项不在确定性执行器范围（push 需 allow_own_pr_push 闸门 + 分支/worktree 上下文）：
-# 保留 approved 态 + 事件，交回会话路人工执行（不 set failed——项本身没问题，是执行通道不匹配）
+# own-PR 项不在确定性执行器范围（push 需分支/worktree 上下文）。
+# 2026-09-08 lane 改造：contrib-cc 下线，own-PR 执行改走 coder lane 全自动——
+#   allow_own_pr_push=false（急停总开关）→ approved 保留 + approval-manual-required 事件（人工路，不建卡）
+#   =true → 探测 runs/*-issue<ISSUE>/BRANCH.md 分流建 coder 卡（dispatcher spawn worker 驱动 claude -p 执行）：
+#     mode=push-only      BRANCH.md 存在且 worktree 校验通过 → --workspace dir:<worktree> --max-runtime 45m
+#     mode=build-and-push 无 build 产物/校验失败回退    → --workspace worktree:<hermes-agent 仓> --branch fix/... --max-runtime 4h
+#   rq 状态推进（set executed）由 worker 收尾执行，claude 不碰 martin 仓。建卡失败只记日志、不阻断事件链。
 if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "0" ]]; then
-  log "own-PR ${ID}: 确定性执行器不投递，保留 approved 交回会话路（push 闸门+分支上下文需人工）"
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "[dry-run] notify.sh event approval-manual-required --key own-pr-${ID} --summary own-PR ${ID} 已批，需会话路执行（push 闸门）"
-  else
-    "$NOTIFY" event approval-manual-required --key "own-pr-${ID}-$(date +%F)" \
-      --summary "own-PR ${ID} 短码已批，确定性执行器不投递（push 闸门+分支上下文），请会话路执行" >>"$LOG" 2>&1 || true
-  fi
-  # lane 模式薄适配（2026-09-07）：同步建 contrib-cc kanban 卡，把「等会话路执行」变成
-  # kanban 上可 claim 的任务卡。幂等由 --idempotency-key 保证（重复消费零重复卡）；
-  # 建卡失败只记日志、绝不阻断原事件链（exit 0 不变）。留痕在本日志（rq.sh amend
-  # 不支持纯 note，不动 rq.sh）。
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "[dry-run] hermes kanban create --assignee contrib-cc --idempotency-key ${ID}（own-PR ${ID} 已批卡）"
-  else
-    HERMES_BIN="${HERMES_BIN:-}"
-    if [[ -z "$HERMES_BIN" ]]; then
-      HERMES_BIN="$(command -v hermes 2>/dev/null || true)"
-    fi
-    if [[ -z "$HERMES_BIN" && -x "$HOME/.local/bin/hermes" ]]; then
-      HERMES_BIN="$HOME/.local/bin/hermes"
-    fi
-    if [[ -n "$HERMES_BIN" ]]; then
-      CARD_BODY="own-PR 已批待执行（L2 已过，approved.log 有凭据），等会话路 claim 执行。
-rq-id: ${ID} | issue: #${ISSUE} | pr: ${ITEM_PR:--} | disposition: ${DISPOSITION}
-成稿（逐字投递载荷）: ${DRAFT}
-执行要求: 会话内核验成稿与分支现状后 push fork + gh pr create。红线: ① push 前查 ${CONTRIB}/config.json 的 allow_own_pr_push（默认 false=仍不可 push，只做本地复核与准备）；② approved.log 近 20 行去重防重复执行；③ commit 一律不带 Co-Authored-By；④ 完成后 rq.sh set ${ID} executed（或按实际结果走 revise/rejected 并 --note 说明）。"
-      CARD_ID="$("$HERMES_BIN" kanban create "执行 own-PR: ${ID}（#${ITEM_PR:-issue ${ISSUE}}）" \
-        --assignee contrib-cc --idempotency-key "${ID}" \
-        --body "$CARD_BODY" 2>>"$LOG" | grep -oE 't_[0-9a-f]+' | head -1 || true)"
-      if [[ -n "${CARD_ID:-}" ]]; then
-        log "own-PR ${ID}: contrib-cc 卡已建 ${CARD_ID}（idempotency-key=${ID}）"
-      else
-        log "own-PR ${ID}: contrib-cc 卡创建失败（hermes CLI rc 非 0 或无卡 id），事件链保留"
-      fi
+  log "own-PR ${ID}: 确定性执行器不投递，交 coder lane（allow_own_pr_push 闸门）"
+  ALLOW_PUSH="$(cfg '.allow_own_pr_push' 'false')"
+  if [[ "$ALLOW_PUSH" != "true" ]]; then
+    log "own-PR ${ID}: allow_own_pr_push=false（急停），保留 approved 交会话路人工执行"
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "[dry-run] notify.sh event approval-manual-required --key own-pr-${ID}-$(date +%F) --summary own-PR ${ID} 已批，allow_own_pr_push=false（急停），请会话路执行"
     else
-      log "own-PR ${ID}: hermes CLI 不可达（PATH 与 ~/.local/bin 均无），跳过 contrib-cc 建卡，事件链保留"
+      "$NOTIFY" event approval-manual-required --key "own-pr-${ID}-$(date +%F)" \
+        --summary "own-PR ${ID} 短码已批，allow_own_pr_push=false（急停），请会话路执行" >>"$LOG" 2>&1 || true
     fi
+    exit 0
+  fi
+  # 闸开：探测 build 产物定模式（dir: 对缺失路径会 mkdir 空目录——kanban_db.py 空目录陷阱，
+  # 故必须 -d + git rev-parse 双校验，不满足回退 build-and-push）
+  BRANCH_MD="$(ls -t "$CONTRIB"/runs/*-issue"${ISSUE}"/BRANCH.md 2>/dev/null | head -1 || true)"
+  MODE="build-and-push"; WT_DIR=""; BRANCH_NAME=""
+  if [[ -n "$BRANCH_MD" ]]; then
+    WT_DIR="$(grep -m1 'worktree：`' "$BRANCH_MD" 2>/dev/null | sed -E 's/.*worktree：`([^`]+)`.*/\1/' || true)"
+    BRANCH_NAME="$(head -n1 "$BRANCH_MD" 2>/dev/null | sed -E 's/^#[[:space:]]*BRANCH[[:space:]]*—[[:space:]]*//' || true)"
+    case "$WT_DIR" in "~"*) WT_DIR="${HOME}/${WT_DIR#\~/}" ;; esac
+    if [[ -z "$WT_DIR" || -z "$BRANCH_NAME" || ! -d "$WT_DIR" ]] \
+      || ! git -C "$WT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+      log "own-PR ${ID}: BRANCH.md 存在但 worktree 校验失败（${WT_DIR:-空}），回退 build-and-push"
+      MODE="build-and-push"; WT_DIR=""; BRANCH_NAME=""
+    else
+      MODE="push-only"
+    fi
+  fi
+  if [[ "$DRY_RUN" == "true" ]]; then
+    if [[ "$MODE" == "push-only" ]]; then
+      echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 45m --workspace dir:${WT_DIR}（own-PR ${ID} push-only 卡，分支 ${BRANCH_NAME}）"
+    else
+      echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 4h --workspace worktree:${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent} --branch fix/issue${ISSUE}（own-PR ${ID} build-and-push 卡）"
+    fi
+    exit 0
+  fi
+  # HERMES_BIN 解析：env seam → PATH → ~/.local/bin（launchd PATH 极简）
+  HERMES_BIN="${HERMES_BIN:-}"
+  if [[ -z "$HERMES_BIN" ]]; then
+    HERMES_BIN="$(command -v hermes 2>/dev/null || true)"
+  fi
+  if [[ -z "$HERMES_BIN" && -x "$HOME/.local/bin/hermes" ]]; then
+    HERMES_BIN="$HOME/.local/bin/hermes"
+  fi
+  if [[ -z "$HERMES_BIN" ]]; then
+    log "own-PR ${ID}: hermes CLI 不可达（PATH 与 ~/.local/bin 均无），跳过建卡，事件链保留"
+    "$NOTIFY" event approval-manual-required --key "own-pr-${ID}-$(date +%F)" \
+      --summary "own-PR ${ID} 短码已批，但 hermes CLI 不可达无法建 coder 卡，请会话路执行" >>"$LOG" 2>&1 || true
+    exit 0
+  fi
+  # 组卡 body（claude/worker 的唯一世界观，要素缺一 worker 即 block）
+  BODY_LINES="类型: own-PR 执行（coder lane）
+mode: ${MODE}
+rq-id: ${ID} | issue: #${ISSUE} | pr: ${ITEM_PR:--} | disposition: ${DISPOSITION}
+成稿（逐字投递载荷，启动 claude 前拷入 workspace）: ${DRAFT}"
+  if [[ "$MODE" == "push-only" ]]; then
+    BODY_LINES+="分支档案: ${BRANCH_MD}
+worktree: ${WT_DIR} | 分支: ${BRANCH_NAME} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
+PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:${BRANCH_NAME}
+timeout_budget: 1200"
+  else
+    BODY_LINES+="worktree: 由 kanban 物化（\${HERMES_KANBAN_WORKSPACE}）| 分支: fix/issue${ISSUE} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
+PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:fix/issue${ISSUE}
+构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
+  fi
+  BODY_LINES+="
+红线: ① commit 一律不带 Co-Authored-By（上游惯例）② push 前 approved.log 近 20 行查 ${ID} 去重 + gh pr list --head <分支> 双重去重，已有 PR 则只收尾绝不重 push ③ 完成后由 worker（不是 claude）执行 rq.sh set ${ID} executed --note <pr_url>（按实际结果也可 revise/failed；claude 不碰 martin 仓）④ 失败按 claude-run SKILL 失败矩阵，重试 ≤2"
+  KANBAN_ARGS=(kanban create "执行 own-PR: ${ID}（#${ITEM_PR:-issue ${ISSUE}}）"
+    --assignee coder --idempotency-key "${ID}" --body "$BODY_LINES")
+  if [[ "$MODE" == "push-only" ]]; then
+    KANBAN_ARGS+=(--max-runtime 45m --workspace "dir:${WT_DIR}")
+  else
+    KANBAN_ARGS+=(--max-runtime 4h --workspace "worktree:${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}" --branch "fix/issue${ISSUE}")
+  fi
+  CARD_ID="$("$HERMES_BIN" "${KANBAN_ARGS[@]}" 2>>"$LOG" | grep -oE 't_[0-9a-f]+' | head -1 || true)"
+  if [[ -n "${CARD_ID:-}" ]]; then
+    log "own-PR ${ID}: coder 卡已建 ${CARD_ID}（mode=${MODE}，idempotency-key=${ID}）"
+  else
+    log "own-PR ${ID}: coder 卡创建失败（hermes CLI rc 非 0 或无卡 id），事件链保留"
+    "$NOTIFY" event approval-manual-required --key "own-pr-${ID}-$(date +%F)" \
+      --summary "own-PR ${ID} 短码已批，coder 卡创建失败，请会话路执行" >>"$LOG" 2>&1 || true
   fi
   exit 0
 fi

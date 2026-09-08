@@ -207,7 +207,7 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 - **入队**：scan/radar 把「验证成本已付清、只差 L2 批准」的项写 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`；premises 逐条登记，radar 每日复验 + 执行前 TTL 复验双保险——#102413 教训制度化）
 - **准备**：launchd 09:37 对预算内 top1 自动三轮审（两次独立 `claude -p` 进程 = 结构性 fresh-context；probe 车道单轮 strategist 免红队、不占深检预算）；成稿推微信 🟡 审批卡（tunnel 只读 URL，审后即删）
-- **执行**：用户「批/改/否 #rq-id」→ hermes 侧 `hermes-contrib-l2` skill：TTL 复验 → 逐字投递 → approved.log（L2-A，与会话内 L2-B 等效且互查去重）→ 回执；48h 搁置（09:17 cron 对账）。own-PR push 另需 `allow_own_pr_push=true`（默认关）
+- **执行**：用户「批/改/否 #rq-id」→ hermes 侧 `hermes-contrib-l2` skill：TTL 复验 → 逐字投递 → approved.log（L2-A，与会话内 L2-B 等效且互查去重）→ 回执；48h 搁置（09:17 cron 对账）。own-PR 批准后由 execute.sh 建 coder 卡全自动执行 push+PR（09-08 lane 改造；`allow_own_pr_push` 急停总开关，当前 true）
 
 ### 可 pick 库存台账（资产；review 是分发渠道）
 

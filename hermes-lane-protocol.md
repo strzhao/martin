@@ -37,8 +37,9 @@ kanban.db（唯一事实源，WAL + BEGIN IMMEDIATE + claim CAS）
 ## 2. Lane 命名规范
 
 - 每个域一对 lane：`<域>`（真 profile，dispatcher 自动 spawn）+ `<域>-cc`（**必须是不存在的 profile 名**，CC 专属）
-- 已落地：`life` / `life-cc`（09-06，dogfood 全链已跑通）、`contrib` / `contrib-cc`（09-07，见 §8）
+- 已落地：`life` / `life-cc`（09-06，dogfood 全链已跑通）、`contrib`（09-07，见 §8；`contrib-cc` 已于 09-08 下线，own-PR 执行改走 coder lane）
 - 待建：`ops` / `ops-cc`、`hkstock` / `hkstock-cc`
+- **⚠ cc lane 模式降级为可选（2026-09-08，contrib-cc 先例）**：cc lane 卡停 ready 等 CC 会话 claim、消费侧无自动化，与「批准即全自动」目标相悖。凡可自动化的 CC 任务一律走真 profile + worker 驱动 `claude -p`（coder lane 模式）；cc lane 只保留给**确需人本人在环**的交互式任务。新域默认不建 `<域>-cc`，除非能明确回答「为什么这活必须等人开 CC 会话」。
 - dispatcher 对 control-plane lane 的处理：进 `skipped_nonspawnable` 桶、不计 stuck、永不 spawn（`has_spawnable_ready` 过滤，kanban_db.py:8038）
 
 ## 3. 建卡规范
@@ -58,8 +59,8 @@ kanban.db（唯一事实源，WAL + BEGIN IMMEDIATE + claim CAS）
 ## 4. CC 侧标准动作流
 
 ```bash
-# 1. 拉自己 lane 的待领队列
-hermes kanban list --assignee contrib-cc --status ready --json
+# 1. 拉自己 lane 的待领队列（示例用 life-cc；contrib-cc 已于 09-08 下线，勿再使用）
+hermes kanban list --assignee life-cc --status ready --json
 
 # 2. 认领（CAS 锁，抢不到安全失败；ttl 要给够）
 hermes kanban claim <task_id> --ttl 7200
@@ -120,18 +121,20 @@ hermes kanban tail <task_id>   # 观察到终态
 # 6. 真卡走微信自然语言派单，验证终态推回微信
 ```
 
-## 8. contrib 域接入（2026-09-07 已实施）
+## 8. contrib 域接入（2026-09-07 实施；09-08 lane 改造）
 
 contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 scan/radar → 深检三轮审 → L2 三路审批 → execute 投递），lane 化不是迁移而是补缺口。
 
 **已落地**：
 1. `contrib` profile（hermes worker lane）：只读研判专家（premise 复验/状态核查/报告解读/台账整理），SOUL.md 含知识源路由（hermes-contribution.md §2/§5/§7/§9/§10/§11）+ gh 只读红线；honcho.json 独立 aiPeer `contrib`
-2. `contrib-cc` lane 双来源：①execute.sh own-PR 已批分支自动建卡（scripts/approval/execute.sh，`--idempotency-key <rq-id>` 幂等，事件链保留作兜底；验收测试场景 10 全绿）②微信自然语言派单（default SOUL.md 派单路由表）
-3. default profile SOUL.md 加了 contrib 派单三分路由（直答 / `contrib` / `contrib-cc`）
+2. **own-PR 执行 = coder lane 全自动（09-08 起，替代已下线的 contrib-cc 卡）**：execute.sh own-PR 已批分支探测 build 产物分流——`push-only`（BRANCH.md+worktree 校验通过 → `--workspace dir:<worktree>` 45m）/ `build-and-push`（无产物 → `--workspace worktree:<hermes-agent 仓>` 4h）——建 coder 卡（`--idempotency-key <rq-id>` 幂等），dispatcher spawn worker 驱动 claude -p 完成 push fork + gh pr create，rq set executed 由 worker 收尾（claude 不碰 martin 仓）。`allow_own_pr_push` 语义=**急停总开关**（false=不建卡只发 approval-manual-required 事件退回人工）。验收测试场景 10.A-D 全绿。
+3. default profile SOUL.md 派单路由：直答 / `contrib` / `coder`（contrib-cc 行已删）
 
-**设计决策（探查报告建议被否决的记录）**：escalate 分支**不**建 contrib-cc 卡——escalate 项的消费者是用户（L2 审批：批/改/否），不是 CC claim；给审批项再挂任务卡会造成双消费路径（用户批后「两边都不动/都动」）。审批环保持原样。
+**设计决策（探查报告建议被否决的记录）**：escalate 分支**不**建卡——escalate 项的消费者是用户（L2 审批：批/改/否），不是 worker；给审批项再挂任务卡会造成双消费路径（用户批后「两边都不动/都动」）。审批环保持原样。
 
-**边界**：rq 状态机 / approved.log / budget 账本全部保留为独立 SSOT，kanban 卡只是「待领队列」的补充容器；own-PR 卡 push 前仍受 `allow_own_pr_push` 闸门约束（lane 化不豁免任何 L2 红线）。
+**边界**：rq 状态机 / approved.log / budget 账本全部保留为独立 SSOT，kanban 卡只是执行容器；own-PR 自动化不豁免任何 L2 红线（auto-gate「own-PR 永不自动」独立生效，仍必走 L2-A 微信批准；TTL 复验四项在建卡前照跑）。
+
+**contrib-cc 下线记录（09-08）**：唯一实际使用的 cc lane（execute.sh 自动建卡 → 等 CC 会话 claim），消费侧从无脚本实现、SOP 随卡走，实际是「等人来」。用户拍板「不该存在这个模式」→ 删除（代码 1 处 + 文档 5 处 + 测试重写），执行通道升级为 coder lane 全自动。存量卡 t_e5f19d5a 已 archive。
 
 ## 9. 关键源码锚点
 
@@ -155,8 +158,8 @@ contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 sc
 
 **worktree 归属决策**：worktree 由 kanban 物化（`hermes_cli/kanban_db.py:10237`），**不交给 autopilot 再建一层**——autopilot 的 SessionStart hook 在 worktree 内会自动进 worktree-session 模式（锚 `worktree-bootstrap.sh` 行为），worker 只需把 claude 的工作目录指向 `$HERMES_KANBAN_WORKSPACE`，两层机制天然兼容。
 
-**L2 红线互引（本文件 §5.3）**：coder 只 commit 不 push（`--disallowedTools` 硬禁 `git push`/`gh pr`/`gh api`/`gh release`，白名单 + 红线双闸）；一切 push/PR/release 需求走 L2 审批环，coder 卡的产出物是本地 worktree 分支 + 本地 commit，合并与发布是卡外的人工/审批动作。
+**L2 红线互引（本文件 §5.3）**：coder 只 commit 不 push（`--disallowedTools` 硬禁 `git push`/`gh pr`/`gh api`/`gh release`，白名单 + 红线双闸）；一切 push/PR/release 需求走 L2 审批环，coder 卡的产出物是本地 worktree 分支 + 本地 commit，合并与发布是卡外的人工/审批动作。**唯一例外（09-08 lane 改造）：own-PR 执行卡**（body 带 `类型: own-PR 执行`，approval 流水线 L2 批准后由 execute.sh 建卡）——按卡 body 配方放开 `git push fork` + `gh pr create`（仍禁 `gh pr merge`/`gh release`/`gh api` 写/`git push origin`/force），执行手册见 claude-run SKILL §⑦。
 
-**执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md`（CLI 探测、模型 pin、双层超时、启动配方、auto_approve 兜底、失败矩阵）。
+**执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md`（CLI 探测、模型 pin、双层超时、启动配方、auto_approve 兜底、失败矩阵、own-PR 执行卡 §⑦）。
 
 **验收**：走本文件 §7 新 profile 创建 SOP 的 smoke 卡步骤（设计文档写 §9，实为 §7——§9 是源码锚点表）。

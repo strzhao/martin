@@ -77,6 +77,7 @@ bash ~/workspace/martin/scripts/approval/tests/run.sh     # 沙箱全链（stub�
 
 ## 边界（YAGNI 已声明）
 
-- own-PR 项被短码批准后**不自动投递**：确定性执行器不做 push（需 `allow_own_pr_push` 闸门 + 分支/worktree 上下文），保留 approved 态 + `approval-manual-required` 事件交回会话路
+- own-PR 项被短码批准后走 **coder lane 自动执行**（09-08 lane 改造）：`allow_own_pr_push=true`（急停总开关，当前值）→ 探测 `runs/*-issue<ISSUE>/BRANCH.md` 分流建 coder 卡（push-only 45m / build-and-push 4h），dispatcher spawn worker 驱动 claude -p 完成 push fork + gh pr create，rq set executed 由 worker 收尾；`=false` → 不建卡，保留 approved 态 + `approval-manual-required` 事件交回会话路人工执行
+- **运维 runbook（own-PR 卡 failed 后恢复）**：卡两次失败进 `failed` 终态后 → `hermes kanban archive <卡id>`（释放 `--idempotency-key`）→ 重跑 `bash scripts/approval/execute.sh <rq-id> approved` 重建新卡；注意 48h TTL，超期需重新审批
 - premises「抽验」是机械筛选（dead/字段空缺）；语义级 premise 复核仍是会话路职责
 - revise 项的审批页不立即删（等 rq sweep 48h 搁置回收 / 7 天强删兜底）

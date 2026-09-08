@@ -502,16 +502,17 @@ IDLE_LEDGER="$(ledger_lines "$SB2/approved.log")"
 check_eq "7.P1: 台账零增量（空转零副作用）" "0" "$IDLE_LEDGER"
 rm -rf "$SB2"
 
-printf '=== 场景10：own-PR 已批 → contrib-cc 卡（lane 模式薄适配）===\n'
-# 独立沙箱：造 own-PR disposition 的 approved 项，直调 execute.sh。
-# 断言：①kanban create 调用带 --assignee contrib-cc + --idempotency-key（幂等锚点）
-#       ②事件链保留（approval-manual-required 仍入账）③零投递（台账/gh 均零增量）
-#       ④状态保持 approved（确定性执行器不越权）⑤dry-run 只打印零 CLI 调用
+printf '=== 场景10：own-PR 已批 → coder 卡（lane 改造 09-08：急停/双模式）===\n'
+# 独立沙箱：造 own-PR disposition 的 approved 项，直调 execute.sh。四个子场景：
+#   10.A 急停（allow_own_pr_push=false 缺省）：零建卡、事件入账、状态保持 approved、零投递
+#   10.B build-and-push（闸开+无 BRANCH.md）：--assignee coder + worktree: + fix/ 分支 + 4h
+#   10.C push-only（闸开+BRANCH.md+真实 worktree）：--workspace dir:<abs> + 45m + timeout_budget
+#   10.D 陷阱（BRANCH.md 指向不存在目录）：回退 build-and-push（不被 dir: 空目录陷阱击中）
 SB3="$(mktemp -d "${TMPDIR:-/tmp}/approval-ownpr-card.XXXXXX")"
 cat > "$SB3/hermes-card" <<'STUB'
 #!/bin/bash
 printf '=== hermes %s\n' "$*" >> "${HERMES_CALL_LOG:?}"
-printf 'Created t_ownpr0deadbeef  (ready, assignee=contrib-cc)\n'
+printf 'Created t_ownpr0deadbeef  (ready, assignee=coder)\n'
 exit 0
 STUB
 chmod +x "$SB3/hermes-card"
@@ -531,22 +532,87 @@ env "${RQ_ENV[@]}" bash "$RQ" set "$ID_K" awaiting-approval >/dev/null
 env "${RQ_ENV[@]}" bash "$RQ" set "$ID_K" approved >/dev/null
 : > "$SB3/h.log"; : > "$SB3/gh.log"
 LEDGER_BEFORE_K="$(ledger_lines "$SB3/approved.log" 2>/dev/null || echo 0)"
+
+printf '%s\n' '--- 10.A：急停（allow_own_pr_push=false 沙箱缺省）---'
 K_RC=0
 env "${RQ_ENV[@]}" bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || K_RC=$?
-check_eq "10: execute 退出码 0" "0" "$K_RC"
-check_contains "10: kanban create 带 --assignee contrib-cc" "--assignee contrib-cc" "$(cat "$SB3/h.log")"
-check_contains "10: kanban create 带 --idempotency-key=<id>（幂等锚点）" "--idempotency-key $ID_K" "$(cat "$SB3/h.log")"
-check_contains "10: 卡 title 含 rq-id" "执行 own-PR: $ID_K" "$(cat "$SB3/h.log")"
-check_eq "10: 零 gh 投递（own-PR 不进确定性执行器）" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
-check_eq "10: 台账零增量" "0" "$(( $(ledger_lines "$SB3/approved.log") - LEDGER_BEFORE_K ))"
-check_eq "10: 状态保持 approved（不 set executed）" "approved" \
+check_eq "10.A: execute 退出码 0" "0" "$K_RC"
+check_eq "10.A: 零 hermes CLI 调用（不建卡）" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_contains "10.A: 事件链保留（approval-manual-required 入账）" "approval-manual-required" "$(cat "$EV3" 2>/dev/null)"
+check_eq "10.A: 零 gh 投递" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.A: 台账零增量" "0" "$(( $(ledger_lines "$SB3/approved.log") - LEDGER_BEFORE_K ))"
+check_eq "10.A: 状态保持 approved（不 set executed）" "approved" \
   "$(jq -r --arg id "$ID_K" '.items[] | select(.id == $id) | .state' "$SB3/data/ready-queue.json")"
-check_contains "10: 事件链保留（approval-manual-required 入账）" "approval-manual-required" "$(cat "$EV3" 2>/dev/null)"
-# dry-run：只打印，零 CLI 调用
+DRY_OUT="$(env "${RQ_ENV[@]}" APPROVAL_DRY_RUN=true bash "$EXECUTE" "$ID_K" approved 2>&1)"
+check_contains "10.A: dry-run 打印急停语义" "allow_own_pr_push=false（急停）" "$DRY_OUT"
+check_eq "10.A: dry-run 零 hermes CLI 调用" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+
+printf '%s\n' '--- 10.B：闸开 build-and-push（无 BRANCH.md）---'
+# rq init 不落 config.json（ensure_files 只有 queue/budget）——闸开子场景直接写 config
+cat > "$SB3/data/config.json" <<'EOF'
+{
+  "repo": "NousResearch/hermes-agent",
+  "ready_min_score": 11,
+  "allow_own_pr_push": true,
+  "approval_ttl_hours": 48,
+  "notify_dry_run": false,
+  "notify_target": "weixin:test-target@sandbox"
+}
+EOF
+: > "$SB3/h.log"; : > "$SB3/gh.log"
+K_RC=0
+env "${RQ_ENV[@]}" bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || K_RC=$?
+H_LOG="$(cat "$SB3/h.log")"
+check_eq "10.B: execute 退出码 0" "0" "$K_RC"
+check_contains "10.B: kanban create 带 --assignee coder" "--assignee coder" "$H_LOG"
+check_contains "10.B: kanban create 带 --idempotency-key=<id>（幂等锚点）" "--idempotency-key $ID_K" "$H_LOG"
+check_contains "10.B: 卡 title 含 rq-id" "执行 own-PR: $ID_K" "$H_LOG"
+check_contains "10.B: build-and-push 用 worktree: workspace" "--workspace worktree:" "$H_LOG"
+check_contains "10.B: build-and-push 带 fix/ 分支" "--branch fix/" "$H_LOG"
+check_contains "10.B: build-and-push max-runtime 4h" "--max-runtime 4h" "$H_LOG"
+check_contains "10.B: body 带类型标记" "类型: own-PR 执行" "$H_LOG"
+check_contains "10.B: body 标 mode" "mode: build-and-push" "$H_LOG"
+check_contains "10.B: body 带成稿路径" "$DRAFT_K" "$H_LOG"
+check_contains "10.B: body 带 push remote=fork 说明" "push remote: fork" "$H_LOG"
+check_eq "10.B: 零 gh 投递" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.B: 台账零增量" "0" "$(( $(ledger_lines "$SB3/approved.log") - LEDGER_BEFORE_K ))"
+check_eq "10.B: 状态保持 approved（不 set executed）" "approved" \
+  "$(jq -r --arg id "$ID_K" '.items[] | select(.id == $id) | .state' "$SB3/data/ready-queue.json")"
 : > "$SB3/h.log"
 DRY_OUT="$(env "${RQ_ENV[@]}" APPROVAL_DRY_RUN=true bash "$EXECUTE" "$ID_K" approved 2>&1)"
-check_contains "10: dry-run 打印建卡意图" "[dry-run] hermes kanban create" "$DRY_OUT"
-check_eq "10: dry-run 零 hermes CLI 调用" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_contains "10.B: dry-run 打印建卡意图" "[dry-run] hermes kanban create" "$DRY_OUT"
+check_contains "10.B: dry-run 打印 mode" "build-and-push" "$DRY_OUT"
+check_eq "10.B: dry-run 零 hermes CLI 调用" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+
+printf '%s\n' '--- 10.C：闸开 push-only（BRANCH.md + 真实 worktree）---'
+git init -q "$SB3/wt103914" 2>/dev/null
+git -C "$SB3/wt103914" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init 2>/dev/null
+mkdir -p "$SB3/data/runs/2026-09-08-issue103914"
+printf '# BRANCH — fix/test-ownpr-branch\n\n- worktree：`%s/wt103914`\n' "$SB3" \
+  > "$SB3/data/runs/2026-09-08-issue103914/BRANCH.md"
+: > "$SB3/h.log"; : > "$SB3/gh.log"
+K_RC=0
+env "${RQ_ENV[@]}" bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || K_RC=$?
+H_LOG="$(cat "$SB3/h.log")"
+check_eq "10.C: execute 退出码 0" "0" "$K_RC"
+check_contains "10.C: push-only 用 dir: workspace（指向既有 worktree）" "--workspace dir:$SB3/wt103914" "$H_LOG"
+check_contains "10.C: push-only max-runtime 45m" "--max-runtime 45m" "$H_LOG"
+check_contains "10.C: body 标 mode" "mode: push-only" "$H_LOG"
+check_contains "10.C: body 带 timeout_budget" "timeout_budget: 1200" "$H_LOG"
+check_contains "10.C: body 带分支名" "fix/test-ownpr-branch" "$H_LOG"
+check_eq "10.C: 零 gh 投递" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
+
+printf '%s\n' '--- 10.D：陷阱（BRANCH.md 指向不存在目录 → 回退 build-and-push）---'
+printf '# BRANCH — fix/ghost-branch\n\n- worktree：`/tmp/definitely-not-exist-ownpr-trap`\n' \
+  > "$SB3/data/runs/2026-09-08-issue103914/BRANCH.md"
+: > "$SB3/h.log"
+K_RC=0
+env "${RQ_ENV[@]}" bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || K_RC=$?
+H_LOG="$(cat "$SB3/h.log")"
+check_eq "10.D: execute 退出码 0" "0" "$K_RC"
+check_contains "10.D: 回退 build-and-push（worktree: workspace）" "--workspace worktree:" "$H_LOG"
+check_contains "10.D: 不产生 dir: 参数（空目录陷阱被绕开）" "0" \
+  "$(grep -c -- '--workspace dir:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
 rm -rf "$SB3"
 
 printf '\n==== 汇总 ====\n'

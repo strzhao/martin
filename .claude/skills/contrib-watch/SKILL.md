@@ -14,7 +14,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 - `/Users/stringzhao/workspace/martin/hermes-contribution.md`（共建策略 + §10 sweeper 机制）
 - `/Users/stringzhao/workspace/martin/.claude/agents/hermes-contrib-strategist.md`（形态选择框架/锚定铁律/验证纪律全文）
 
-对外动作分级（不可逾越）：**scan/radar/deep-check = L1 只读上游**（gh 读 + 本地文件写；微信推送/写 ready-queue 是本地渠道动作，属 L1）。**「草稿自动备好 + 推送审批」属于 L1；发出（gh 写：评论/issue/PR/push）永远过 L2**——L2 三路等效：**L2-auto 自动批准**（09-06 用户拍板默认路：深检末段红队/preflight 写 `verdict.json`，确定性闸门 `scripts/approval/auto-gate.sh` 硬条件全过——评论类可逆动作 + auto/high/low + score≥12 + 非 own-PR——则跳过微信卡直接进执行链，台账标 L2-auto，回执照常推送）、**L2-A 微信批准**（升级路：闸门任一不过 → 审批卡置顶「我定不了的点」清单 → 用户「批 #rq-id」→ TTL 复验 → 落弹 → approved.log）、**L2-B 会话内明示**。三路执行前都查 approved.log 去重。**所有对外草稿必须过 strategist preflight 才能进 awaiting-approval/auto-gate**（deep 车道另加 fresh-context 红队；probe 车道单轮 strategist 免红队）。**build 只到本地为止**——`git push`/`gh pr create` 仅当对应 own-PR 项获 L2-A 批准**且** `config.allow_own_pr_push=true` 时由执行方执行，其余场景绝对禁止（own-PR 永不进 L2-auto）。
+对外动作分级（不可逾越）：**scan/radar/deep-check = L1 只读上游**（gh 读 + 本地文件写；微信推送/写 ready-queue 是本地渠道动作，属 L1）。**「草稿自动备好 + 推送审批」属于 L1；发出（gh 写：评论/issue/PR/push）永远过 L2**——L2 三路等效：**L2-auto 自动批准**（09-06 用户拍板默认路：深检末段红队/preflight 写 `verdict.json`，确定性闸门 `scripts/approval/auto-gate.sh` 硬条件全过——评论类可逆动作 + auto/high/low + score≥12 + 非 own-PR——则跳过微信卡直接进执行链，台账标 L2-auto，回执照常推送）、**L2-A 微信批准**（升级路：闸门任一不过 → 审批卡置顶「我定不了的点」清单 → 用户「批 #rq-id」→ TTL 复验 → 落弹 → approved.log）、**L2-B 会话内明示**。三路执行前都查 approved.log 去重。**所有对外草稿必须过 strategist preflight 才能进 awaiting-approval/auto-gate**（deep 车道另加 fresh-context 红队；probe 车道单轮 strategist 免红队）。**build 只到本地为止**——`git push`/`gh pr create` 仅当对应 own-PR 项获 L2-A 批准**且** `config.allow_own_pr_push=true` 时由执行方执行（09-08 起**执行方 = coder lane worker**：execute.sh 自动建 coder 卡，worker 驱动 claude -p 全自动 push+建 PR），其余场景绝对禁止（own-PR 永不进 L2-auto）。
 
 ---
 
@@ -112,7 +112,7 @@ launchd 每小时粗滤后有域内命中时调用。步骤：
 4. **验证**：新测试过 + mutation 自证（把修复退化回去测试必须失败）+ 邻居测试 + `ruff check`。
 5. **commit**：单关注点 message（`fix(<scope>): ...`，正文 2-5 行说清机制）。**自检**：`git log -1 --format=%B` 确认无 `Co-Authored-By` 行，有则 `git commit --amend` 剥离。
 6. **PR 草稿**：写 `$CONTRIB/runs/$(date +%F)-issue<N>/PR-DRAFT.md`——完整可直接粘贴的 body：Summary / Changes（逐文件）/ Validation（测试+mutation 证据，真实数字）/ Related issue（`Fixes #<N>`）/ References。同目录 `BRANCH.md`：分支名、worktree 路径、测试证据摘要、README 一行「待人工审查后手动 push+建 PR」。
-7. **收尾**：在当日 briefs 追加构建记录（issue/分支/测试结果/残留风险）；**终端末行明确输出「本地分支就绪，未 push——请人工审查」**。push 两路：用户手动 `git push fork fix/<slug>` + `gh pr create`（push 目标 remote 是 `fork`，`origin` 是上游 403）；或该项入 ready-queue 走 L2-A——微信批准后由 hermes 侧执行方 push+建 PR（**仅当 `config.allow_own_pr_push=true`**，默认关）。
+7. **收尾**：在当日 briefs 追加构建记录（issue/分支/测试结果/残留风险）；**终端末行明确输出「本地分支就绪，未 push——请人工审查」**。push 两路：用户手动 `git push fork fix/<slug>` + `gh pr create`（push 目标 remote 是 `fork`，`origin` 是上游 403）；或该项入 ready-queue 走 L2-A——微信批准后由 coder lane worker 全自动 push+建 PR（09-08 lane 改造起，**仅当 `config.allow_own_pr_push=true`**，当前已开；false=急停退回人工路）。
 
 ---
 
