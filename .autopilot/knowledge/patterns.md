@@ -389,3 +389,7 @@ launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退�
 <!-- tags: hermes, anthropic, env-pollution, 401, cc-shell, hkstock -->
 ## [2026-09-08] CC shell 的 ANTHROPIC_* 劫持 hermes LLM 调用：CC 侧调 hermes 必须 env -u
 CC/claude shell 导出的 `ANTHROPIC_AUTH_TOKEN`（cc-switch 的 token）+ `ANTHROPIC_BASE_URL` 会被 hermes 的 anthropic_messages transport 优先采用 → 全部 LLM 调用打到 cc-switch 代理报 401（key 尾号 316K）。cron job 从 CC shell 触发（`hermes cron run`）会继承污染 → delivery_history 401 假败。修复：CC 侧任何 hermes 调用一律 `env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL -u ANTHROPIC_API_KEY`；gateway 内 cron scheduler/worker 进程环境干净不受累。
+
+<!-- tags: bash, dry-run, gate-scope, notify, contrib-watch, events-ledger -->
+## [2026-09-08] dry-run 门控只盖发送不盖账本：notify.sh event 干跑会真实入账、下轮 flush 真推
+notify.sh 的 `NOTIFY_DRY_RUN` 只门控 `_send`（:132 打印不发送）；`cmd_event`（:281）在 dry-run 下**仍真实 append events.jsonl**（pushed:false）——对 event 子命令做"干跑验证"会污染告警账本，下次 flush 按真事件聚合推送。教训：验证只读/入账类子命令（event/approve 记账）不能靠 env 干跑，要么用一次性 key 后手工清账（本次做法），要么根本不跑。同理推广：任何「gate 只盖副作用末端」的脚本，中间层写入类动作不在保护范围内，stub 验证前先核 gate 覆盖半径。
