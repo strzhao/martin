@@ -373,3 +373,11 @@ launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退�
 <!-- tags: contract, autopilot, tool-syntax, red-team, literal, hermes -->
 ## [2026-09-08] 契约字面量要锚定工具源码：速记进契约 → 红队锁死速记 → 实现反而被逼教错语法
 写设计契约时把 `process(kill)` 当速记写进去（真实工具语法是 `process(action=kill)`，process_registry.py:3228），红队逐字断言锁了速记，蓝队按真实语法实现反而 FAIL——若顺着测试改实现，等于把错误语法写进 worker 的操作手册（worker 照抄必炸）。正确姿势：①契约里的命令/调用字面量**先查工具源码/schema 再落笔**，不凭记忆速记；②auto-fix 遇「实现语义对、契约字面量错」走铁律例外（AskUserQuestion 确认后修测试+契约同步修订），不硬凑实现；③本次红队逐字断言还连环暴露 3 处真实缺口（alarm 142 退出码语义 / max_runtime>timeout_budget+1800s DbC / 8192 上界）——字面量断言严是资产，前提是字面量本身对。
+
+<!-- tags: hermes, kanban, subscribe, weixin, notification, hkstock, auto-chain -->
+## [2026-09-08] kanban CLI 建卡零订阅 → worker 终态不推微信：notify-subscribe 补订是通用解
+`hermes kanban create`（CLI 直建）不经微信侧 agent 的 `kanban_create` 工具，`_maybe_auto_subscribe`（kanban_tools.py:1484）不触发 → 卡终态无推回路径（实证三路：forensics 零 send_result / gateway.log 零 `kanban notifier: woke agent` 行 / kanban.db `kanban_notify_subs` 表无该卡）。修复三选一：①CLI 建卡后立即 `hermes kanban notify-subscribe <task_id> --platform weixin --chat-id <dm-id> --chat-type dm --delivery-mode notify+wake`（dm-id 可从 kanban_notify_subs 历史行取）；②让微信侧 default agent 建卡（自然语言派单天然订阅）；③定时链路用 cron `--deliver bot-chat` 注入微信侧会话再建卡。推送实证铁证 = `send_result ok=true` 落在卡终态窗口（gateway.log notifier 行佐证）。
+
+<!-- tags: qa, vacuous-assertion, telemetry, predicate, hkstock, forensics -->
+## [2026-09-08] 遥测类弱断言是 vacuous PASS：推送正证据必须「订阅存在 ∧ 终态窗口内 send ok」双闸
+「forensics summary 输出非空」类断言对任何健康时段都成立（本次 199 条 poll 事件让它 vacuous PASS，掩盖了真实未推送）。遥测断言三坑：①窗口绑定——`completed_at` 是 epoch 秒（kanban show --json 的 task 键内），timeline 行是本地时间 `2026-09-08 15:55:22`，比较前须换算同构（宽容 60s 时钟偏移）；②形态——timeline 是 key=value（`ok=true`）非 JSON（`"ok":true`），两种都要匹配；③结构——`kanban show --json` 有 `task` 嵌套层，取顶层键得 None 静默失败。正证据双闸 = `kanban notify-list <task_id>` 有订阅记录 ∧ timeline 终态窗口内存在 send_result ok=true。

@@ -68,14 +68,67 @@ else
   fi
 fi
 
-# --- 2.P3: 终态推回微信且 AI 整理形态 → hermes forensics summary --hours 1 含 smoke 时段记录 ---
-# 微信侧用户确认留编排器；此处硬断言 forensics 在 smoke 时段窗口内有记录（rc=0 且输出非空）。
-fore_out="$("$HERMES_BIN" forensics summary --hours 1 2>&1)"
-fore_rc=$?
-if [[ $fore_rc -eq 0 && -n "$fore_out" ]]; then
+# --- 2.P3: 终态推回微信 → 正证据双闸（2026-09-08 auto-fix 强化，替换 vacuous forensics 非空断言）---
+# ① 卡存在订阅记录（notify-subscribe / 微信侧建卡 auto-subscribe 二者之一落地）
+# ② forensics timeline 在卡终态窗口内存在 send_result ok=true（真实推送遥测）
+# 微信侧内容人工确认（AI 整理形态）留编排器，此处只断机械可判的正证据。
+sub_out="$("$HERMES_BIN" kanban notify-list "$TASK_ID" 2>&1)"
+sub_rc=$?
+p3_fail=""
+if [[ $sub_rc -ne 0 || "$sub_out" == *"(no subscriptions)"* || -z "$sub_out" ]]; then
+  p3_fail="卡 $TASK_ID 无订阅记录（notify-list: ${sub_out:0:120}）"
+fi
+
+completed_at="$("$HERMES_BIN" kanban show "$TASK_ID" --json 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin).get('task',{})
+print(d.get('completed_at') or d.get('updated_at') or '')" 2>/dev/null)"
+timeline_out="$("$HERMES_BIN" forensics timeline --since 6h 2>&1)"
+send_hit="$(COMPLETED_AT="$completed_at" python3 - "$timeline_out" <<'PYIN'
+import sys, os, re, datetime
+cut = os.environ.get('COMPLETED_AT', '').strip()
+# cut 可能是 epoch 秒（kanban completed_at）或 ISO 字符串——统一转 epoch 秒
+if cut.isdigit():
+    cut_epoch = int(cut)
+elif cut:
+    try:
+        cut_epoch = int(datetime.datetime.fromisoformat(cut.replace(' ', 'T')[:19]).timestamp())
+    except ValueError:
+        cut_epoch = 0
+else:
+    cut_epoch = 0
+hit = False
+for line in sys.argv[1].splitlines():
+    line = line.strip()
+    if 'send_result' not in line:
+        continue
+    if '"ok":true' not in line.replace(' ', '') and 'ok=true' not in line:
+        continue
+    if not cut_epoch:
+        hit = True
+        break
+    m = re.search(r'20\d\d-\d\d-\d\d[T ]\d\d:\d\d:\d\d', line)
+    if m:
+        try:
+            ts = int(datetime.datetime.fromisoformat(m.group(0).replace(' ', 'T')).timestamp())
+        except ValueError:
+            continue
+        if ts >= cut_epoch - 60:  # 宽容 60s 时钟偏移
+            hit = True
+            break
+print('HIT' if hit else 'MISS')
+PYIN
+)"
+if [[ "$send_hit" == "HIT" ]]; then
+  :
+else
+  p3_fail="${p3_fail:+$p3_fail | }forensics timeline no send_result ok=true in terminal window (completed_at=$completed_at, got=$send_hit)"
+fi
+
+if [[ -z "$p3_fail" ]]; then
   pass "2.P3"
 else
-  fail "2.P3" "hermes forensics summary --hours 1 rc=$fore_rc（要求 0）且输出非空（实际长度=${#fore_out}）——smoke 时段无可观测记录"
+  fail "2.P3" "$p3_fail"
 fi
 
 if [[ $FAIL_COUNT -gt 0 ]]; then

@@ -32,7 +32,7 @@ pass() {
 
 # python3 + PyYAML 内联断言（环境依赖，见 context.md「测试命令」约定）
 pyyaml() { # <yaml-path> <python-expression-on-'data'>
-  python3 - "$1" <<PYEOF
+  python3 - "$1" "$2" <<PYEOF
 import sys, yaml
 try:
     data = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
@@ -109,6 +109,37 @@ else
     pass "1.P4"
   else
     fail "1.P4" "config.yaml toolsets 不含 terminal"
+  fi
+fi
+
+# --- EXTRA（2026-09-08 auto-fix 强化，qa-reviewer Important 缺口）：逐字守卫 ---
+# EXTRA-desc-verbatim: profile.yaml description 与契约逐字一致（decomposer 路由信号，防 clone/update 漂移）
+DESC_EXPECT='理财专家：A股/港股/基金/期货的盘前简报、持仓问答与结构化市场信号。只做信息与信号，不做任何交易执行。'
+desc_file="$PROFILE_DIR/profile.yaml"
+if [[ ! -f "$desc_file" ]]; then
+  fail "EXTRA-desc-verbatim" "profile.yaml 不存在"
+else
+  desc_got="$(python3 -c "import yaml;print((yaml.safe_load(open('$desc_file',encoding='utf-8')) or {}).get('description',''))" 2>/dev/null)"
+  if [[ "$desc_got" == "$DESC_EXPECT" ]]; then
+    pass "EXTRA-desc-verbatim"
+  else
+    fail "EXTRA-desc-verbatim" "description 与契约不一致: got=${desc_got:0:80}"
+  fi
+fi
+
+# EXTRA-honcho-verbatim: honcho.json 四键逐字（clone_honcho 静默失效 bug 的显式规避件）
+HONCHO_JSON="$PROFILE_DIR/honcho.json"
+if [[ ! -f "$HONCHO_JSON" ]]; then
+  fail "EXTRA-honcho-verbatim" "honcho.json 不存在（clone_honcho bug 规避件缺失）"
+else
+  if pyjson_ok="$(python3 -c "
+import json
+d=json.load(open('$HONCHO_JSON',encoding='utf-8'))
+assert d.get('enabled') is True and d.get('baseUrl')=='http://127.0.0.1:8000' and d.get('workspace')=='hermes' and d.get('aiPeer')=='hkstock'
+print('ok')" 2>&1)" && [[ "$pyjson_ok" == "ok" ]]; then
+    pass "EXTRA-honcho-verbatim"
+  else
+    fail "EXTRA-honcho-verbatim" "honcho.json 四键与契约不一致: ${pyjson_ok:0:120}"
   fi
 fi
 
