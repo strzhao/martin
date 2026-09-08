@@ -151,7 +151,7 @@ contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 sc
 
 四域之外的第五 profile：**coder** = 复杂编码执行 worker。与其他 lane 的区别——它不是 CC 会话 claim 的 control-plane lane，而是真 profile：dispatcher spawn 后由 hermes worker 陪跑一次 Claude Code 无头驾驶。
 
-**链路一行图**：微信 → default（AI 自判，coder-delegate skill）建 coder 卡 → dispatcher spawn coder worker → worker 用 terminal 工具在 kanban 物化的 git worktree 里跑 `claude -p "/autopilot <目标> --fast"`（后台长进程）→ `process(action=wait)` 分片等待 + 每小时 heartbeat → 退出后验收（commit/测试/diff）→ `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
+**链路一行图**：微信 → default（AI 自判，coder-delegate skill）建 coder 卡 → dispatcher spawn coder worker → worker 用 terminal 工具在 kanban 物化的 git worktree 里**多轮接力**跑 `claude -p "/autopilot <目标> --fast"`（⚠️ Phase 0 spike 实证 09-08：单条 -p 进程退出后循环即停、不自续到 done，worker 必须循环重调直到 state.md `phase: done`；启动轮 slash prompt 输出常为空、续跑轮自然语言 prompt 输出完整可读）→ 每轮 `process(action=wait)` 分片等待 + heartbeat → done 后验收（commit/测试/diff）→ `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
 
 **worktree 归属决策**：worktree 由 kanban 物化（`hermes_cli/kanban_db.py:10237`），**不交给 autopilot 再建一层**——autopilot 的 SessionStart hook 在 worktree 内会自动进 worktree-session 模式（锚 `worktree-bootstrap.sh` 行为），worker 只需把 claude 的工作目录指向 `$HERMES_KANBAN_WORKSPACE`，两层机制天然兼容。
 

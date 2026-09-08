@@ -75,7 +75,7 @@
 
 ## hermes 多域 COO 架构（kanban + profiles，2026-09-06 立项）
 
-用户拍板方向：四域各一个 profile（**面向场景设计专家，能力组合走 skill 层**——task 行有独立 skills 列可按任务挂载；拆 profile 的唯一正当理由是权限/身份/爆炸半径边界，不是能力复用）。四域 = contrib（开源共建，暂维持脚本流水线）/ ops（产品运营）/ life（生活助理，dogfood 首选）/ hkstock（待建）。微信单入口 `/kanban create` → triage → 人工路由（dogfood 期 `auto_decompose: false`）→ dispatcher 按 assignee=profile spawn 隔离 worker → 终态事件自动推回微信。第五 profile **coder**（2026-09-08 立项）：复杂编码任务（实现/重构/修 bug/补测试）→ 建 coder 卡，worker 在 kanban 物化 worktree 里陪跑一次 `claude -p "/autopilot <目标> --fast"` 无头驾驶，验收后交付——只 commit 不 push，同刻限 1 张卡（详见 `hermes-lane-protocol.md` §10）。
+用户拍板方向：四域各一个 profile（**面向场景设计专家，能力组合走 skill 层**——task 行有独立 skills 列可按任务挂载；拆 profile 的唯一正当理由是权限/身份/爆炸半径边界，不是能力复用）。四域 = contrib（开源共建，暂维持脚本流水线）/ ops（产品运营）/ life（生活助理，dogfood 首选）/ hkstock（待建）。微信单入口 `/kanban create` → triage → 人工路由（dogfood 期 `auto_decompose: false`）→ dispatcher 按 assignee=profile spawn 隔离 worker → 终态事件自动推回微信。第五 profile **coder**（2026-09-08 立项）：复杂编码任务（实现/重构/修 bug/补测试）→ 建 coder 卡，worker 在 kanban 物化 worktree 里多轮接力陪跑 `claude -p "/autopilot <目标> --fast"` 无头驾驶（spike 实证：单条 -p 不自续到 done，须循环重调直到 phase=done），验收后交付——只 commit 不 push，同刻限 1 张卡（详见 `hermes-lane-protocol.md` §10）。
 
 **已落地（第 0 步加固）**：`~/.hermes/config.yaml` kanban 段已显式设 `auto_decompose: false`（#49638 事故路径，每 tick 重读即时生效）、`max_in_progress: 2`（macOS 无 MemTotal 内存推导回落无界，必须显式封顶；watcher 启动时读取，需 gateway 重启生效）、`default_assignee: "default"`。实态：dispatcher 在跑（60s tick 单例锁）、kanban.db 全空零历史、微信 `/kanban` 无平台限制可用、`kanban-worker`/`kanban-orchestrator` skill 已装。v1 成熟度中高（孤儿卡 reconcile/僵尸回收/per-profile 并发上限齐备）。
 
