@@ -106,17 +106,14 @@ mip="$(printf '%s\n' "$kanban_sec" | grep -E '^[[:space:]]*max_in_progress:' | h
 [[ "$mip" -eq 3 ]] || fail "kanban.max_in_progress=${mip}，要求 == 3"
 ok "kanban.max_in_progress == 3"
 
-# --- C7: kanban.max_in_progress_per_profile.coder == 1 ---
-coder_mip="$(printf '%s\n' "$kanban_sec" | awk '
-  /max_in_progress_per_profile:/ { f = 1; next }
-  f {
-    if ($0 ~ /^[[:space:]]+[^[:space:]#]/) print
-    else exit
-  }
-' | grep -E '^[[:space:]]*coder:' | head -n 1 | grep -oE '[0-9]+')"
-[[ -n "$coder_mip" ]] || fail "kanban 段缺 max_in_progress_per_profile.coder"
-[[ "$coder_mip" -eq 1 ]] || fail "max_in_progress_per_profile.coder=${coder_mip}，要求 == 1"
-ok "max_in_progress_per_profile.coder == 1"
+# --- C7: kanban.max_in_progress_per_profile == 1（单个 int，全局每-profile 上限）---
+# ⚠️ 运行时实证（09-08）：gateway/kanban_watchers.py:1391 对此键做 int() 校验，
+# 字典形态会被拒绝 ignoring——契约不得写成 {coder: 1} 形态。
+pp="$(printf '%s\n' "$kanban_sec" | grep -E '^[[:space:]]*max_in_progress_per_profile:' | head -n 1 | sed -E 's/.*max_in_progress_per_profile:[[:space:]]*//' | tr -d '"')"
+[[ -n "$pp" ]] || fail "kanban 段缺 max_in_progress_per_profile"
+[[ "$pp" =~ ^[0-9]+$ ]] || fail "max_in_progress_per_profile=[$pp]，要求单个 int（字典形态运行时不接受）"
+[[ "$pp" -eq 1 ]] || fail "max_in_progress_per_profile=${pp}，要求 == 1"
+ok "max_in_progress_per_profile == 1（int，每 profile 串行）"
 
 # --- C8: kanban.auto_decompose 保持 false ---
 ad="$(printf '%s\n' "$kanban_sec" | grep -E '^[[:space:]]*auto_decompose:' | head -n 1 | sed -E 's/.*auto_decompose:[[:space:]]*//' | tr -d '"')"
@@ -143,11 +140,9 @@ if command -v hermes >/dev/null 2>&1; then
     printf '%s\n' "$out" | grep -Eq 'max_in_progress:[[:space:]]*3([^0-9]|$)' ||
       fail "hermes config get kanban 未体现 max_in_progress: 3"
     ok "hermes config get kanban 体现 max_in_progress: 3"
-    printf '%s\n' "$out" | grep -q 'max_in_progress_per_profile' ||
-      fail "hermes config get kanban 未体现 max_in_progress_per_profile"
-    printf '%s\n' "$out" | grep -Eq 'coder:[[:space:]]*1' ||
-      fail "hermes config get kanban 未体现 coder: 1"
-    ok "hermes config get kanban 体现 max_in_progress_per_profile coder: 1"
+    printf '%s\n' "$out" | grep -Eq 'max_in_progress_per_profile:[[:space:]]*1$' ||
+      fail "hermes config get kanban 未体现 max_in_progress_per_profile: 1"
+    ok "hermes config get kanban 体现 max_in_progress_per_profile: 1"
   fi
 else
   skip "hermes 不在 PATH — 生效验证（profile list / config get）跳过"
