@@ -56,3 +56,5 @@
 - [2026-09-08] cron bot-chat 投递≠唤醒：定时链路=cron 直建卡+notify-subscribe 补订 | tags: hermes, cron, bot-chat, subscribe, hkstock | → patterns.md
 - [2026-09-08] CC shell ANTHROPIC_* 劫持 hermes LLM（401）：env -u 铁律 | tags: hermes, anthropic, env, 401 | → patterns.md
 - [2026-09-08] dry-run 只盖发送不盖账本：notify.sh event 干跑真实入账下轮真推 | tags: bash, dry-run, gate-scope, notify, contrib-watch | → patterns.md
+- [2026-09-08] 红线扫描 \border\b 误报代码标识符：交易关键词用中文+显式短语 | tags: qa, false-positive, red-line, hkstock | → patterns.md
+- [2026-09-08] coder 卡交付须回 merge 主仓（worktree 残留≠持久交付） | tags: hermes, kanban, coder, worktree, mktd | → patterns.md

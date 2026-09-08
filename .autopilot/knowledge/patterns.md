@@ -393,3 +393,11 @@ CC/claude shell 导出的 `ANTHROPIC_AUTH_TOKEN`（cc-switch 的 token）+ `ANTH
 <!-- tags: bash, dry-run, gate-scope, notify, contrib-watch, events-ledger -->
 ## [2026-09-08] dry-run 门控只盖发送不盖账本：notify.sh event 干跑会真实入账、下轮 flush 真推
 notify.sh 的 `NOTIFY_DRY_RUN` 只门控 `_send`（:132 打印不发送）；`cmd_event`（:281）在 dry-run 下**仍真实 append events.jsonl**（pushed:false）——对 event 子命令做"干跑验证"会污染告警账本，下次 flush 按真事件聚合推送。教训：验证只读/入账类子命令（event/approve 记账）不能靠 env 干跑，要么用一次性 key 后手工清账（本次做法），要么根本不跑。同理推广：任何「gate 只盖副作用末端」的脚本，中间层写入类动作不在保护范围内，stub 验证前先核 gate 覆盖半径。
+
+<!-- tags: qa, false-positive, red-team, pattern, word-boundary, hkstock -->
+## [2026-09-08] 红线扫描 `\border\b` 会命中代码标识符：交易关键词用中文+显式英文短语
+negate 类红线扫描 pattern `\border\b` 把 mktd sources.py 的局部变量 `order = [...]`（基金源兜底顺序列表）误报为下单关键词。中文关键词（下单/委托/撤单）本身精确，英文侧必须用显式交易短语（`place[sd]?\s+order|submit[ _-]?order`），禁用裸词边界泛匹配——代码标识符空间里 order/limit/close 等全是常用变量名。
+
+<!-- tags: hermes, kanban, coder, worktree, merge-back, mktd -->
+## [2026-09-08] coder 卡交付物必须回 merge 主仓：worktree 残留 commit ≠ 持久交付
+kanban worktree 含未推 commit 会被保留（kanban_db.py:5956）但主仓 main 永不含代码——后续任何卡从 main 切 worktree 看不到交付物，worktree 一旦清理交付静默断链（全局 bin symlink 指向 worktree 内 venv 时尤甚）。验收后标准动作：CC 本地 `git merge wt/<task_id>` 回主仓 main + 从主仓 checkout 重装全局 bin。
