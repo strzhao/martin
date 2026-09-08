@@ -146,3 +146,17 @@ contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 sc
 | worktree 物化 | `hermes_cli/kanban_db.py:10237` |
 | profile 管理 | `hermes_cli/profiles.py` |
 | 用户文档 | `website/docs/user-guide/features/kanban.md` |
+
+## §10 coder lane（CC 内嵌 worker）（2026-09-08 立项）
+
+四域之外的第五 profile：**coder** = 复杂编码执行 worker。与其他 lane 的区别——它不是 CC 会话 claim 的 control-plane lane，而是真 profile：dispatcher spawn 后由 hermes worker 陪跑一次 Claude Code 无头驾驶。
+
+**链路一行图**：微信 → default（AI 自判，coder-delegate skill）建 coder 卡 → dispatcher spawn coder worker → worker 用 terminal 工具在 kanban 物化的 git worktree 里跑 `claude -p "/autopilot <目标> --fast"`（后台长进程）→ `process(action=wait)` 分片等待 + 每小时 heartbeat → 退出后验收（commit/测试/diff）→ `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
+
+**worktree 归属决策**：worktree 由 kanban 物化（`hermes_cli/kanban_db.py:10237`），**不交给 autopilot 再建一层**——autopilot 的 SessionStart hook 在 worktree 内会自动进 worktree-session 模式（锚 `worktree-bootstrap.sh` 行为），worker 只需把 claude 的工作目录指向 `$HERMES_KANBAN_WORKSPACE`，两层机制天然兼容。
+
+**L2 红线互引（本文件 §5.3）**：coder 只 commit 不 push（`--disallowedTools` 硬禁 `git push`/`gh pr`/`gh api`/`gh release`，白名单 + 红线双闸）；一切 push/PR/release 需求走 L2 审批环，coder 卡的产出物是本地 worktree 分支 + 本地 commit，合并与发布是卡外的人工/审批动作。
+
+**执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md`（CLI 探测、模型 pin、双层超时、启动配方、auto_approve 兜底、失败矩阵）。
+
+**验收**：走本文件 §7 新 profile 创建 SOP 的 smoke 卡步骤（设计文档写 §9，实为 §7——§9 是源码锚点表）。

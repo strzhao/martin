@@ -369,3 +369,7 @@ launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退�
 <!-- tags: qa, autopilot, artifact, predicate, evidence-integrity -->
 ## [2026-09-07] QA 验收谓词 artifact 必须每谓词独立观测：一次运行切片多路径 = 复制冒充
 红队把同一次 gate 运行的输出原样写进多个谓词 artifact（不同路径同 MD5），stop-hook PRED-ARTIFACT-DUP 拦截（路径不同内容相同 = 复制冒充独立产物；显式共用同一路径才允许）。正确形态：每条谓词的 artifact 承载**该谓词专属的观测**（exit 码 / FAIL 行切片 / 对照组运行 / 环境条件），观测对象或 driver 条件不同，内容天然不同。附带的假阳性教训：SC2086 在 `-S warning` 下是 info 级会放行，注入样本选码前先实跑确认 severity。
+
+<!-- tags: contract, autopilot, tool-syntax, red-team, literal, hermes -->
+## [2026-09-08] 契约字面量要锚定工具源码：速记进契约 → 红队锁死速记 → 实现反而被逼教错语法
+写设计契约时把 `process(kill)` 当速记写进去（真实工具语法是 `process(action=kill)`，process_registry.py:3228），红队逐字断言锁了速记，蓝队按真实语法实现反而 FAIL——若顺着测试改实现，等于把错误语法写进 worker 的操作手册（worker 照抄必炸）。正确姿势：①契约里的命令/调用字面量**先查工具源码/schema 再落笔**，不凭记忆速记；②auto-fix 遇「实现语义对、契约字面量错」走铁律例外（AskUserQuestion 确认后修测试+契约同步修订），不硬凑实现；③本次红队逐字断言还连环暴露 3 处真实缺口（alarm 142 退出码语义 / max_runtime>timeout_budget+1800s DbC / 8192 上界）——字面量断言严是资产，前提是字面量本身对。
