@@ -400,12 +400,14 @@ mode: ${MODE}
 rq-id: ${ID} | issue: #${ISSUE} | pr: ${ITEM_PR:--} | disposition: ${DISPOSITION}
 成稿（逐字投递载荷，启动 claude 前拷入 workspace）: ${DRAFT}"
   if [[ "$MODE" == "push-only" ]]; then
-    BODY_LINES+="分支档案: ${BRANCH_MD}
+    BODY_LINES+="
+分支档案: ${BRANCH_MD}
 worktree: ${WT_DIR} | 分支: ${BRANCH_NAME} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:${BRANCH_NAME}
 timeout_budget: 1200"
   else
-    BODY_LINES+="worktree: 由 kanban 物化（\${HERMES_KANBAN_WORKSPACE}）| 分支: fix/issue${ISSUE} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
+    BODY_LINES+="
+worktree: 由 kanban 物化（\${HERMES_KANBAN_WORKSPACE}）| 分支: fix/issue${ISSUE} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:fix/issue${ISSUE}
 构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
   fi

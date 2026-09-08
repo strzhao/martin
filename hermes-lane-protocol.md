@@ -37,8 +37,8 @@ kanban.db（唯一事实源，WAL + BEGIN IMMEDIATE + claim CAS）
 ## 2. Lane 命名规范
 
 - 每个域一对 lane：`<域>`（真 profile，dispatcher 自动 spawn）+ `<域>-cc`（**必须是不存在的 profile 名**，CC 专属）
-- 已落地：`life` / `life-cc`（09-06，dogfood 全链已跑通）、`contrib`（09-07，见 §8；`contrib-cc` 已于 09-08 下线，own-PR 执行改走 coder lane）
-- 待建：`ops` / `ops-cc`、`hkstock` / `hkstock-cc`
+- 已落地：`life` / `life-cc`（09-06，dogfood 全链已跑通）、`contrib`（09-07，见 §8；`contrib-cc` 已于 09-08 下线，own-PR 执行改走 coder lane）、`hkstock`（09-08 立项落地，**不设 hkstock-cc**——用户裁定 cc lane 模式对本域不适用，理财分析走真 profile worker）
+- 待建：`ops` / `ops-cc`
 - **⚠ cc lane 模式降级为可选（2026-09-08，contrib-cc 先例）**：cc lane 卡停 ready 等 CC 会话 claim、消费侧无自动化，与「批准即全自动」目标相悖。凡可自动化的 CC 任务一律走真 profile + worker 驱动 `claude -p`（coder lane 模式）；cc lane 只保留给**确需人本人在环**的交互式任务。新域默认不建 `<域>-cc`，除非能明确回答「为什么这活必须等人开 CC 会话」。
 - dispatcher 对 control-plane lane 的处理：进 `skipped_nonspawnable` 桶、不计 stuck、永不 spawn（`has_spawnable_ready` 过滤，kanban_db.py:8038）
 
@@ -120,6 +120,13 @@ hermes kanban tail <task_id>   # 观察到终态
 
 # 6. 真卡走微信自然语言派单，验证终态推回微信
 ```
+
+### 7.1 hkstock 域登记（2026-09-08 立项落地）
+
+- **形态**：单真 profile `hkstock`（理财专家：A股/港股/基金/期货的盘前简报、持仓问答与结构化市场信号；只做信息与信号，不做任何交易执行），**不设 hkstock-cc**（用户裁定 cc lane 模式对本域不适用）。
+- **数据层**：`martin/hkstock-data/holdings.yaml`（目录整体 gitignore，隐私数据不入库）——worker 读不到/解析失败必须 block 不猜；校验器 `martin/scripts/hkstock/validate_holdings.py`（exit 0=合法 / 1=字段违规 / 2=文件缺失或解析失败）。
+- **配置**：`~/.hermes/profiles/hkstock/`（SOUL.md 六节闭集；config toolsets = hermes-cli + kanban + terminal；honcho.json aiPeer=hkstock）；派单路由表已登记于 `~/.hermes/SOUL.md`。
+- **待建**：T2 盘前简报 brief_guard.sh、T3 信号落库 signals.jsonl（schema 在 SOUL.md「分析框架」节预留）。
 
 ## 8. contrib 域接入（2026-09-07 实施；09-08 lane 改造）
 

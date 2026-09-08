@@ -22,6 +22,9 @@ write-article-workspace/
 # contrib-watch 流水线运行产物（本地产物）
 contrib-data/
 
+# hkstock 理财域数据层（持仓为隐私数据，不入库）
+hkstock-data/
+
 # hermes cron 工程任务的本地覆盖配置（设计上不受 git 管理，工具自动生成）
 local-config.json
 
