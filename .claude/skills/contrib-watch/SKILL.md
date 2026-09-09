@@ -1,6 +1,6 @@
 ---
 name: contrib-watch
-description: hermes 上游机会流水线——增量扫描新 issue 后智能研判（评分→五分类决策）、停滞 PR 雷达（salvage 供给）、本地自动 PR 构建（产出分支+PR 草稿，绝不 push/绝不建 PR）、就绪队列快车道（验证付清项→微信 L2-A 审批环）、GitHub 通知邮件研判（三通道分流）。五种模式：scan（研判 pending 命中+入队）、radar（每日雷达+自有资产+premise 复验+至多 1 个自动构建）、build <issue#>（本地 PR 构建流水线）、deep-check <rq-id>（三轮审自动化：strategist preflight+fresh-context 红队）、mail（邮件三通道：auto 流水线动作/important 微信卡/routine 简报）。
+description: hermes 上游机会流水线——增量扫描新 issue 后智能研判（评分→五分类决策）、停滞 PR 雷达（salvage 供给）、本地自动 PR 构建（产出分支+PR 草稿，绝不 push/绝不建 PR）、就绪队列快车道（验证付清项→微信 L2-A 审批环）、GitHub 通知邮件研判（三通道分流）、叙事告警摘要卡（digest：三段式人话+send-digest 唯一外发）。六种模式：scan（研判 pending 命中+入队）、radar（每日雷达+自有资产+premise 复验+至多 1 个自动构建）、build <issue#>（本地 PR 构建流水线）、deep-check <rq-id>（三轮审自动化：strategist preflight+fresh-context 红队）、mail（邮件三通道：auto 流水线动作/important 微信卡/routine 简报）、digest 摘要卡（叙事告警三段式摘要+发送）。
 argument-hint: [scan | radar | build <issue#> | deep-check <rq-id> --phase preflight|redteam | mail] [附加说明]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 ---
@@ -180,6 +180,25 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 卡模式（T3）：mail 研判由 run-watch 建卡（`--kind mail`，贡献卡 worker 执行本模式）。卡内约定：输入为 `$CONTRIB/mail-pending.json` 绝对路径（mail_gate 预取快照，只读）；三通道判定表以上表原文为准；**卡内禁碰 himalaya 写操作**（mark/move/delete/send 一律禁止，只依据 preview 研判，需要更多上下文用 gh 实查）；**完成后不要自行 commit-cursor、不动 mail-cursor.json**——游标由 run-watch 按卡终态（done + cursor 快照守卫）异步推进。
 
 收尾：briefs 追加「## 邮件研判」统计行（auto/important/routine 计数）；**不要自己动 mail-cursor.json**——退出码 0 后 run-watch 会调 `mail_gate.sh --commit-cursor` 推进游标，研判中途失败则游标不动、pending 下轮重研判（event --key 保证重复研判不重复推送）。
+
+---
+
+## 模式六：digest 摘要卡（叙事告警三段式摘要+发送，由 notify.sh flush 调起，T5 起生效）
+
+contrib 域告警推送的 AI 整理层卡化形态：notify.sh flush 遇叙事事件批（非机械类）时建 digest 卡（`--kind digest`），事件快照落 `$CONTRIB/pending/digest-<ts>.json`，worker 在卡内生成三段式摘要并经 notify 内部接口发送。**这是全流水线唯一允许 worker 调用微信外发的卡型**（外发消息规范：先 AI 整理后推送的实现载体）。
+
+**worker 职责（按卡 body 顺序执行）**：
+1. 读卡 body 给出的事件快照 JSON（权威数据源，只读）
+2. 生成三段式摘要（规范见卡 body「摘要规范」段：发生了什么 → 为何重要 → 建议动作；≤300 字；首行报头 `🟠【contrib 告警】MM-DD`；黑话对照表翻译，不照抄；同类事件归并）写入卡 body 指定的摘要输出文件（`$CONTRIB/pending/digest-<ts>.digest.md`）
+3. 调 **`bash scripts/contrib/notify.sh send-digest --digest <摘要文件> --batch <事件快照>`**（普通命令形态，-q 模式可用）
+4. 据 send-digest 输出收尾：stdout `OK` 且批次快照尾部出现 `sent:true` 控制行 → kanban_complete（**必须同时传 summary 与 result**）；stdout `FAIL <原因>` → 同样 complete 但 summary 写明 FAIL 原因（限额/锁超时/发送失败/空卡）
+
+**红线（钉死）**：
+- **唯一外发通道 = `notify.sh send-digest`**——禁 hermes send 直调、禁其他任何外发；send-digest 内部已接空卡守卫/日 3 条限额/dry-run/账本标记，worker 不重复做这些事
+- **永不 raw dump**：外发内容只允许摘要文件，原始事件 JSON 绝不直推（卡路/fallback 路/osascript 兜底路三路同样成立）
+- -q 模式禁脚本形态（`python -c` / `jq -e` / 任何 `* -e`）
+- 限额拒发（`FAIL limit`）是**正常失败收尾**，不是异常——summary 写明原因即可，编排层（flush flight 检查）对失败终态自动走 fallback 兜底
+- attempts 计数由 flush fallback 路管理，worker 不碰事件账本（send-digest 只按批次 keys 标 pushed）
 
 ---
 

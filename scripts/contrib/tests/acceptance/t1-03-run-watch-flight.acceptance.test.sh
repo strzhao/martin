@@ -65,6 +65,9 @@ seed_card_store_empty() { # 「card_id 查无」前置态
 hermes_lines()    { grep '^hermes|' "$SB_ROOT/stublog/calls.log" 2>/dev/null || true; }
 create_span()     { awk '/^hermes\|/{f=($0 ~ /kanban create/)} f' "$SB_ROOT/stublog/calls.log" 2>/dev/null || true; }
 create_calls()    { hermes_lines | grep -c 'kanban create' || true; }
+# T5 语义演进：scan fallback 的 pipeline-failure 告警现走 digest 卡（合法建卡）——
+# 「不建新卡」断言改为 scan-前缀计数，digest- 前缀不在禁止面
+scan_create_calls() { hermes_lines | grep -c 'kanban create.*idempotency-key scan-' || true; }
 list_calls()      { hermes_lines | grep -c 'kanban list' || true; }
 claude_scan_calls() { grep '^claude|' "$SB_ROOT/stublog/calls.log" 2>/dev/null | grep -c 'contrib-watch scan' || true; }
 
@@ -174,7 +177,7 @@ seed_flight "t_old" "$(date +%s)"
 seed_card_store "blocked"
 run_watch -e STUB_KANBAN_STATUS=blocked -e STUB_KANBAN_OUTCOME=gave_up 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null; RC=$?
 ge1 "$(list_calls)" "3.4 在飞查询被调"
-assert_eq "$(create_calls)" "0" "3.4 失败终态不建新卡"
+assert_eq "$(scan_create_calls)" "0" "3.4 失败终态不建新 scan 卡（digest 告警卡合法，语义演进 09-09）"
 assert_eq "$(claude_scan_calls)" "1" "3.4 blocked → fallback claude 旧路被调"
 if flight_exists; then
   assert_eq "$(flight_card_id)" "" "3.4 登记已清（card_id 空）"
@@ -214,7 +217,7 @@ common_setup
 seed_flight "t_old" "$(( $(date +%s) - 21605 ))"
 seed_card_store "running"
 run_watch 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null
-assert_eq "$(create_calls)" "0" "3.6b 陈旧在飞不建新卡"
+assert_eq "$(scan_create_calls)" "0" "3.6b 陈旧在飞不建新 scan 卡（语义演进 09-09）"
 assert_eq "$(claude_scan_calls)" "1" "3.6b 陈旧守卫触发 fallback"
 if flight_exists; then
   assert_eq "$(flight_card_id)" "" "3.6b 登记已清"
@@ -231,7 +234,7 @@ seed_flight "t_old" "$(date +%s)"
 seed_card_store_empty
 run_watch 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null
 ge1 "$(list_calls)" "3.7 在飞查询被调"
-assert_eq "$(create_calls)" "0" "3.7 查无 → 不建新卡（异常视同失败走兜底）"
+assert_eq "$(scan_create_calls)" "0" "3.7 查无 → 不建新 scan 卡（语义演进 09-09）"
 assert_eq "$(claude_scan_calls)" "1" "3.7 查无 → fallback 被调"
 if flight_exists; then
   assert_eq "$(flight_card_id)" "" "3.7 登记已清"

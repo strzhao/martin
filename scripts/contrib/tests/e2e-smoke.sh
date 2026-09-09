@@ -263,6 +263,56 @@ else
 fi
 [[ -z "$dc_fail" ]] || smoke_fail "deepcheck 卡化链: $dc_fail"
 
+# ---- T5 notify digest 卡链段（独立沙箱）----
+# H: flush 叙事批 → 建 digest 卡 + flight 四键 + 快照（零 claude 零 send）
+# I: worker 收尾模拟（send-digest）→ 账本 pushed + 批次 sent:true
+# J: 卡 done 消费轮 → 零账本动作（双写禁止）+ 清登记清快照 + 新攒事件不丢
+if sb_new >/dev/null 2>&1; then
+  dg_fail=""
+  DG_EVENTS="$SB_ROOT/contrib-data/events.jsonl"   # 段内新沙箱路径（勿用全局 EVENTS_FILE——那是首个沙箱的）
+  sb_notify event pipeline-failure --key dg-e2e --summary "digest 冒烟叙事事件" >/dev/null 2>&1
+  sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
+  DG_FLIGHT="$SB_ROOT/contrib-data/kanban-flight-digest.json"
+  [[ "$(jq -r '.kind // empty' "$DG_FLIGHT" 2>/dev/null)" == "digest" ]] || dg_fail="H:flight 未登记"
+  DG_SNAP="$(jq -r '.batch_file // empty' "$DG_FLIGHT" 2>/dev/null)"
+  DG_CARD="$(jq -r '.card_id // empty' "$DG_FLIGHT" 2>/dev/null)"
+  [[ -n "$DG_SNAP" && -f "$DG_SNAP" ]] || dg_fail="$dg_fail H:快照未落盘"
+  [[ -n "$DG_CARD" ]] || dg_fail="$dg_fail H:card_id 缺"
+  [[ "$(awk -F'|' '$1 == "claude"' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || dg_fail="$dg_fail H:主路调了 claude"
+  [[ "$(awk -F'|' '$1 == "hermes" && $3 ~ /^send /' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || dg_fail="$dg_fail H:主路出现 hermes send（零订阅语义破）"
+  # I: worker 收尾模拟：写摘要 → send-digest → OK + pushed + sent:true
+  if [[ -n "$DG_SNAP" ]]; then
+    DG_DIGEST="${DG_SNAP%.json}.digest.md"
+    printf '🟠【contrib 告警】09-09\n\n冒烟摘要；无需动作。\n' >"$DG_DIGEST"
+    dg_out="$(sb_run -e "NOTIFY_DRY_RUN=false" \
+      "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DG_DIGEST' --batch '$DG_SNAP'")"
+    [[ "$dg_out" == "OK" ]] || dg_fail="$dg_fail I:send-digest 输出非 OK（got=${dg_out}）"
+    [[ "$(jq -r 'select(.key == "dg-e2e") | .pushed' "$DG_EVENTS" 2>/dev/null)" == "true" ]] \
+      || dg_fail="$dg_fail I:账本未标 pushed"
+    [[ "$(jq -rs '[.[] | select(.sent == true)] | length' "$DG_SNAP" 2>/dev/null)" == "1" ]] \
+      || dg_fail="$dg_fail I:批次未回写 sent:true"
+    # J: 消费轮（done + sent:true）→ 零账本动作 + 清登记清快照 + 新攒事件不丢
+    printf '{"id":"%s","status":"done","assignee":"contrib","priority":0}\n' "$DG_CARD" \
+      >"$SB_ROOT/stublog/kanban-cards.jsonl"
+    sb_notify event pipeline-failure --key dg-e2e-2 --summary "消费轮新攒" >/dev/null 2>&1
+    dg_pushed_before="$(jq -s '[.[] | select(.pushed == true)] | length' "$DG_EVENTS" 2>/dev/null)"
+    sb_state_set '.last_flush_epoch = 0'
+    sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
+    [[ "$(jq -s '[.[] | select(.pushed == true)] | length' "$DG_EVENTS" 2>/dev/null)" == "$dg_pushed_before" ]] \
+      || dg_fail="$dg_fail J:消费轮出现新增 pushed（双写破）"
+    [[ ! -f "$DG_FLIGHT" ]] || dg_fail="$dg_fail J:登记未清"
+    [[ ! -f "$DG_SNAP" ]] || dg_fail="$dg_fail J:快照未删"
+    [[ "$(jq -r 'select(.key == "dg-e2e-2") | .pushed' "$DG_EVENTS" 2>/dev/null)" == "false" ]] \
+      || dg_fail="$dg_fail J:新攒事件被越权消费"
+  fi
+  sb_cleanup >/dev/null 2>&1
+else
+  dg_fail="digest 段 sandbox 失败"
+fi
+[[ -z "$dg_fail" ]] || smoke_fail "digest 卡化链: $dg_fail"
+
 # ---- 汇总 JSON（末行）----
 sb_json_path="$SMOKE_STUB_LOG"
 sandbox_key=""

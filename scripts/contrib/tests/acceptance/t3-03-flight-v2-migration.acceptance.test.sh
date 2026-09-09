@@ -31,7 +31,7 @@ t_init "$T_FILE"
 
 # ---- 本文件专用工具 ----
 
-T2_ANCHOR="${T3_T2_ANCHOR:-55604ca}" # T2 commit：mail_gate.sh / quota_circuit.sh 的改动前基线
+T2_ANCHOR="${T3_T2_ANCHOR:-35c59b0}" # mail_gate.sh 最近一次合法演进基线（35c59b0 采集权威改游标，09-09 并行会话；原 55604ca 已被合法前移覆盖）
 
 install_fake_date() { # 沙箱 $HOME/.local/bin/date：仅劫持裸 '+%H'，固定非 08 时段（消除真实时钟依赖）
   mkdir -p "$SB_HOME/.local/bin"

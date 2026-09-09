@@ -28,6 +28,10 @@
 #     **dry-run 登记语义**：NOTIFY_DRY_RUN=true 时跳过真实部署与发送，但 slug/code 生成与
 #     `rq.sh tunnel-deploy`（合成 url）照常——沙箱链依赖此登记。
 #     部署失败/开关非 true → 完整回退旧文本卡路（行为兼容）。
+#   - 摘要卡化（T5）：叙事事件批 → contrib digest 卡（kanban 异步，worker 生成三段式摘要并经
+#     notify.sh send-digest 唯一外发通道发送）；flight 登记同 kind 单飞；done+sent:true 消费轮
+#     零账本动作（双写禁止）且本轮不建新卡（防卡风暴）；卡失败/stale → fallback_ai()（原 claude -p
+#     内联摘要路整段保留为兜底，3 败 osascript 不变）。机械路径/_send/限额/channel 语义零变化
 #   - 测试沙箱：CONTRIB_DATA_DIR=<dir> 可把账本/配置整体指向临时目录
 #   - 命令 seam：TUNNEL_BIN / HERMES_BIN / OSASCRIPT_BIN / GATEWAY_PROBE_BIN / CLAUDE_BIN
 #
@@ -37,6 +41,7 @@
 #   notify.sh approve <id> | approve --all
 #   notify.sh receipt <id> --summary S
 #   notify.sh fallback <text>
+#   notify.sh send-digest --digest <摘要文件> --batch <批次json>   # 输出闭集 OK/FAIL <原因>
 set -uo pipefail
 
 MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
@@ -277,6 +282,386 @@ EOF
   return 0
 }
 
+# ================= digest 卡化（T5：叙事批异步化 + send-digest 唯一外发通道） =================
+
+# _digest_lock — send-digest 专用带超时锁获取（复用 flush 同一 LOCK 文件）。
+# 不改动 acquire_lock 本身（flush/approve 依赖其超时静默 exit 0 语义）；send-digest 的
+# 锁超时必须显式失败（FAIL lock-timeout + exit 1，worker 按失败收尾下轮兜底重试），
+# 且自装 EXIT trap（rmdir 变量 LOCK 指向的锁目录）保进程退出必释锁。
+_digest_lock() {
+  local i=0
+  until mkdir "$LOCK" 2>/dev/null; do
+    i=$((i+1))
+    if (( i > ${DIGEST_LOCK_TIMEOUT:-30} )); then
+      echo "FAIL lock-timeout"
+      exit 1
+    fi
+    sleep 1
+  done
+  trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+}
+
+# _digest_card_status <card_id> → stdout 卡状态（空=不可得）；hermes kanban list 带 30s
+# alarm 包裹（launchd flush 防挂死），env -u 三 ANTHROPIC_* 变量（CC shell 劫持防御）
+_digest_card_status() {
+  local out
+  out="$(env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY \
+    perl -e 'alarm 30; exec @ARGV' "$HERMES_BIN" kanban list --json 2>/dev/null || true)"
+  printf '%s' "$out" | jq -r --arg id "$1" '[.[] | select(.id == $id)][0].status // empty' 2>/dev/null || true
+}
+
+# _digest_keys_md5 <keys_file> → md5 hex 前 8（md5(macOS, 可能在 /sbin) / md5sum(Linux) 双兼容；
+# 探测失败返回空串——幂等键退化为 digest-<日期>- 前缀仍唯一可用）
+_digest_keys_md5() {
+  local h="" md5bin
+  md5bin="$(command -v md5 2>/dev/null || true)"
+  if [[ -z "$md5bin" && -x /sbin/md5 ]]; then md5bin=/sbin/md5; fi
+  if [[ -n "$md5bin" && "$(basename "$md5bin")" == "md5" ]]; then
+    h="$("$md5bin" -q "$1" 2>/dev/null)"
+  else
+    h="$(md5sum "$1" 2>/dev/null | awk '{print $1}')"
+  fi
+  printf '%s' "${h:0:8}"
+}
+
+# _digest_batch_sent <batch_file> → true|false（显式 sent:true 控制行才算；缺失/false 均
+# 为 false——不用 jq `//` 布尔塌缩口径）
+_digest_batch_sent() {
+  [[ -s "$1" ]] || { printf 'false'; return 0; }
+  local n
+  n="$(jq -s '[.[] | select(.sent == true)] | length' "$1" 2>/dev/null || echo 0)"
+  [[ "${n:-0}" -ge 1 ]] && printf 'true' || printf 'false'
+}
+
+# _digest_write_sent <batch_file> <true|false> <reason> [send_result_file] — 批次文件尾部
+# 追加 sent 控制行（send_result 佐证取 NOTIFY_SEND_LAST 快照；文件缺失/损坏时降级无佐证行）
+_digest_write_sent() {
+  local bf="$1" sent="$2" reason="$3" srf="${4:-}" line=""
+  if [[ -n "$srf" && -s "$srf" ]]; then
+    line="$(jq -cn --argjson s "$sent" --arg r "$reason" --arg ts "$(ts)" --slurpfile sr "$srf" \
+      '{sent:$s, reason:(if $r == "" then null else $r end), sent_at:$ts, send_result:$sr[0]}' 2>/dev/null || true)"
+  fi
+  if [[ -z "$line" ]]; then
+    line="$(jq -cn --argjson s "$sent" --arg r "$reason" --arg ts "$(ts)" \
+      '{sent:$s, reason:(if $r == "" then null else $r end), sent_at:$ts, send_result:null}')"
+  fi
+  printf '%s\n' "$line" >>"$bf"
+  log "digest 批次回写 sent=$sent reason=${reason:-none}"
+}
+
+# _flush_push_mark <keys_file> — 账本标记该批 pushed（flush 成功路 / send-digest 共享；
+# 原内联 python 段整段提取，语义零变化）
+_flush_push_mark() {
+  python3 - "$EVENTS" "$1" <<'PYEOF'
+import json, sys
+p, keys_f = sys.argv[1], sys.argv[2]
+keys = set(json.load(open(keys_f)))
+out = []
+for l in open(p):
+    l = l.rstrip("\n")
+    if not l.strip():
+        continue
+    try:
+        o = json.loads(l)
+        if o.get("pushed") is False and o.get("key") in keys:
+            import datetime
+            o["pushed"] = True
+            o["pushed_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+        out.append(json.dumps(o, ensure_ascii=False))
+    except Exception:
+        out.append(l)
+open(p, "w").write("\n".join(out) + "\n")
+PYEOF
+}
+
+# _flush_attempts_bump <keys_file> — 失败批次 attempts+1 + 3 败 osascript 日幂等兜底
+# （原内联段整段提取，语义零变化）
+_flush_attempts_bump() {
+  python3 - "$EVENTS" "$1" <<'PYEOF' || true
+import json, sys
+p, keys_f = sys.argv[1], sys.argv[2]
+keys = set(json.load(open(keys_f)))
+out = []
+for l in open(p):
+    l = l.rstrip("\n")
+    if not l.strip():
+        continue
+    try:
+        o = json.loads(l)
+        if o.get("pushed") is False and o.get("key") in keys:
+            o["attempts"] = o.get("attempts", 0) + 1
+        out.append(json.dumps(o, ensure_ascii=False))
+    except Exception:
+        out.append(l)
+open(p, "w").write("\n".join(out) + "\n")
+PYEOF
+  # 连续 3 败 → osascript 本地机械提示（每至多一次/日，非 raw dump）
+  # （缩进保持原 cmd_flush 内联形态：detect 变异锚点 bk-alert-fallback-idempotency-removed 逐字命中）
+  local maxed
+  maxed=$(jq -s '[.[] | select(.pushed == false and (.channel // "contrib") == "contrib" and (.attempts // 0) >= 3)] | length' "$EVENTS" 2>/dev/null || echo 0)
+    if (( maxed > 0 )) && [[ "$(state_get fallback_notice "$(today)")" != "1" ]]; then
+      _osascript "contrib ${maxed} 条告警多次推送未成（AI 摘要/通道失败），已挂账下轮重试——明细 contrib-data/events.jsonl"
+      state_set fallback_notice "$(today)" 1
+    fi
+}
+
+# fallback_ai <batch_file> <keys_file> <unpushed> <narrative> <ep> → rc
+# 旧 claude -p 内联摘要路整段保留为兜底（卡建失败/卡失败终态/stale/done-未发送时走此路）：
+# _ai_digest → 空卡守卫 → _send → 账本标记 / attempts+1 + osascript。永不 raw dump。
+fallback_ai() {
+  local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5"
+  local body="/tmp/contrib-alerts-fb-$$.txt"
+  local rc=0
+  _ai_digest "$batch_file" "$body" || rc=1
+  (( rc == 0 )) && log "叙事事件 ${narrative}/${unpushed} 条 → AI 摘要层（fallback 路）"
+  if (( rc == 0 )); then
+    # 空卡守卫（与 flush 机械路同一多模式 grep）
+    if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
+      log "渲染产物无实质内容（空卡守卫触发），按失败挂账"
+      rc=1
+    fi
+  fi
+  if (( rc == 0 )); then
+    _send "$body" "contrib-watch 告警" || rc=$?
+  fi
+  if (( rc == 0 )); then
+    _flush_push_mark "$keys_file"
+    state_bump alerts "$(today)"
+    jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+    log "告警已推送（${unpushed} 条事件，rendering=ai-digest-fallback）"
+  else
+    _flush_attempts_bump "$keys_file"
+    log "告警推送失败 rc=${rc}（${unpushed} 条事件保留，下轮重试）"
+  fi
+  rm -f "$body"
+  return "$rc"
+}
+
+# _digest_card_body <snapshot> <digest_file> → stdout 卡 body（快照路径+摘要输出路径约定+
+# 三段式规范（照抄 _ai_digest prompt）+ 红线：唯一外发通道=send-digest）
+_digest_card_body() {
+  local snapshot="$1" digest_file="$2"
+  cat <<EOF
+# contrib digest 摘要卡
+
+## 任务
+
+- 事件快照（权威数据源）: ${snapshot}
+- 摘要输出文件（写到此路径）: ${digest_file}
+- 接收渠道: contrib（微信，notify_target 取 config）
+- 摘要规范权威: .claude/skills/contrib-watch/SKILL.md 模式六（digest 摘要卡）
+
+## 摘要规范
+
+1. 三段式：发生了什么 → 为什么与他有关/多重要 → 建议他做什么（多数场景是"无需动作"，就明说）
+2. 中文人类可读，机制黑话翻译成人话；rq-id / PR# / issue# 只作引用锚点，不当正文
+3. ≤300 字；同类多条事件归并成一行汇总；只使用事件里已有的事实，不编造、不臆测原因，不确定写"待查"
+4. 首行固定格式：🟠【contrib 告警】MM-DD（用今天日期）
+
+黑话对照（用于翻译，不得照抄）：
+- probe-premise-dead：ready-queue 候选机会的 issue 空间被其他贡献者占坑，候选作废（上游 AI farm 生态的正常损耗）
+- own-pr-activity：我们自己的上游 PR 有新动静（维护者评论/mergeable 翻转/停滞超期）
+- pipeline-failure：contrib-watch 流水线自身某环节失败（scan/深检/推送等）
+- deep-budget-exhausted：当日深检配额用尽，候选自动排队明日重试
+- mail-needs-user：GitHub 通知邮件里有需要他本人关注的事项（维护者点名/占坑竞争/资产状态变化）
+- rq-xxxxx：ready-queue 审批候选项编号；expired=已作废；awaiting-approval=等你审批
+
+## 红线（必须遵守）
+
+- 唯一外发通道 = bash scripts/contrib/notify.sh send-digest --digest <摘要输出文件> --batch <事件快照>（普通命令形态，-q 模式可用）；禁 hermes send 直调、禁其他任何外发
+- 永不 raw dump：外发内容只允许摘要文件，原始事件 JSON 绝不直推
+- -q 模式禁脚本形态：python -c / jq -e / 任何 * -e 一律不可用（用文件读写工具完成）
+- send-digest 输出 FAIL（限额/锁超时/发送失败/空卡）属正常失败收尾，not 异常
+
+## 收尾要求
+
+- 摘要写完调 send-digest：输出 OK 且批次快照尾部出现 sent:true 控制行 → kanban_complete（必须同时传 summary 与 result）
+- 输出 FAIL → 同样 complete（summary 写明 FAIL 原因）——编排层按失败终态走 fallback 兜底重试
+EOF
+}
+
+# _digest_flush <batch_file> <keys_file> <unpushed> <narrative> <ep> → rc
+# 叙事批 digest 卡化主路：flight 检查五分支 → 无登记则快照+建卡（异步）；任何失败分支
+# 落 fallback_ai()。done+sent:true 消费轮零账本动作且本轮不建新卡（防每小时卡风暴）。
+_digest_flush() {
+  local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5"
+  local flight="$CONTRIB/kanban-flight-digest.json"
+  local card_id="" snap="" frc=0
+  if [[ -s "$flight" ]] && jq -e 'type == "object"' "$flight" >/dev/null 2>&1; then
+    card_id="$(jq -r 'if .kind == "digest" then (.card_id // empty) else empty end' "$flight" 2>/dev/null || true)"
+  fi
+
+  if [[ -n "$card_id" ]]; then
+    local status
+    status="$(_digest_card_status "$card_id")"
+    if [[ "$status" == "done" ]]; then
+      snap="$(jq -r '.batch_file // empty' "$flight" 2>/dev/null || true)"
+      if [[ -n "$snap" && -f "$snap" && "$(_digest_batch_sent "$snap")" == "true" ]]; then
+        # worker 已发送并标记账本：清登记+清快照（消费即删不留磁盘噪音），flush 零重复动作
+        # （账本双写禁止）；本轮 return 不再建新卡（新批下小时轮自然建卡）
+        rm -f "$flight" "$snap" "${snap%.json}.digest.md"
+        log "digest 卡 ${card_id} done 且已发送——消费闭环（零账本动作，本轮不建新卡）"
+        return 0
+      fi
+      # done 但 sent 缺失/false：worker 完成但未发送=异常收口 → fallback
+      rm -f "$flight"
+      log "digest 卡 ${card_id} done 但批次未标 sent——异常收口，走 fallback"
+      fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+      frc=$?
+      [[ -n "$snap" ]] && rm -f "$snap" "${snap%.json}.digest.md"
+      return "$frc"
+    fi
+    if [[ "$status" == "blocked" ]]; then
+      # 闭集 outcome 判定（T5 红队 D7：非闭集 outcome=可自愈，保留登记零 fallback）——
+      # 同 scan/mail 先例：gave_up|crashed|timed_out|spawn_failed 才算失败终态
+      local oc=""
+      oc="$(env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY \
+        perl -e 'alarm 15; exec @ARGV' "$HERMES_BIN" kanban show "$card_id" --json 2>/dev/null \
+        | jq -r '.runs[-1].outcome // empty' 2>/dev/null || true)"
+      case "$oc" in
+        gave_up|crashed|timed_out|spawn_failed)
+          snap="$(jq -r '.batch_file // empty' "$flight" 2>/dev/null || true)"
+          rm -f "$flight"
+          log "digest 卡 ${card_id} 失败终态（blocked outcome=${oc}）——清登记走 fallback"
+          fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+          frc=$?
+          [[ -n "$snap" ]] && rm -f "$snap" "${snap%.json}.digest.md"
+          return "$frc"
+          ;;
+        *)
+          log "digest 卡 ${card_id} blocked（outcome=${oc:-未知}，非重试耗尽）→ 保留登记（可自愈，stale 兜底）"
+          return 0
+          ;;
+      esac
+    fi
+    # 非终态 → stale 检查（DIGEST_STALE_SECS 缺省 21600；摘要卡轻量 6h 足够）
+    local created stale_secs
+    created="$(jq -r '.created_epoch // 0' "$flight" 2>/dev/null || echo 0)"
+    stale_secs="${DIGEST_STALE_SECS:-21600}"
+    if [[ "$created" =~ ^[0-9]+$ ]] && (( ep - created > stale_secs )); then
+      snap="$(jq -r '.batch_file // empty' "$flight" 2>/dev/null || true)"
+      rm -f "$flight"
+      "$SELF_BIN" event pipeline-failure --key "$(date +%F)-digest-stale" \
+        --summary "digest 卡 ${card_id} 超 ${stale_secs}s 未终态（stale），已清登记走 fallback" >/dev/null 2>&1 || true
+      log "digest 卡 ${card_id} stale（>${stale_secs}s）——清登记走 fallback"
+      fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+      frc=$?
+      [[ -n "$snap" ]] && rm -f "$snap" "${snap%.json}.digest.md"
+      return "$frc"
+    fi
+    log "digest 卡 ${card_id} 在飞（status=${status:-unknown}），本批挂账（attempts 不增）"
+    return 0
+  fi
+
+  # —— 无登记：批次快照 + 建 digest 卡（幂等键 digest-<日期>-<md5(keys) 前 8>）——
+  local ts_id snapshot digest_file body_file idem card_json rc=0 card_id_new
+  ts_id="$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$CONTRIB/pending"
+  snapshot="$CONTRIB/pending/digest-$ts_id.json"
+  digest_file="$CONTRIB/pending/digest-$ts_id.digest.md"
+  body_file="$CONTRIB/pending/digest-$ts_id.body.md"
+  cp "$batch_file" "$snapshot" || {
+    log "digest 快照落盘失败（${snapshot}）——走 fallback"
+    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+    return $?
+  }
+  idem="digest-$(date +%Y%m%d)-$(_digest_keys_md5 "$keys_file")"
+  _digest_card_body "$snapshot" "$digest_file" > "$body_file"
+  card_json="$(bash "$MARTIN/scripts/contrib/kanban_card.sh" create \
+    --kind digest --title "contrib digest 摘要卡 $ts_id" \
+    --body-file "$body_file" --idempotency-key "$idem" \
+    --json-out "$CONTRIB/pending/digest-$ts_id.card.json" 2>>"$CONTRIB/logs/notify.log")" || rc=$?
+  if (( rc != 0 )); then
+    log "digest 建卡失败（rc=${rc}）——走 fallback"
+    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+    frc=$?
+    rm -f "$snapshot" "$digest_file"
+    return "$frc"
+  fi
+  card_id_new="$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)"
+  if [[ -z "$card_id_new" ]]; then
+    log "digest 建卡输出缺 id——走 fallback"
+    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+    frc=$?
+    rm -f "$snapshot" "$digest_file"
+    return "$frc"
+  fi
+  # flight 四键（kind/card_id/batch_file=快照路径/created_epoch）——与 scan flight 同构
+  jq -n --arg kind digest --arg id "$card_id_new" --arg bf "$snapshot" --argjson e "$ep" \
+    '{kind: $kind, card_id: $id, batch_file: $bf, created_epoch: $e}' \
+    >"$flight.tmp" && mv "$flight.tmp" "$flight"
+  log "digest 卡已建 ${card_id_new}（snapshot=${snapshot}，idem=${idem}），本批挂账（attempts 不增）"
+  return 0
+}
+
+# cmd_send_digest — worker 卡内唯一外发通道。输出闭集：stdout 一行 OK / FAIL <原因>；exit 0/1。
+# 全程持 flush 同款 LOCK（自包带超时锁获取 + 自装 EXIT trap）；空卡守卫/限额/dry-run 与
+# flush 同口径；成功后账本标记 pushed + state_bump alerts + 回写批次 sent:true。
+cmd_send_digest() {
+  local digest="" batch=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --digest) digest="${2:-}"; shift 2 ;;
+      --batch) batch="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "$digest" && -n "$batch" && -f "$digest" && -f "$batch" ]] || { echo "FAIL bad-usage"; exit 1; }
+  ensure_state
+  # 幂等快路：批次已标 sent:true → 重复调用零副作用（防 worker 重试双发）
+  if [[ "$(_digest_batch_sent "$batch")" == "true" ]]; then
+    echo "OK"
+    exit 0
+  fi
+  _digest_lock
+  # 幂等快路锁内复查（qa-reviewer B-1：锁外判读与获锁之间存在并发双发窗口——
+  # 两个并发 send-digest 都在锁前通过快路检查，串行过锁后不复查则第二批二次 _send）
+  if [[ "$(_digest_batch_sent "$batch")" == "true" ]]; then
+    echo "OK"
+    exit 0
+  fi
+  # 空卡守卫（照抄 flush 同款多模式 grep：剔除报头/脚注/空行/分隔线后必须还有实质内容）
+  if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$digest" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
+    _digest_write_sent "$batch" false "empty-card"
+    echo "FAIL empty-card"
+    exit 1
+  fi
+  # 限额（与 flush 同数值口径）
+  local max_alerts used
+  max_alerts="$(cfg '.max_alert_pushes_per_day' '3')"
+  used="$(state_get alerts "$(today)")"
+  if (( used >= max_alerts )); then
+    _digest_write_sent "$batch" false "limit"
+    echo "FAIL limit"
+    exit 1
+  fi
+  # dry-run：同 _send 语义打印完整消息体与目标；sent:false reason=dry-run + exit 0
+  # （worker 据 OK normal-complete；下轮 flush 消费 done+sent:false → fallback 接管，账本收敛）
+  if [[ "$DRY_RUN" == "true" ]]; then
+    _send "$digest" "contrib-watch 告警" || true
+    _digest_write_sent "$batch" false "dry-run"
+    echo "OK"
+    exit 0
+  fi
+  local rc=0 keys_file
+  _send "$digest" "contrib-watch 告警" || rc=$?
+  if (( rc == 0 )); then
+    # 账本标记该批 pushed（按批次 keys；attempts 逻辑留给 flush fallback 路——防双重计数）
+    keys_file="$(mktemp "${TMPDIR:-/tmp}/contrib-digest-keys-XXXXXX")"
+    jq -s '[.[] | select(has("key")) | .key]' "$batch" >"$keys_file"
+    _flush_push_mark "$keys_file"
+    rm -f "$keys_file"
+    state_bump alerts "$(today)"
+    _digest_write_sent "$batch" true "" "$NOTIFY_SEND_LAST"
+    log "send-digest 摘要已发送并标记账本（批次 $(basename "$batch")）"
+    echo "OK"
+    exit 0
+  fi
+  _digest_write_sent "$batch" false "send" "$NOTIFY_SEND_LAST"
+  echo "FAIL send"
+  exit 1
+}
+
 # ---------------- event ----------------
 cmd_event() {
   local cls="${1:-}"; shift || true
@@ -336,7 +721,7 @@ cmd_flush() {
     return 0
   fi
 
-  # 两级渲染：混有任何叙事事件 → 整批走 AI 摘要；纯机械 → 模板卡
+  # 两级渲染：混有任何叙事事件 → 整批走 digest 卡（T5 异步化）；纯机械 → 模板卡
   # （分类逻辑必须在 bash/jq 侧完成——jq 里调不到 bash 函数）
   local narrative
   narrative="$(jq -s '[.[] | select((.channel // "contrib") == "contrib")
@@ -347,82 +732,39 @@ cmd_flush() {
   local rc=0
   if (( narrative > 0 )); then
     if [[ "$(cfg '.notify_digest' 'true')" == "true" ]]; then
-      _ai_digest "$batch_file" "$body" || rc=1
-      (( rc == 0 )) && log "叙事事件 ${narrative}/${unpushed} 条 → AI 摘要层"
-    else
-      log "notify_digest=false，叙事事件 ${narrative} 条挂账待 AI 会话转述"
-      rc=1
+      # T5 卡化主路：叙事批 → digest 卡（异步），flight 五分支/建卡失败/stale 全部在
+      # _digest_flush 内收口（兜底=fallback_ai 旧内联路）；本轮 rc 透传其返回值
+      _digest_flush "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+      local drc=$?
+      rm -f "$batch_file" "$keys_file" "$body"
+      return "$drc"
     fi
+    log "notify_digest=false，叙事事件 ${narrative} 条挂账待 AI 会话转述"
+    rc=1
   else
     _render_mechanical_card "$batch_file" > "$body"
     log "纯机械事件 ${unpushed} 条 → 模板卡（不经 LLM）"
-  fi
-
-  if (( rc == 0 )); then
-    # 空卡守卫：剔除报头/脚注/空行后必须还剩实质内容——模板卡与 AI 摘要两种排版
-    # 都要能通过；绝不发空壳卡、更不允许空卡把事件标记成已推（09-05 沙箱实测抓到此路径）
+    # 空卡守卫：剔除报头/脚注/空行后必须还剩实质内容——模板卡排版要能通过；
+    # 绝不发空壳卡、更不允许空卡把事件标记成已推（09-05 沙箱实测抓到此路径）
     # 注意用 grep -e 多模式：BSD grep 的 BRE 里 `^$\|..` 的 $ 中缀是字面量，交替会失效
     if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
       log "渲染产物无实质内容（空卡守卫触发），按失败挂账"
       rc=1
     fi
-  fi
-  if (( rc == 0 )); then
-    _send "$body" "contrib-watch 告警" || rc=$?
+    if (( rc == 0 )); then
+      _send "$body" "contrib-watch 告警" || rc=$?
+    fi
   fi
 
   if (( rc == 0 )); then
     # 只标记本轮批次（contrib 渠道 + 批次内 key）；keys_file 是 JSON 数组
-    python3 - "$EVENTS" "$keys_file" <<'PYEOF'
-import json, sys
-p, keys_f = sys.argv[1], sys.argv[2]
-keys = set(json.load(open(keys_f)))
-out = []
-for l in open(p):
-    l = l.rstrip("\n")
-    if not l.strip():
-        continue
-    try:
-        o = json.loads(l)
-        if o.get("pushed") is False and o.get("key") in keys:
-            import datetime
-            o["pushed"] = True
-            o["pushed_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-        out.append(json.dumps(o, ensure_ascii=False))
-    except Exception:
-        out.append(l)
-open(p, "w").write("\n".join(out) + "\n")
-PYEOF
+    _flush_push_mark "$keys_file"
     state_bump alerts "$(today)"
     jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
-    log "告警已推送（${unpushed} 条事件，rendering=$([[ $narrative -gt 0 ]] && echo ai-digest || echo template)）"
+    log "告警已推送（${unpushed} 条事件，rendering=template）"
   else
     # 失败：批次内 attempts+1（事件保留，下轮重试；永不 raw dump 兜底）
-    python3 - "$EVENTS" "$keys_file" <<'PYEOF' || true
-import json, sys
-p, keys_f = sys.argv[1], sys.argv[2]
-keys = set(json.load(open(keys_f)))
-out = []
-for l in open(p):
-    l = l.rstrip("\n")
-    if not l.strip():
-        continue
-    try:
-        o = json.loads(l)
-        if o.get("pushed") is False and o.get("key") in keys:
-            o["attempts"] = o.get("attempts", 0) + 1
-        out.append(json.dumps(o, ensure_ascii=False))
-    except Exception:
-        out.append(l)
-open(p, "w").write("\n".join(out) + "\n")
-PYEOF
-    # 连续 3 败 → osascript 本地机械提示（每至多一次/日，非 raw dump）
-    local maxed
-    maxed=$(jq -s '[.[] | select(.pushed == false and (.channel // "contrib") == "contrib" and (.attempts // 0) >= 3)] | length' "$EVENTS" 2>/dev/null || echo 0)
-    if (( maxed > 0 )) && [[ "$(state_get fallback_notice "$(today)")" != "1" ]]; then
-      _osascript "contrib ${maxed} 条告警多次推送未成（AI 摘要/通道失败），已挂账下轮重试——明细 contrib-data/events.jsonl"
-      state_set fallback_notice "$(today)" 1
-    fi
+    _flush_attempts_bump "$keys_file"
     log "告警推送失败 rc=${rc}（${unpushed} 条事件保留，下轮重试）"
   fi
   rm -f "$batch_file" "$keys_file" "$body"
@@ -435,7 +777,7 @@ PYEOF
 _build_approval_card() { # <id> → stdout 卡片文本（旧模板；approval_interactive 非 true 或降级时用）
   local id="$1"
   jq -r --arg id "$id" '.items[] | select(.id == $id) |
-    "🟡【L2 审批 #\(.id)】\(.disposition) 评论\n类型: \(.disposition)（lane=\(.lane)）\n目标: NousResearch/hermes-agent#\(.issue)\n概要: \(.title[0:80])\n质量: \(.score)/15（prio \(.priority)）；\(if .lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过\n审阅: \(.tunnel.url // "见全文")\n全文: ~/workspace/martin/contrib-data/pending/\(.id).md\n回复「批 #\(.id)」/「改 #\(.id): 意见」/「否 #\(.id)」；48h 无回复自动搁置"' "$QUEUE"
+    "🟡【L2 审批 #\(.id)】\(if .disposition == "release-gate" then "发版提审门（批准 = 提审 hm release）" else "\(.disposition) 评论" end)\n类型: \(if .disposition == "release-gate" then "release-gate（AGC 发版批准门，issue 为合成号）" else "\(.disposition)（lane=\(.lane)）" end)\n目标: \(if .disposition == "release-gate" then "AGC 提审 · \(.title)" else "NousResearch/hermes-agent#\(.issue)" end)\n概要: \(.title[0:80])\n质量: \(.score)/15（prio \(.priority)）；\(if .lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过\n审阅: \(.tunnel.url // "见全文")\n全文: ~/workspace/martin/contrib-data/pending/\(.id).md\n回复「批 #\(.id)」/「改 #\(.id): 意见」/「否 #\(.id)」；48h 无回复自动搁置"' "$QUEUE"
 }
 
 # ---- 交互路（approval_interactive=true）：slug/短码/人读页/卡 v2 ----
@@ -466,6 +808,7 @@ approval_disp_cn() {
     own-PR)          echo "own-PR 推进" ;;
     review-evidence) echo "evidence 评审" ;;
     probe-salvage)   echo "probe 取证" ;;
+    release-gate)    echo "发版提审门" ;;
     *)               echo "$1" ;;
   esac
 }
@@ -481,8 +824,11 @@ _build_approval_card_v2() { # <id> <page-url> <code> <deadline> <ttl> → stdout
     "🟡【L2 审批 #\($it.id)】\(if $it.disposition == "own-PR" then "own-PR 推进"
        elif $it.disposition == "review-evidence" then "evidence 评审"
        elif $it.disposition == "probe-salvage" then "probe 取证"
+       elif $it.disposition == "release-gate" then "发版提审门（批准 = 提审 hm release）"
        else $it.disposition end)",
-    "目标: NousResearch/hermes-agent#\($it.issue) · \($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)",
+    (if $it.disposition == "release-gate"
+     then "目标: AGC 发版提审 · \($it.title)（issue 为合成号，非 GitHub）"
+     else "目标: NousResearch/hermes-agent#\($it.issue) · \($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)" end),
     "概要: \($it.title[0:80])",
     # 升级路专属：微信卡直接带出首个卡点（完整清单在页面顶部）
     (if (($it.escalate_reasons // []) | length) > 0
@@ -519,11 +865,14 @@ _build_approval_page() {
     (if ($slines | length) > 0 then ($slines[0] | sub("^一句话："; "")) else $it.title end) as $l0 |
     (if $it.disposition == "own-PR" then "提交修复 PR（issue #\($it.issue)）"
      elif $it.disposition == "probe-salvage" then "在 issue #\($it.issue) 发一条取证评论"
+     elif $it.disposition == "release-gate" then "批准 = 提审 hm release \($it.title | sub("^release "; ""))"
      else "在 PR #\($it.pr // $it.issue) 发一条技术评论" end) as $action |
     [ "```interactive",
       "id: verdict",
       "type: radio",
-      "question: 批准发出？（批准 = 附录原文逐字投递到 GitHub）",
+      (if $it.disposition == "release-gate"
+       then "question: 批准提审？（批准 = hm release 提审 AGC，token 30min 内自动提审）"
+       else "question: 批准发出？（批准 = 附录原文逐字投递到 GitHub）" end),
       "options:",
       "  - 批准",
       "  - 否决",
@@ -543,14 +892,16 @@ _build_approval_page() {
       "# 审批：\($action)",
       "",
       "> \($l0)",
-      "> **动作**：以 strzhao 名义公开发表，发出后可编辑/删除 · ⏱ \($deadline) 前有效（逾期自动搁置）",
+      (if $it.disposition == "release-gate"
+       then "> **动作**：批准后 hm release 自动提审 AGC（gate token 30min TTL，单次消费）· ⏱ \($deadline) 前有效（逾期自动搁置）"
+       else "> **动作**：以 strzhao 名义公开发表，发出后可编辑/删除 · ⏱ \($deadline) 前有效（逾期自动搁置）" end),
       "",
       # 升级路专属（09-06 默认自动/例外升级）：AI 定不了的点置顶——用户只需裁决这几条
       ((if (($it.escalate_reasons // []) | length) > 0
         then (["## 🤔 我定不了的点（需你拍板）", ""]
               + [$it.escalate_reasons[] | "- " + .] + [""])
         else [] end)[]),
-      "## 这条评论说了什么",
+      (if $it.disposition == "release-gate" then "## 这次发版要提审什么" else "## 这条评论说了什么" end),
       "",
       (if ($slines | length) > 1 then ($slines[1:][] ) elif ($slines|length) == 1 then $slines[0]
        else "- \($it.title)（详见附录原文）" end),
@@ -562,8 +913,12 @@ _build_approval_page() {
       ($it.premises[] |
         "| \((.claim // "") | gsub("[\\\\|\\n]"; " ") | .[0:160]) | \((.evidence // "") | gsub("[\\\\|\\n]"; " ") | .[0:160]) |"),
       "",
-      "- 目标：[issue #\($it.issue)](https://github.com/NousResearch/hermes-agent/issues/\($it.issue))"
-        + (if $it.pr then " · [PR #\($it.pr)](https://github.com/NousResearch/hermes-agent/pull/\($it.pr))" else "" end),
+      (if $it.disposition == "release-gate" then
+        "- 目标：AGC 发版提审（issue #\($it.issue) 为 appId 合成号，非 GitHub）"
+      else
+        "- 目标：[issue #\($it.issue)](https://github.com/NousResearch/hermes-agent/issues/\($it.issue))"
+          + (if $it.pr then " · [PR #\($it.pr)](https://github.com/NousResearch/hermes-agent/pull/\($it.pr))" else "" end)
+      end),
       "- 质量：\($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过 · 编号 \($it.id)（微信回「批/否 #\($it.id)」亦可）",
       "",
       "---",
@@ -627,8 +982,13 @@ cmd_approve() {
     fi
     # ── 发卡前 premise TTL 轻复验（09-06 build-104067 抓到的框架缺口：旧文本路有、短码链没有；
     #    #102413 教训「过期 premise 的审批卡绝不能推」。execute 时仍有完整 TTL 兜底，这里收窄
-    #    「卡已推但 premise 已死」的窗口。检查失败不阻断——仅当明确判死才拦截（gh 抖动不误杀）──
-    if [[ "$DRY_RUN" != "true" ]] && command -v "$GH_BIN" >/dev/null 2>&1; then
+    #    「卡已推但 premise 已死」的窗口。检查失败不阻断——仅当明确判死才拦截（gh 抖动不误杀）。
+    #    release-gate 项跳过：issue 为 appId 合成号，不对应 GitHub issue，gh 查询无意义 ──
+    local disp_pre
+    disp_pre="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .disposition // ""' "$QUEUE")"
+    if [[ "$disp_pre" == "release-gate" ]]; then
+      log "approve $id: release-gate 项跳过 gh premise 复验（issue 为合成号）"
+    elif [[ "$DRY_RUN" != "true" ]] && command -v "$GH_BIN" >/dev/null 2>&1; then
       local iss st prs own_pr
       iss="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .issue // ""' "$QUEUE")"
       own_pr="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .pr // ""' "$QUEUE")"
@@ -790,5 +1150,6 @@ case "$cmd" in
   approve) cmd_approve "$@" ;;
   receipt) cmd_receipt "$@" ;;
   fallback) cmd_fallback "$@" ;;
+  send-digest) cmd_send_digest "$@" ;;
   help|*)  sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
