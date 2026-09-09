@@ -85,6 +85,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 1. **停滞 PR 雷达**：`gh pr list --state open --limit 1000 --json number,title,author,updatedAt,createdAt,labels`（**全量口径**——`--limit 300` 在洪流下只盖 ~3 天，09-04 已实测失效），过滤 updatedAt 距今 > `config.stale_pr_days`（默认 10）天、作者排除 `teknium1 / OutThisLife / app/ 前缀 / hermes-sweeper`、排除 duplicate 标签。对 top 候选（按域契合排序，最多 15 条）逐个 `gh pr view` 补：是否有 issue 锚、mergeable、行数、我方契合点。给建议动作（probe-salvage / review / watch / skip）。
 2. **自有资产盘点**：`gh pr list --author strzhao --state open` 逐个看 updatedAt/mergeable/reviews/comments——**写 `$CONTRIB/assets-snapshot.json`（PR→{updatedAt, mergeable, reviewDecision, 最新评论作者}）并与上份快照 diff**：新增维护者/sweeper/collaborator 评论、mergeable 翻转、MERGED、>7 天停滞标黄 → `notify.sh event own-pr-activity --key "<PR>-<事件>-<日期>"`。停滞 >7 天的在简报给 ping/再 rebase/关停建议（ping 是对外动作，只建议不执行）。
 3. **观察台账复检 + ready-queue premise 复验**：读 `ledger.md`，到期 watch 项逐个复查状态，状态变化则更新台账并写进简报。然后遍历 `$CONTRIB/ready-queue.json` 中 state ∈ {queued, awaiting-approval} 的活项，**逐条实查 premises**：issue 仍 OPEN？`gh pr list --search "<N> in:body" --state open` 无新占坑？**in-body 抓不到机制占坑（#103315 教训：PR 不引用 issue 号也能占坑，08:29 挂出、08:40 复验漏检）——还须按 issue 的机制关键词/触碰文件再搜一轮**：`gh pr list --search "<机制词1> OR <机制词2>" --state open` + 对照 touched paths；关键 file:line 在当前 origin/main 仍成立？——任一死亡 → `rq.sh set <id> expired` + `notify.sh event probe-premise-dead --key "<id>-<日期>"`（#102413 教训：过期 premise 的审批卡绝不能推）。
+3.5. **库存新鲜度 + 带货率巡检（09-09 commit 进仓优先升级）**：`bash scripts/contrib/forge.sh check` 列库存台账——ready 项抽查 base 是否落后（上游仓 `git rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天 → `forge.sh set-status <id> stale`，简报列「需 rebase/复验」）；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 形态报警**（回炉造货——用户 09-09 拍板：连续无 commit 产出的动作要占少数）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
 4. **自动构建**（本日仅当 `config.auto_build=true` 且当日 `runs/` 无已完成构建）：从今日 briefs 里挑分数最高且决策=own-PR 的 issue；≥`config.min_build_score` 则直接执行模式三（构建 1 个）；没有候选则跳过。
 5. 产出 `radar/$(date +%F).md`（两节：外部雷达 / 自有资产+台账+构建记录+ready-queue 复验结果），并在 `briefs/$(date +%F).md` 追加「⭐ 雷达摘要」节。（微信推送由 run-watch.sh 尾部统一 flush。）
 
@@ -99,8 +100,12 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 **`--phase preflight`**（阶段 1）：
 1. 读 `$CONTRIB/ready-queue.json` 该项（premises/ammo/score）+ 简报中原始素材（review 要点/probe 草稿）。
 2. **必须**用 Agent 工具调 `hermes-contrib-strategist` 子代理出 preflight 审视报告 → `$CONTRIB/runs/deep-check/<id>/preflight.md`（红旗清单/形态裁决/数字修正/发不发结论）。
-3. 对报告逐条「亲手核」：对当前 origin/main 实查（修行号、核事实），吸收成草稿 v2 写 `$CONTRIB/pending/<id>.md`（头部注释记版次与依据）。
-4. `rq.sh set <id> deep-check`（阶段开始时）→ 阶段末不推进状态（等 redteam）。
+3. **Goods 判定（commit 进仓优先硬闸，09-09 用户拍板升级：机制层强制）**：三态必答，结论写入 preflight.md 的「Goods 判定」节（**缺该节 = redteam 阶段必须打回**）。判定序：
+   - `offered`：`bash scripts/contrib/forge.sh check` 输出的 ready 库存与本缺口**域匹配** → 评审稿直接带 cherry-pick offer（#86062 模式；offer 措辞按 hermes-contribution.md §11 署名排序规范，lift 保署名=显式首选）
+   - `forge-lane`：无库存货但缺口**可造**（单关注点 / 可剥离 / ≤半日工作量）→ **评审稿照常发（不等待造货）**，同刻 `forge.sh init` 立项造货入库存；成稿发出后 PR 存活期内以 follow-up 评论补 offer（**PR 开窗期 = offer 变现最优期**：可直接 cherry-pick 进在飞 PR；等合入后再 offer 就降级成新 PR 排队）——09-09 #106199 实证：深检发现双缺口但手无货，快合窗内只能眼睁睁
+   - `none`：缺口不可修 / 域外 / 纯观察 → 纯 review（合法但计数进 `goods-metrics.json`，连续 ≥3 次 none 触发 radar 形态报警——回炉造货）
+4. 对报告逐条「亲手核」：对当前 origin/main 实查（修行号、核事实），吸收成草稿 v2 写 `$CONTRIB/pending/<id>.md`（头部注释记版次与依据）。
+5. `rq.sh set <id> deep-check`（阶段开始时）→ 阶段末不推进状态（等 redteam）。
 
 **`--phase redteam`**（阶段 2，全新进程，**不得读 preflight.md 结论先入为主**）：
 1. 只读 `$CONTRIB/pending/<id>.md`（v2）+ 必要的上游实查工具。
@@ -114,11 +119,17 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
   "decision": "auto | escalate",
   "confidence": "high | medium | low",
   "risk_level": "low | medium | high",
+  "goods": {
+    "status": "offered | forge-lane | none",
+    "note": "三态判定依据一句：offered=库存 sha+域匹配；forge-lane=缺口可修已立项（forge <slug>）；none=不可修/域外原因"
+  },
   "reasons": ["升级时必填：每条 = 一个具体的、你定不了的点，写给用户裁决"]
 }
 ```
 
-**auto 门槛（宁升勿放）**：仅当「断言全部核验通过 + 零必修残留 + 动作可逆（评论类）+ 你对发出内容无保留」时才判 auto/high/low。以下任一 → escalate 并写清 reasons：任何 premise 存疑或证据链有缺口；域外/不熟机制；语气、定位、与维护者关系的拿捏不准；涉及取舍判断（如提不提 cherry-pick offer）；红队有未吸收的必修项。**reasons 是给用户看的决策点，不是给同行看的评审术语**——写成用户 30 秒能裁决的人话（例：「这条评论建议对方改 API 形状，但我拿不准维护者对 breaking change 的容忍度」）。
+**goods.status 必填且由 auto-gate 机械校验（fail-closed）**——缺字段/非法值一律升级人工。
+
+**auto 门槛（宁升勿放）**：仅当「断言全部核验通过 + 零必修残留 + 动作可逆（评论类）+ 你对发出内容无保留」时才判 auto/high/low。以下任一 → escalate 并写清 reasons：任何 premise 存疑或证据链有缺口；域外/不熟机制；语气、定位、与维护者关系的拿捏不准；offer 的措辞与署名排序拿不准（goods 三态判定**本身不是升级事由**——它是流程产出，由 preflight 的 Goods 判定 + 库存状态机械决定，不存在「提不提 offer 的取舍」：有货必带、可造就造、不可修才纯 review）。**reasons 是给用户看的决策点，不是给同行看的评审术语**——写成用户 30 秒能裁决的人话（例：「这条评论建议对方改 API 形状，但我拿不准维护者对 breaking change 的容忍度」）。
 
 **失败处理**：任一阶段 exit≠0 → `rq.sh set <id> failed --note "<阶段>"`；预算按 `config.refund_failed_deep_check` 决定是否返还（默认不返还）；次日 gate 可自动重试（`failed → queued` 迁移由 gate 执行）。
 
