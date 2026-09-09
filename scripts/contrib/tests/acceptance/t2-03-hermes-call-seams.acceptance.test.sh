@@ -72,7 +72,7 @@ down_value() { tr -d '[:space:]' < "$SB_ROOT/contrib-data/.hermes-down" 2>/dev/n
 hermes_create_calls() { grep '^hermes|' "$SB_ROOT/stublog/calls.log" 2>/dev/null | grep -c 'kanban create' || true; }
 hermes_list_calls() { grep '^hermes|' "$SB_ROOT/stublog/calls.log" 2>/dev/null | grep -c 'kanban list' || true; }
 claude_scan_calls() { grep '^claude|' "$SB_ROOT/stublog/calls.log" 2>/dev/null | grep -c 'contrib-watch scan' || true; }
-flight_exists() { [ -s "$SB_ROOT/contrib-data/kanban-flight.json" ]; }
+flight_exists() { [ -s "$SB_ROOT/contrib-data/kanban-flight-scan.json" ]; }
 ev_key_count() {
   jq -s --arg s "$1" '[.[] | select(((.key // "") | endswith($s)))] | length' \
     "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || echo 0
@@ -95,7 +95,7 @@ seed_cursor() {
 }
 seed_flight() {
   jq -n --arg id "$1" --arg bf "$SB_ROOT/contrib-data/pending-batches/batch-20260909-010101.json" --argjson ep "$2" \
-    '{kind:"scan",card_id:$id,batch_file:$bf,created_epoch:$ep}' > "$SB_ROOT/contrib-data/kanban-flight.json"
+    '{kind:"scan",card_id:$id,batch_file:$bf,created_epoch:$ep}' > "$SB_ROOT/contrib-data/kanban-flight-scan.json"
 }
 seed_card_store() {
   printf '{"id":"t_old","status":"%s","assignee":"contrib","priority":0}\n' "$1" > "$SB_ROOT/stublog/kanban-cards.jsonl"

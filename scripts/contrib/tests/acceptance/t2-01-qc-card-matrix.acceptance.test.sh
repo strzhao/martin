@@ -56,7 +56,7 @@ hermes_lines() { grep '^hermes|' "$SB_ROOT/stublog/calls.log" 2>/dev/null || tru
 create_calls() { hermes_lines | grep -c 'kanban create' || true; }
 claude_scan_calls() { grep '^claude|' "$SB_ROOT/stublog/calls.log" 2>/dev/null | grep -c 'contrib-watch scan' || true; }
 
-flight_exists() { [ -s "$SB_ROOT/contrib-data/kanban-flight.json" ]; }
+flight_exists() { [ -s "$SB_ROOT/contrib-data/kanban-flight-scan.json" ]; }
 
 ev_key_count() { # <key 后缀> → events.jsonl 中该后缀 key 的条数（<日期>-<后缀> 的日期段不钉死）
   jq -s --arg s "$1" '[.[] | select(((.key // "") | endswith($s)))] | length' \
@@ -91,7 +91,7 @@ case "$(create_calls)" in
 esac
 assert_eq "$(claude_scan_calls)" "0" "5.1 QC 开 → 零 claude -p scan（建卡主路不含 claude）"
 assert_eq "$(ev_key_count -scan-fallback-skipped)" "0" "5.1 零 fallback-skipped 事件（建卡成功无需兜底）"
-flight_exists && _pass "5.1 flight 登记存在" || _fail "5.1 flight 登记存在" "建卡成功应写 kanban-flight.json"
+flight_exists && _pass "5.1 flight 登记存在" || _fail "5.1 flight 登记存在" "建卡成功应写 kanban-flight-scan.json"
 assert_eq "$(notify_approvals)" "0" "5.1 notify-state approvals 零新增（隔离：零订阅零外发）"
 sb_cleanup
 

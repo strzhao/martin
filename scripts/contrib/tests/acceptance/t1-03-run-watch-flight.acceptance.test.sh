@@ -51,7 +51,7 @@ seed_cursor() {
 
 seed_flight() { # <card_id> <created_epoch>
   jq -n --arg id "$1" --arg bf "$SB_ROOT/contrib-data/pending-batches/batch-20260909-010101.json" --argjson ep "$2" \
-    '{kind:"scan",card_id:$id,batch_file:$bf,created_epoch:$ep}' > "$SB_ROOT/contrib-data/kanban-flight.json"
+    '{kind:"scan",card_id:$id,batch_file:$bf,created_epoch:$ep}' > "$SB_ROOT/contrib-data/kanban-flight-scan.json"
 }
 
 seed_card_store() { # <status>：在飞查询的前置态（卡库 1 张 t_old 卡）
@@ -68,8 +68,8 @@ create_calls()    { hermes_lines | grep -c 'kanban create' || true; }
 list_calls()      { hermes_lines | grep -c 'kanban list' || true; }
 claude_scan_calls() { grep '^claude|' "$SB_ROOT/stublog/calls.log" 2>/dev/null | grep -c 'contrib-watch scan' || true; }
 
-flight_card_id() { jq -r '.card_id // ""' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null || echo ""; }
-flight_exists()  { [ -s "$SB_ROOT/contrib-data/kanban-flight.json" ]; }
+flight_card_id() { jq -r '.card_id // ""' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null || echo ""; }
+flight_exists()  { [ -s "$SB_ROOT/contrib-data/kanban-flight-scan.json" ]; }
 
 pipeline_failure_count() {
   jq -s '[.[] | select(.class == "pipeline-failure")] | length' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || echo 0
@@ -105,14 +105,14 @@ assert_exit 0 $RC "3.1 run-watch exit"
 assert_eq "$(create_calls)" "1" "3.1 恰 1 次 hermes kanban create（主路建卡）"
 assert_ge "$(list_calls)" "1" "3.1 无 flight → ≥1 次 kanban list（T2 create 前置 healthcheck 探测，语义演进 09-09）"
 assert_eq "$(claude_scan_calls)" "0" "3.1 主路不再直调 claude -p '/contrib-watch scan'（fallback 保留但不在主路触发）"
-flight_exists && _pass "3.1 flight 登记存在" || _fail "3.1 flight 登记存在" "kanban-flight.json 未产出（契约 5）"
+flight_exists && _pass "3.1 flight 登记存在" || _fail "3.1 flight 登记存在" "kanban-flight-scan.json 未产出（契约 5）"
 CID="$(flight_card_id)"
 case "$CID" in "") _fail "3.1 flight.card_id 非空" "card_id 为空（建卡 id 提取 No-op？）" ;; *) _pass "3.1 flight.card_id 非空（${CID}）" ;; esac
-KIND="$(jq -r '.kind // ""' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)"
+KIND="$(jq -r '.kind // ""' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)"
 assert_eq "$KIND" "scan" "3.1 flight.kind=scan"
-BFEPOCH="$(jq -r '.created_epoch // 0' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)"
+BFEPOCH="$(jq -r '.created_epoch // 0' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)"
 case "$BFEPOCH" in ''|*[!0-9]*) _fail "3.1 created_epoch 数值" "实得 [$BFEPOCH]" ;; *) [ "$BFEPOCH" -gt 0 ] && _pass "3.1 created_epoch>0" || _fail "3.1 created_epoch>0" "实得 $BFEPOCH" ;; esac
-FBF="$(jq -r '.batch_file // ""' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)"
+FBF="$(jq -r '.batch_file // ""' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)"
 if [ -n "$FBF" ] && [ -f "$FBF" ]; then
   _pass "3.1 flight.batch_file 指向真实批次文件"
   PTR="$(jq -r '.batch_file // ""' "$SB_ROOT/contrib-data/scan-latest-batch.json" 2>/dev/null)"
@@ -148,7 +148,7 @@ common_setup
 run_watch -e STUB_HERMES_FAIL=1 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null; RC=$?
 assert_eq "$(claude_scan_calls)" "1" "3.2 建卡失败 → fallback claude -p '/contrib-watch scan' 被调"
 assert_eq "$(create_calls)" "1" "3.2 前置：create 确实被尝试（stub 注毒生效）"
-flight_exists && _fail "3.2 失败不写 flight" "建卡失败仍留下 kanban-flight.json（会把下轮锁死在在飞态）" || _pass "3.2 失败不写 flight"
+flight_exists && _fail "3.2 失败不写 flight" "建卡失败仍留下 kanban-flight-scan.json（会把下轮锁死在在飞态）" || _pass "3.2 失败不写 flight"
 assert_eq "$(pipeline_failure_count)" "2" "3.2 pipeline-failure 事件入账（T2：hermes-down 首败 1 条 + fallback 1 条，语义演进 09-09）"
 sb_cleanup
 

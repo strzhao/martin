@@ -55,6 +55,22 @@ run_phase() {
 
 echo "[$(ts)] ===== run-watch start (hour=$(date +%H)) =====" >>"$LOG"
 
+# --- T3 全局件：flight per-kind 迁移 + 终态查询 seam（scan/mail/radar 三段共用）---
+# flight v2：单对象 kanban-flight.json（历史仅 scan 使用）→ kanban-flight-<kind>.json。
+# 迁移=一次性 mv（检测到旧文件且 -scan 命名不存在）；读端保留旧文件回落（kind==scan 只读），双保险。
+OLD_FLIGHT="$CONTRIB/kanban-flight.json"
+if [[ -f "$OLD_FLIGHT" && ! -e "$CONTRIB/kanban-flight-scan.json" ]]; then
+  mv "$OLD_FLIGHT" "$CONTRIB/kanban-flight-scan.json" 2>/dev/null \
+    && echo "[$(ts)] flight 迁移：kanban-flight.json → kanban-flight-scan.json" >>"$LOG"
+fi
+SKILL_MD="$MARTIN/.claude/skills/contrib-watch/SKILL.md"
+STALE_SECS=21600   # flight 陈旧守卫 6h：防 dispatcher 停机使 flight 永非终态 → 跳过放大停摆
+FLIGHT_TIMEOUT="${FLIGHT_TIMEOUT:-30}"   # flight 查询挂死守卫（B4）：hermes list/show 超时秒数
+# flight 终态查询用：run_phase 包裹（timeout→perl→直跑三级退化）——hermes 挂死不再拖死整轮
+hermes_call() {
+  run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
+}
+
 # 防重入（上一轮 LLM 还没跑完时跳过本轮）；锁滞留 >2h 视为残留 → 告警并强清
 if ! mkdir "$LOCK" 2>/dev/null; then
   lock_age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || date +%s) ))
@@ -94,15 +110,10 @@ fi
 
 if (( rc == 10 )); then
   # --- scan 研判主路（T1 卡化）：flight 检查 → 建卡（hermes contrib 卡）→ claude -p 降级兜底 ---
-  FLIGHT="$CONTRIB/kanban-flight.json"
+  # T3 flight per-kind：scan 登记迁至 kanban-flight-scan.json（旧文件已在顶部 mv 迁移；
+  # 此处回落读仅为 mv 失败时的双保险——旧文件 kind==scan 只读不写）
+  FLIGHT="$CONTRIB/kanban-flight-scan.json"
   SCAN_LATEST="$CONTRIB/scan-latest-batch.json"
-  SKILL_MD="$MARTIN/.claude/skills/contrib-watch/SKILL.md"
-  STALE_SECS=21600   # flight 陈旧守卫 6h：防 dispatcher 停机使 flight 永非终态 → 跳过放大停摆
-  FLIGHT_TIMEOUT="${FLIGHT_TIMEOUT:-30}"   # flight 查询挂死守卫（B4）：hermes list/show 超时秒数
-  # flight 终态查询用：run_phase 包裹（timeout→perl→直跑三级退化）——hermes 挂死不再拖死整轮
-  hermes_call() {
-    run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
-  }
 
   fallback_scan() {
     # QC gate（T2 语义收窄）：断路器仅挡 claude 兜底路——QC 开 → 跳过 claude + 幂等告警入账
@@ -186,8 +197,13 @@ if (( rc == 10 )); then
   }
 
   flight_card_id=""
-  if [[ -s "$FLIGHT" ]] && jq -e 'type == "object"' "$FLIGHT" >/dev/null 2>&1; then
-    flight_card_id="$(jq -r 'if .kind == "scan" then (.card_id // empty) else empty end' "$FLIGHT" 2>/dev/null || true)"
+  flight_src="$FLIGHT"
+  if [[ ! -s "$flight_src" && -s "$OLD_FLIGHT" ]] && jq -e 'type == "object"' "$OLD_FLIGHT" >/dev/null 2>&1 \
+    && [[ "$(jq -r '.kind // ""' "$OLD_FLIGHT" 2>/dev/null || true)" == "scan" ]]; then
+    flight_src="$OLD_FLIGHT"   # 迁移失败时的旧文件回落读（只读）
+  fi
+  if [[ -s "$flight_src" ]] && jq -e 'type == "object"' "$flight_src" >/dev/null 2>&1; then
+    flight_card_id="$(jq -r 'if .kind == "scan" then (.card_id // empty) else empty end' "$flight_src" 2>/dev/null || true)"
   fi
 
   if [[ -z "$flight_card_id" ]]; then
@@ -247,30 +263,166 @@ else
     --key "$(date +%F)-gate-rc$rc" --summary "scan_gate 闸门异常 rc=$rc" >/dev/null 2>&1 || true
 fi
 
-# --- 1.5 邮件检查（09-07）：GitHub 通知未读 → AI 三通道研判（auto 流水线内动作 / important
-#     推微信 mail-needs-user / routine 进简报）。采集零 LLM 成本照常跑（同 scan_gate 待遇），
-#     断路器只挡研判步。首启只定位游标不回灌存量。失败 fail-soft 不拖死 hourly 链。---
+# --- 1.5 邮件检查（09-07；T3 卡化）：GitHub 通知未读 → AI 三通道研判（auto 流水线内动作 /
+#     important 推微信 mail-needs-user / routine 进简报）。采集零 LLM 成本照常跑（同 scan_gate
+#     待遇）。研判主路 = mail 卡（contrib worker）；claude -p 降级为兜底（旧同步语义保留）。
+#     cursor 推进从同步改异步：卡终态 done + cursor 快照守卫通过才 --commit-cursor。
+#     失败 fail-soft 不拖死 hourly 链。---
+MAIL_FLIGHT="$CONTRIB/kanban-flight-mail.json"
+MAIL_PENDING="$CONTRIB/mail-pending.json"
+
+# 快照口径钉死：与 mail_gate.sh --commit-cursor 同一 jq 表达式（mail_gate.sh:46）
+mail_pending_max_id() {
+  local f="$1" v=0
+  if [[ -s "$f" ]]; then
+    v="$(jq -r '[.[].id | tonumber] | max // 0' "$f" 2>/dev/null || echo 0)"
+  fi
+  printf '%s' "$v"
+}
+
+fallback_mail() {
+  # QC gate（T2 语义）：断路器仅挡 claude 兜底路——QC 开 → 跳过 claude + 幂等告警入账
+  if [[ -x "$QC" ]] && ! zsh "$QC" check >/dev/null 2>&1; then
+    echo "[$(ts)] 断路器仅挡兜底路（GLM 配额），mail fallback 跳过（claude 未调用）" >>"$LOG"
+    "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+      --key "$(date +%F)-mail-fallback-skipped" \
+      --summary "mail fallback 被配额断路器挡下（GLM 配额冷却中），本轮 claude 兜底未执行" >/dev/null 2>&1 || true
+    return 0
+  fi
+  echo "[$(ts)] mail fallback → claude -p 旧路" >>"$LOG"
+  [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch mail" \
+    --permission-mode acceptEdits \
+    --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(scripts/contrib/rq.sh list *),Bash(scripts/contrib/rq.sh add *),Bash(scripts/contrib/notify.sh event *),Bash(scripts/contrib/mail_gate.sh --commit-cursor)" \
+    >>"$LOG" 2>&1
+  mail_rc=$?
+  echo "[$(ts)] 邮件研判完成 exit=$mail_rc" >>"$LOG"
+  if (( mail_rc != 0 )); then
+    [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
+    "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+      --key "$(date +%F)-mail-exit$mail_rc" --summary "邮件研判 claude -p 失败 exit=$mail_rc" >/dev/null 2>&1 || true
+  else
+    [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1
+    # 研判成功才推进游标（旧同步语义兜底保留；失败轮次 pending 保留，下轮重研判——幂等靠 event --key）
+    "$MARTIN/scripts/contrib/mail_gate.sh" --commit-cursor >>"$LOG" 2>&1 || true
+  fi
+}
+
+card_fallback_mail() {  # 卡路失败 → 告警入账 + claude 旧路兜底
+  "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+    --key "$(date +%F)-mail-card-fallback" \
+    --summary "mail 建卡路失败（${1:-unknown}），已回落 claude 旧路兜底" >/dev/null 2>&1 || true
+  fallback_mail
+}
+
+create_mail_card() {
+  local body_ts body_file card_json card_id pmax rc=0
+  body_ts="$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$CONTRIB/card-bodies"
+  body_file="$CONTRIB/card-bodies/mail-$body_ts.body.md"
+  {
+    printf '# contrib mail 研判卡\n\n'
+    printf '## 任务\n\n'
+    printf -- '- 输入（只读，mail_gate 预取快照）: %s\n' "$MAIL_PENDING"
+    printf -- '- 工作模式与三通道判定权威: %s 模式五（mail）\n' "$SKILL_MD"
+    printf '\n## 红线（必须遵守）\n\n'
+    printf -- '- 禁碰 himalaya 写操作（mark/move/delete/send 一律禁止）；只依据 preview 研判\n'
+    printf -- '- 不自行 commit-cursor、不动 mail-cursor.json（run-watch 按卡终态推进游标）\n'
+    printf -- '- gh 只读；rq.sh 只允许本地渠道动作；-q 模式禁脚本形态：python -c / jq -e / * -e 一律不可用\n'
+    printf '\n## 收尾要求\n\n'
+    printf -- '- 完成调 kanban_complete 时必须同时传 summary 与 result\n'
+  } >"$body_file"
+  card_json="$(bash "$MARTIN/scripts/contrib/kanban_card.sh" create \
+    --kind mail --title "contrib mail 研判 $body_ts" \
+    --body-file "$body_file" \
+    --json-out "$CONTRIB/card-bodies/mail-$body_ts.card.json" 2>>"$LOG")" || rc=$?
+  if (( rc != 0 )); then
+    echo "[$(ts)] mail 建卡失败（rc=${rc}）" >>"$LOG"
+    card_fallback_mail "建卡失败 rc=$rc"
+    return 0
+  fi
+  card_id="$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)"
+  if [[ -z "$card_id" ]]; then
+    echo "[$(ts)] mail 建卡输出缺 id" >>"$LOG"
+    card_fallback_mail "建卡输出缺 id"
+    return 0
+  fi
+  # 登记第五键 pending_max_id = 建卡时 pending 最大 id 快照（cursor 本轮不动）
+  pmax="$(mail_pending_max_id "$MAIL_PENDING")"
+  jq -n --arg kind mail --arg id "$card_id" --arg bf "" --argjson e "$(date +%s)" --argjson p "$pmax" \
+    '{kind: $kind, card_id: $id, batch_file: $bf, created_epoch: $e, pending_max_id: $p}' \
+    >"$MAIL_FLIGHT.tmp" && mv "$MAIL_FLIGHT.tmp" "$MAIL_FLIGHT"
+  echo "[$(ts)] mail 研判卡已建 ${card_id}（pending_max_id 快照=${pmax}）" >>"$LOG"
+}
+
 if [[ -x "$MARTIN/scripts/contrib/mail_gate.sh" ]]; then
   mrc=0
   "$MARTIN/scripts/contrib/mail_gate.sh" >>"$LOG" 2>&1 || mrc=$?
-  if (( mrc == 10 && QC_OPEN == 1 )); then
-    echo "[$(ts)] 有新 GitHub 邮件但断路器打开，研判顺延（pending 保留下轮）" >>"$LOG"
-  elif (( mrc == 10 )); then
-    echo "[$(ts)] 有新 GitHub 邮件 → headless 研判" >>"$LOG"
-    [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch mail" \
-      --permission-mode acceptEdits \
-      --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(scripts/contrib/rq.sh list *),Bash(scripts/contrib/rq.sh add *),Bash(scripts/contrib/notify.sh event *),Bash(scripts/contrib/mail_gate.sh --commit-cursor)" \
-      >>"$LOG" 2>&1
-    mail_rc=$?
-    echo "[$(ts)] 邮件研判完成 exit=$mail_rc" >>"$LOG"
-    if (( mail_rc != 0 )); then
-      [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
-      "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
-        --key "$(date +%F)-mail-exit$mail_rc" --summary "邮件研判 claude -p 失败 exit=$mail_rc" >/dev/null 2>&1 || true
+  if (( mrc == 10 )); then
+    mail_flight_card=""
+    if [[ -s "$MAIL_FLIGHT" ]] && jq -e 'type == "object"' "$MAIL_FLIGHT" >/dev/null 2>&1; then
+      mail_flight_card="$(jq -r 'if .kind == "mail" then (.card_id // empty) else empty end' "$MAIL_FLIGHT" 2>/dev/null || true)"
+    fi
+    if [[ -n "$mail_flight_card" ]]; then
+      # 终态检查嵌在 mrc==10 门内（设计注 I5：登记在飞 ⇒ pending 非空 ⇒ mrc==10）
+      card_status=""
+      if list_json="$(hermes_call kanban list --json 2>>"$LOG")"; then
+        card_status="$(printf '%s' "$list_json" | jq -r --arg id "$mail_flight_card" \
+          '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
+      fi
+      case "$card_status" in
+        done)
+          # cursor 快照守卫：当前 pending 与建卡时快照一致才 commit；有增长/缩减（人工 drain）
+          # 只清登记不 commit——飞行窗口内新邮件绝不被静默消费，残留 pending 驱动下轮新卡
+          mail_snap="$(jq -r '.pending_max_id // 0' "$MAIL_FLIGHT" 2>/dev/null || echo 0)"
+          mail_cur="$(mail_pending_max_id "$MAIL_PENDING")"
+          if [[ "$mail_cur" == "$mail_snap" ]]; then
+            if "$MARTIN/scripts/contrib/mail_gate.sh" --commit-cursor >>"$LOG" 2>&1; then
+              rm -f "$MAIL_FLIGHT"
+              echo "[$(ts)] mail 卡 ${mail_flight_card} done → 快照一致（#${mail_cur}）→ commit-cursor + 清登记" >>"$LOG"
+            else
+              echo "[$(ts)] mail 卡 done → commit-cursor 失败，登记保留下轮重试" >>"$LOG"
+            fi
+          else
+            rm -f "$MAIL_FLIGHT"
+            echo "[$(ts)] mail 卡 done → pending 有变化（当前#${mail_cur} vs 快照#${mail_snap}）→ 只清登记不 commit" >>"$LOG"
+          fi
+          ;;
+        blocked)
+          run_outcome=""
+          if show_json="$(hermes_call kanban show "$mail_flight_card" --json 2>>"$LOG")"; then
+            run_outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
+          fi
+          case "$run_outcome" in
+            gave_up|crashed|timed_out|spawn_failed)
+              echo "[$(ts)] mail 卡 ${mail_flight_card} blocked（outcome=${run_outcome}，重试耗尽）→ fallback" >>"$LOG"
+              rm -f "$MAIL_FLIGHT"
+              card_fallback_mail "卡 blocked outcome=$run_outcome"
+              ;;
+            *)
+              echo "[$(ts)] mail 卡 ${mail_flight_card} blocked（outcome=${run_outcome:-未知}，非重试耗尽）→ 本轮跳过" >>"$LOG"
+              ;;
+          esac
+          ;;
+        ready|running|triage|todo|scheduled|review)
+          flight_age=$(( $(date +%s) - $(jq -r '.created_epoch // 0' "$MAIL_FLIGHT" 2>/dev/null || echo 0) ))
+          if (( flight_age > STALE_SECS )); then
+            echo "[$(ts)] mail 卡 ${mail_flight_card} 非终态超 ${STALE_SECS}s（age=${flight_age}s）→ 清 + fallback" >>"$LOG"
+            rm -f "$MAIL_FLIGHT"
+            card_fallback_mail "flight 陈旧 ${flight_age}s"
+          else
+            echo "[$(ts)] mail 卡 ${mail_flight_card} 在飞（status=$card_status age=${flight_age}s）→ 本轮跳过（pending 保留自然重研判）" >>"$LOG"
+          fi
+          ;;
+        *)
+          # 查无此 id（archived/清理/异常）→ 异常视同失败
+          echo "[$(ts)] mail 卡 ${mail_flight_card} 查无终态（status=${card_status:-空}）→ 清 + fallback" >>"$LOG"
+          rm -f "$MAIL_FLIGHT"
+          card_fallback_mail "flight 卡查无"
+          ;;
+      esac
     else
-      [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1
-      # 研判成功才推进游标（失败的轮次 pending 保留，下轮重研判——幂等靠 event --key）
-      "$MARTIN/scripts/contrib/mail_gate.sh" --commit-cursor >>"$LOG" 2>&1 || true
+      echo "[$(ts)] 有新 GitHub 邮件 → 建 mail 研判卡" >>"$LOG"
+      create_mail_card
     fi
   elif (( mrc == 0 )); then
     echo "[$(ts)] 邮件闸门：无新 GitHub 通知" >>"$LOG"
@@ -279,29 +431,151 @@ if [[ -x "$MARTIN/scripts/contrib/mail_gate.sh" ]]; then
   fi
 fi
 
-# --- 2. 每日 radar（08 窗口；抽 maybe_radar 便于测试注入 hour，默认=现状 date +%H）---
-maybe_radar() {
-  local hour="${1:-$(date +%H)}"
-  if [[ "$hour" == "08" && "$QC_OPEN" == "1" ]]; then
-    echo "[$(ts)] radar 窗口到但断路器打开，跳过" >>"$LOG"
-  elif [[ "$hour" == "08" ]]; then
-    echo "[$(ts)] 每日 radar 启动" >>"$LOG"
-    [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch radar" \
-      --permission-mode acceptEdits \
-      --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(git *),Bash(cd *),Bash(scripts/contrib/*),Bash(pytest *),Bash(python *),Bash(python3 *),Bash(ruff *),Bash(rg *)" \
-      >>"$LOG" 2>&1
-    radar_rc=$?
-    echo "[$(ts)] radar 完成 exit=$radar_rc" >>"$LOG"
-    if (( radar_rc != 0 )); then
-      [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
-      "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
-        --key "$(date +%F)-radar-exit$radar_rc" --summary "radar claude -p 失败 exit=$radar_rc" >/dev/null 2>&1 || true
-    else
-      [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1
-    fi
+# --- 2. 每日 radar（T3 卡化 + 补跑旗标）：研判主路 = radar 卡（contrib worker）；claude -p
+#     降级为兜底。补跑旗标 pending-radar.flag：QC 开/hermes 不可用致窗口错过时落盘，任意时段
+#     补跑；删除条件 = radar 研判实际完成（卡终态 done 或 fallback claude exit 0）。---
+RADAR_FLIGHT="$CONTRIB/kanban-flight-radar.json"
+RADAR_FLAG="$CONTRIB/pending-radar.flag"
+
+fallback_radar() {
+  # QC gate（T2 语义）：断路器仅挡 claude 兜底路——QC 开 → 跳过 claude + 幂等告警入账
+  if [[ -x "$QC" ]] && ! zsh "$QC" check >/dev/null 2>&1; then
+    echo "[$(ts)] 断路器仅挡兜底路（GLM 配额），radar fallback 跳过（claude 未调用）" >>"$LOG"
+    "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+      --key "$(date +%F)-radar-fallback-skipped" \
+      --summary "radar fallback 被配额断路器挡下（GLM 配额冷却中），本轮 claude 兜底未执行" >/dev/null 2>&1 || true
+    return 0
+  fi
+  echo "[$(ts)] radar fallback → claude -p 旧路" >>"$LOG"
+  [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch radar" \
+    --permission-mode acceptEdits \
+    --allowedTools "Read,Write,Edit,Grep,Glob,Agent,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *),Bash(git *),Bash(cd *),Bash(scripts/contrib/*),Bash(pytest *),Bash(python *),Bash(python3 *),Bash(ruff *),Bash(rg *)" \
+    >>"$LOG" 2>&1
+  radar_rc=$?
+  echo "[$(ts)] radar 完成 exit=$radar_rc" >>"$LOG"
+  if (( radar_rc != 0 )); then
+    [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
+    "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+      --key "$(date +%F)-radar-exit$radar_rc" --summary "radar claude -p 失败 exit=$radar_rc" >/dev/null 2>&1 || true
+  else
+    [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1
+    rm -f "$RADAR_FLAG"   # 兜底研判完成 → 旗标删除（删除条件=研判实际完成）
   fi
 }
-maybe_radar
+
+card_fallback_radar() {  # 卡路失败 → 告警入账 + claude 旧路兜底（旗标不动，由 fallback 终态处置）
+  "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+    --key "$(date +%F)-radar-card-fallback" \
+    --summary "radar 建卡路失败（${1:-unknown}），已回落 claude 旧路兜底" >/dev/null 2>&1 || true
+  fallback_radar
+}
+
+create_radar_card() {
+  local body_ts body_file card_json card_id rc=0
+  body_ts="$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$CONTRIB/card-bodies"
+  body_file="$CONTRIB/card-bodies/radar-$body_ts.body.md"
+  {
+    printf '# contrib radar 研判卡\n\n'
+    printf '## 任务\n\n'
+    printf -- '- 工作模式与 rubric 权威: %s 模式二（radar）\n' "$SKILL_MD"
+    printf -- '- 产出路径: %s/radar/%s.md（照旧两节）+ briefs 追加雷达摘要\n' "$CONTRIB" "$(date +%F)"
+    printf '\n## 红线（必须遵守）\n\n'
+    printf -- '- gh 只读；零 push、零评论、零对外动作\n'
+    printf -- '- 自动构建只到本地（模式三绝不 push / 绝不 gh pr create）\n'
+    printf -- '- rq.sh 只允许本地渠道动作；-q 模式禁脚本形态：python -c / jq -e / * -e 一律不可用\n'
+    printf '\n## 收尾要求\n\n'
+    printf -- '- 完成调 kanban_complete 时必须同时传 summary 与 result\n'
+  } >"$body_file"
+  card_json="$(bash "$MARTIN/scripts/contrib/kanban_card.sh" create \
+    --kind radar --title "contrib radar $(date +%F)" \
+    --body-file "$body_file" \
+    --json-out "$CONTRIB/card-bodies/radar-$body_ts.card.json" 2>>"$LOG")" || rc=$?
+  if [[ $rc -ne 0 || -z "$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)" ]]; then
+    echo "[$(ts)] radar 建卡失败（rc=${rc}）→ 置/保补跑旗标" >>"$LOG"
+    [[ -f "$RADAR_FLAG" ]] || printf '%s\n' "$(date +%F)" >"$RADAR_FLAG"
+    card_fallback_radar "建卡失败 rc=$rc"
+    return 0
+  fi
+  card_id="$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)"
+  # 建卡成功 → 登记在飞；旗标不动（删除条件=卡终态 done 或 fallback 成功）
+  jq -n --arg kind radar --arg id "$card_id" --arg bf "" --argjson e "$(date +%s)" \
+    '{kind: $kind, card_id: $id, batch_file: $bf, created_epoch: $e}' \
+    >"$RADAR_FLIGHT.tmp" && mv "$RADAR_FLIGHT.tmp" "$RADAR_FLIGHT"
+  echo "[$(ts)] radar 研判卡已建 ${card_id}（旗标不动）" >>"$LOG"
+}
+
+maybe_radar() {
+  local hour="${1:-$(date +%H)}"
+  local radar_card="" card_status="" run_outcome="" flight_age list_json show_json
+  # ① 凡存在 radar 登记每轮即查终态（不受窗口门控——防 done 滞留到次日）
+  if [[ -s "$RADAR_FLIGHT" ]] && jq -e 'type == "object"' "$RADAR_FLIGHT" >/dev/null 2>&1; then
+    radar_card="$(jq -r 'if .kind == "radar" then (.card_id // empty) else empty end' "$RADAR_FLIGHT" 2>/dev/null || true)"
+  fi
+  if [[ -n "$radar_card" ]]; then
+    card_status=""
+    if list_json="$(hermes_call kanban list --json 2>>"$LOG")"; then
+      card_status="$(printf '%s' "$list_json" | jq -r --arg id "$radar_card" \
+        '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
+    fi
+    case "$card_status" in
+      done)
+        rm -f "$RADAR_FLIGHT"
+        rm -f "$RADAR_FLAG"   # 研判完成 → 旗标删除
+        echo "[$(ts)] radar 卡 ${radar_card} 已 done → 清登记 + 旗标清除" >>"$LOG"
+        if [[ "$hour" != "08" ]]; then
+          return 0
+        fi
+        # 重审 I1：仅 08 窗口轮首探到前卡 done 时当日窗口才确实未消费 → fall-through 建卡；
+        # flag 情形 fall-through 会系统性双跑，故 fall-through 仅 hour==08
+        echo "[$(ts)] 08 窗口内探到前卡 done → fall-through 建当日卡" >>"$LOG"
+        ;;
+      blocked)
+        run_outcome=""
+        if show_json="$(hermes_call kanban show "$radar_card" --json 2>>"$LOG")"; then
+          run_outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
+        fi
+        case "$run_outcome" in
+          gave_up|crashed|timed_out|spawn_failed)
+            echo "[$(ts)] radar 卡 ${radar_card} blocked（outcome=${run_outcome}，重试耗尽）→ fallback（旗标不动）" >>"$LOG"
+            rm -f "$RADAR_FLIGHT"
+            card_fallback_radar "卡 blocked outcome=$run_outcome"
+            ;;
+          *)
+            echo "[$(ts)] radar 卡 ${radar_card} blocked（outcome=${run_outcome:-未知}，非重试耗尽）→ 本轮跳过" >>"$LOG"
+            ;;
+        esac
+        return 0
+        ;;
+      ready|running|triage|todo|scheduled|review)
+        flight_age=$(( $(date +%s) - $(jq -r '.created_epoch // 0' "$RADAR_FLIGHT" 2>/dev/null || echo 0) ))
+        if (( flight_age > STALE_SECS )); then
+          echo "[$(ts)] radar 卡 ${radar_card} 非终态超 ${STALE_SECS}s（age=${flight_age}s）→ 清 + fallback（旗标保留）" >>"$LOG"
+          rm -f "$RADAR_FLIGHT"
+          card_fallback_radar "flight 陈旧 ${flight_age}s"
+        else
+          echo "[$(ts)] radar 卡 ${radar_card} 在飞（status=$card_status age=${flight_age}s）→ 本轮跳过" >>"$LOG"
+        fi
+        return 0
+        ;;
+      *)
+        # 查无此 id（archived/清理/异常）→ 异常视同失败（旗标保留，等下轮）
+        echo "[$(ts)] radar 卡 ${radar_card} 查无终态（status=${card_status:-空}）→ 清 + fallback" >>"$LOG"
+        rm -f "$RADAR_FLIGHT"
+        card_fallback_radar "flight 卡查无"
+        return 0
+        ;;
+    esac
+  fi
+  # ② 窗口或旗标存在且无登记 → 建卡（QC 开仍建卡：卡路不受 QC 限）
+  if [[ "$hour" == "08" || -f "$RADAR_FLAG" ]]; then
+    echo "[$(ts)] radar 窗口/旗标命中 → 建 radar 研判卡" >>"$LOG"
+    create_radar_card
+  fi
+  # ③ 非窗口 && 无登记 && 无旗标 → 原样无动作
+}
+# RADAR_HOUR 测试 seam：空（缺省）=现状 date +%H，生产语义零变化
+maybe_radar "${RADAR_HOUR:-}"
 
 # --- 3. 通知层：聚合推送本轮新增告警（失败不影响流水线退出码）---
 if [[ -x "$MARTIN/scripts/contrib/notify.sh" ]]; then

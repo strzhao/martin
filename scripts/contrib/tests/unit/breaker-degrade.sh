@@ -195,7 +195,7 @@ run_watch
 assert_exit 0 $?
 assert_eq "$(count_hermes_arg 'kanban create')" "1" "QC 开闸建卡照常发起"
 assert_eq "$(count_claude_scan)" "0" "QC 开 + 主路成功零 claude"
-assert_eq "$(jq -r '.kind // empty' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "scan" "flight 正常登记"
+assert_eq "$(jq -r '.kind // empty' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)" "scan" "flight 正常登记"
 assert_eq "$(cat "$SB_ROOT/contrib-data/.quota-circuit")" "$flag_before" "check 只读，.quota-circuit byte 级不变"
 assert_eq "$(events_grep_count 'pipeline-failure')" "0" "健康主路零告警"
 

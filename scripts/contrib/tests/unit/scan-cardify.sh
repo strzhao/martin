@@ -219,7 +219,7 @@ t_case "run-watch: 无 flight + 建卡成功 → flight 登记四键 + 零 claud
 watch_sb
 run_watch
 assert_exit 0 $?
-flight="$SB_ROOT/contrib-data/kanban-flight.json"
+flight="$SB_ROOT/contrib-data/kanban-flight-scan.json"
 assert_eq "$(jq -r '.kind' "$flight" 2>/dev/null)" "scan" "flight kind=scan"
 assert_eq "$(jq -r '.card_id' "$flight" 2>/dev/null)" "t_stub_2" "flight card_id（stub 序号 2=hc 探测在前）"
 assert_eq "$(jq -r '.batch_file' "$flight" 2>/dev/null)" "$(jq -r '.batch_file' "$SB_ROOT/contrib-data/scan-latest-batch.json" 2>/dev/null)" "flight batch_file 与指针一致"
@@ -242,7 +242,7 @@ assert_exit 0 $?
 assert_stub_called claude 1 "fallback claude -p 被调"
 assert_contains "$(scan_claude_line)" "/contrib-watch scan" "fallback 研判 /contrib-watch scan"
 assert_eq "$(grep -c 'pipeline-failure' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || true)" "2" "event 入账（T2 gate -hermes-down + -scan-card-fallback）"
-[[ ! -f "$SB_ROOT/contrib-data/kanban-flight.json" ]] && _pass "建卡失败不写 flight" || _fail "建卡失败不写 flight" "登记残留"
+[[ ! -f "$SB_ROOT/contrib-data/kanban-flight-scan.json" ]] && _pass "建卡失败不写 flight" || _fail "建卡失败不写 flight" "登记残留"
 
 t_case "run-watch: flight status=done → 清登记 + 本轮建新卡"
 watch_sb
@@ -252,7 +252,7 @@ watch_issues 2003
 run_watch "STUB_KANBAN_CARD_STATUS=done"
 assert_exit 0 $?
 assert_stub_called_times hermes 5 "r1:hc+create, r2:flight list+hc+create（T2 gate）"
-assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_5" "flight 指向新卡（stub 序号 5=r2 的 flight list+hc+create）"
+assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)" "t_stub_5" "flight 指向新卡（stub 序号 5=r2 的 flight list+hc+create）"
 assert_stub_not_called claude "done 路不 fallback"
 
 t_case "run-watch: flight status=blocked 且 outcome 非失败 → 在飞跳过（防误杀可自愈卡，矩阵第 8 态）"
@@ -262,7 +262,7 @@ watch_issues 2003
 run_watch "STUB_KANBAN_CARD_STATUS=blocked" "STUB_KANBAN_RUN_OUTCOME=manual_block"
 assert_exit 0 $?
 assert_stub_not_called claude "blocked+非失败 outcome 不 fallback"
-assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_2" "flight 保留（卡可能自愈或 6h 守卫兜底）"
+assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)" "t_stub_2" "flight 保留（卡可能自愈或 6h 守卫兜底）"
 
 t_case "run-watch: flight status=blocked+outcome=gave_up → 清登记 + fallback"
 watch_sb
@@ -272,7 +272,7 @@ run_watch "STUB_KANBAN_CARD_STATUS=blocked" "STUB_KANBAN_RUN_OUTCOME=gave_up"
 assert_exit 0 $?
 assert_stub_called claude 1 "blocked+gave_up → fallback"
 assert_eq "$(grep -c 'pipeline-failure' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || true)" "1" "卡失败 event 入账"
-[[ ! -f "$SB_ROOT/contrib-data/kanban-flight.json" ]] && _pass "flight 已清" || _fail "flight 已清" "登记残留"
+[[ ! -f "$SB_ROOT/contrib-data/kanban-flight-scan.json" ]] && _pass "flight 已清" || _fail "flight 已清" "登记残留"
 
 t_case "run-watch: flight status=running → 本轮跳过（卡片在飞）"
 watch_sb
@@ -281,13 +281,13 @@ watch_issues 2003
 run_watch "STUB_KANBAN_CARD_STATUS=running"
 assert_exit 0 $?
 assert_stub_not_called claude "running 不 fallback"
-assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_2" "flight 保留不重建卡"
+assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight-scan.json" 2>/dev/null)" "t_stub_2" "flight 保留不重建卡"
 assert_stub_called_times hermes 3 "r1:hc+create, r2:flight list（T2 gate）"
 
 t_case "run-watch: flight 非终态超 6h → 清登记 + fallback + event"
 watch_sb
 run_watch
-flight="$SB_ROOT/contrib-data/kanban-flight.json"
+flight="$SB_ROOT/contrib-data/kanban-flight-scan.json"
 old=$(( $(date +%s) - 30000 ))
 jq --argjson e "$old" '.created_epoch = $e' "$flight" >"$flight.tmp" && mv "$flight.tmp" "$flight"
 watch_issues 2003
@@ -304,6 +304,6 @@ watch_issues 2003
 run_watch "STUB_KANBAN_LIST_EMPTY=1"
 assert_exit 0 $?
 assert_stub_called claude 1 "查无此卡 → fallback"
-[[ ! -f "$SB_ROOT/contrib-data/kanban-flight.json" ]] && _pass "flight 已清" || _fail "flight 已清" "登记残留"
+[[ ! -f "$SB_ROOT/contrib-data/kanban-flight-scan.json" ]] && _pass "flight 已清" || _fail "flight 已清" "登记残留"
 
 t_finish

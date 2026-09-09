@@ -120,7 +120,7 @@ card_run_watch() {
 if sb_new >/dev/null 2>&1; then
   card_watch_seed 2000
   card_run_watch
-  CARD_FLIGHT="$SB_ROOT/contrib-data/kanban-flight.json"
+  CARD_FLIGHT="$SB_ROOT/contrib-data/kanban-flight-scan.json"
   c1="$(jq -r '.card_id // empty' "$CARD_FLIGHT" 2>/dev/null || true)"
   [[ "$(jq -r '.kind // empty' "$CARD_FLIGHT" 2>/dev/null)" == "scan" ]] || card_fail="A:flight 未登记"
   [[ -n "$c1" ]] || card_fail="A:$card_fail 建卡无 id"
@@ -170,6 +170,46 @@ else
   card_fail="${card_fail} QC 段 sandbox 失败"
 fi
 [[ -z "$card_fail" ]] || smoke_fail "scan 卡化链: $card_fail"
+
+# ---- T3 mail/radar 卡化全链段（独立沙箱）----
+# E: mail exit10 → 建卡（五键登记含 pending_max_id 快照，cursor 不动）→ 卡 done+快照一致 →
+#    commit-cursor（cursor 推进+登记清）；radar 08 窗口 → 建卡登记 + 零旗标
+if sb_new >/dev/null 2>&1; then
+  printf '[]\n' >"$SB_ROOT/gh-issues.json"
+  printf '{"last_issue":9000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
+  printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+  mkdir -p "$SB_ROOT/mailstub"
+  printf '{"last_id":8000,"initialized":"t"}\n' >"$SB_ROOT/contrib-data/mail-cursor.json"
+  jq -cn '{id:"8001",flags:[],subject:"Re: [NousResearch/hermes-agent] e2e",from:{name:"T",addr:"notifications@github.com"},to:{name:"x",addr:"hermes-agent@noreply.github.com"},date:"d",has_attachment:false}' \
+    >"$SB_ROOT/mailstub/row.json"
+  jq -s . "$SB_ROOT/mailstub/row.json" >"$SB_ROOT/mailstub/envelopes.json"
+  printf 'From: a <n@github.com>\n\nbody\n\nMessage ID: <m8001@github.com>\n' >"$SB_ROOT/mailstub/read-8001.txt"
+  sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" \
+    -e "MAIL_STUB_ENVELOPES=$SB_ROOT/mailstub/envelopes.json" -e "MAIL_STUB_DIR=$SB_ROOT/mailstub" \
+    -e "RADAR_HOUR=08" \
+    'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null 2>&1
+  MAILF="$SB_ROOT/contrib-data/kanban-flight-mail.json"
+  [[ "$(jq -r '.kind // empty' "$MAILF" 2>/dev/null)" == "mail" ]] || card_fail="E:mail flight 未登记"
+  [[ "$(jq -r '.pending_max_id // 0' "$MAILF" 2>/dev/null)" == "8001" ]] || card_fail="E:$card_fail pending_max_id 快照缺"
+  [[ "$(jq -r '.last_id' "$SB_ROOT/contrib-data/mail-cursor.json" 2>/dev/null)" == "8000" ]] || card_fail="E:$card_fail cursor 提前推进"
+  [[ "$(jq -r '.kind // empty' "$SB_ROOT/contrib-data/kanban-flight-radar.json" 2>/dev/null)" == "radar" ]] || card_fail="E:$card_fail radar flight 未登记"
+  [[ ! -f "$SB_ROOT/contrib-data/pending-radar.flag" ]] || card_fail="E:$card_fail 建卡成功不应置旗标"
+  [[ "$(awk -F'|' '$1 == "claude" && $0 ~ /contrib-watch (mail|radar)/' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || card_fail="E:$card_fail 主路调了 claude"
+  # 第二轮：两卡 done → mail 快照守卫通过 commit-cursor；radar 非 08 done 只清不重建
+  printf '[]\n' >"$SB_ROOT/mailstub/envelopes.json"
+  sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" \
+    -e "MAIL_STUB_ENVELOPES=$SB_ROOT/mailstub/envelopes.json" -e "MAIL_STUB_DIR=$SB_ROOT/mailstub" \
+    -e "RADAR_HOUR=14" -e "STUB_KANBAN_CARD_STATUS=done" \
+    'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null 2>&1
+  [[ "$(jq -r '.last_id' "$SB_ROOT/contrib-data/mail-cursor.json" 2>/dev/null)" == "8001" ]] || card_fail="E:$card_fail 卡 done 后 cursor 未异步推进"
+  [[ ! -f "$MAILF" ]] || card_fail="E:$card_fail done 后 mail 登记未清"
+  [[ "$(jq 'length' "$SB_ROOT/contrib-data/mail-pending.json" 2>/dev/null || echo '?')" == "0" ]] || card_fail="E:$card_fail pending 未随 commit 清空"
+  sb_cleanup >/dev/null 2>&1
+else
+  card_fail="${card_fail} mail/radar 段 sandbox 失败"
+fi
+[[ -z "$card_fail" ]] || smoke_fail "mail/radar 卡化链: $card_fail"
 
 # ---- 汇总 JSON（末行）----
 sb_json_path="$SMOKE_STUB_LOG"

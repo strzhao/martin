@@ -113,7 +113,7 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
     echo "sandbox: CONTRIB_TEST_STUBS 未设置（影子 stub 目录）" >&2
     return 1
   fi
-  cp "$stubsrc"/hermes "$stubsrc"/claude "$stubsrc"/gh "$stubsrc"/tunnel "$stubsrc"/osascript "$stubsrc"/pgrep "$SB_ROOT/bin/"
+  cp "$stubsrc"/hermes "$stubsrc"/claude "$stubsrc"/gh "$stubsrc"/tunnel "$stubsrc"/osascript "$stubsrc"/pgrep "$stubsrc"/himalaya "$SB_ROOT/bin/"
   chmod +x "$SB_ROOT"/bin/*
 
   # 3) shim + 数据底座
@@ -131,6 +131,9 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
   export DEEPCHECK_LOCK="$SB_ROOT/locks/deepcheck.lock"
   export HERMES_BIN="$SB_ROOT/bin/hermes"
   export GH_BIN="$SB_ROOT/bin/gh"
+  # himalaya seam（T3）：run-watch 顶部 export PATH 前置真实 /opt/homebrew/bin，同名真身会
+  # 越过沙箱 bin/ 被命中——必须显式钉 stub 绝对路径（mail_gate.sh 的 HIMALAYA_BIN seam）
+  export HIMALAYA_BIN="$SB_ROOT/bin/himalaya"
   export TUNNEL_BIN="$SB_ROOT/bin/tunnel"
   export OSASCRIPT_BIN="$SB_ROOT/bin/osascript"
   export GATEWAY_PROBE_BIN="$SB_ROOT/bin/pgrep"
@@ -174,6 +177,7 @@ sb_run() {
       DEEPCHECK_LOCK="$SB_ROOT/locks/deepcheck.lock" \
       HERMES_BIN="$SB_ROOT/bin/hermes" \
       GH_BIN="$SB_ROOT/bin/gh" \
+      HIMALAYA_BIN="$SB_ROOT/bin/himalaya" \
       TUNNEL_BIN="$SB_ROOT/bin/tunnel" \
       OSASCRIPT_BIN="$SB_ROOT/bin/osascript" \
       GATEWAY_PROBE_BIN="$SB_ROOT/bin/pgrep" \

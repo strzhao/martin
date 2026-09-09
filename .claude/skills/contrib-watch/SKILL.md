@@ -73,6 +73,8 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 4. **自动构建**（本日仅当 `config.auto_build=true` 且当日 `runs/` 无已完成构建）：从今日 briefs 里挑分数最高且决策=own-PR 的 issue；≥`config.min_build_score` 则直接执行模式三（构建 1 个）；没有候选则跳过。
 5. 产出 `radar/$(date +%F).md`（两节：外部雷达 / 自有资产+台账+构建记录+ready-queue 复验结果），并在 `briefs/$(date +%F).md` 追加「⭐ 雷达摘要」节。（微信推送由 run-watch.sh 尾部统一 flush。）
 
+卡模式（T3）：radar 研判由 run-watch 建卡（`--kind radar`，贡献卡 worker 执行本模式），产出 `radar/$(date +%F).md` 照旧；补跑旗标由 run-watch 管理，卡内不用关心。
+
 ---
 
 ## 模式四：deep-check <rq-id> --phase preflight|redteam（三轮审自动化，由 launchd 09:37 调起或手动）
@@ -139,6 +141,8 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 | **routine** | 盯梢类：triage 机器人互动、label 变化、无关仓库动态、CI 波动 | 追加当日 briefs 一节「## 邮件动态」（每封一行：主题→一句话），不推送 |
 
 分级纪律（用户 09-07 拍板）：**宁进简报不进微信**——不确定 importance 时降级 routine；同主题多封（同 PR 评论连发）合并为一个 event，key 取最新 message_id。
+
+卡模式（T3）：mail 研判由 run-watch 建卡（`--kind mail`，贡献卡 worker 执行本模式）。卡内约定：输入为 `$CONTRIB/mail-pending.json` 绝对路径（mail_gate 预取快照，只读）；三通道判定表以上表原文为准；**卡内禁碰 himalaya 写操作**（mark/move/delete/send 一律禁止，只依据 preview 研判，需要更多上下文用 gh 实查）；**完成后不要自行 commit-cursor、不动 mail-cursor.json**——游标由 run-watch 按卡终态（done + cursor 快照守卫）异步推进。
 
 收尾：briefs 追加「## 邮件研判」统计行（auto/important/routine 计数）；**不要自己动 mail-cursor.json**——退出码 0 后 run-watch 会调 `mail_gate.sh --commit-cursor` 推进游标，研判中途失败则游标不动、pending 下轮重研判（event --key 保证重复研判不重复推送）。
 

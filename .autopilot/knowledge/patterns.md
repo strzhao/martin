@@ -411,3 +411,8 @@ run-watch.sh（zsh）以 `zsh scan_gate.sh` 显式调用（绕过 shebang）→ 
 notify.sh 的 events.jsonl 有两个写入方：`cmd_event` 追加（jq 紧凑形态 `"key":"..."`）与 flush 的 python `json.dumps` 账本重写（缺省分隔符形态 `"key": "..."` 带空格）。幂等去重 grep 按 jq 形态写 → flush 重写过的账本上同 key 事件重复入账。教训：**幂等检查的 grep 必须枚举所有写入方的真实序列化形态**（`-qF` 逐形态锚定，或读前先 jq 归一化）；「谁写账本」与「谁查账本」格式必须同源（同 [[dry-run 只盖发送不盖账本]] 家族：账面语义与账本物理形态脱节是重复事故源）。
 
 <!-- tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch -->
+
+## [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名）
+run-watch 的 radar 窗口逻辑依赖 `date +%H`，但实现内部 `export PATH` 前置系统目录使 PATH 注入 stub 失效，而给实现加 hour seam 又侵入生产代码。解法：沙箱 `$HOME/.local/bin/date` 影子 stub（run-watch 的 PATH 恰好前置 ~/.local/bin）——只劫持裸 `+%H` 调用、其余参数透传 `/bin/date`，黑盒且零实现耦合。启示：**时间/环境依赖的黑盒注入优先找「实现自己已经前置的路径」下钩，其次才要求实现开 seam**；stub 必须透传非目标调用形态（防误伤同脚本其他 date 用途）。
+
+<!-- tags: testing, black-box, date, stub, shadow-binary, hour-injection, sandbox, contrib-watch -->
