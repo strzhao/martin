@@ -20,9 +20,9 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 
 ## 模式一：scan（研判 pending 命中）
 
-launchd 每小时粗滤后有域内命中时调用。步骤：
+launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 worker；claude -p 仅兜底，两者共用本模式）。步骤：
 
-1. 读 `$CONTRIB/pending-hits.json`。空数组 → 输出「无待研判」结束。
+1. 读数据源（批次文件优先，契约 1b）：优先读 `$CONTRIB/pending-batches/batch-*.json` 中**最新且含 `state=="pending"` 项的批次文件**（按文件名 ts 降序取首个含 pending 项的）；为空则回落 `$CONTRIB/pending-hits.json`（兼容源）。仍为空数组 → 输出「无待研判」结束。
 2. 逐条 `gh issue view <N> --repo NousResearch/hermes-agent`（正文+labels+评论数），对每条打分（满分 15）：
 
 | 维度 | 0 | 1 | 2 | 3 |
@@ -40,7 +40,7 @@ launchd 每小时粗滤后有域内命中时调用。步骤：
    - `--premises-json` 必填：本项成立所依赖的关键前提逐条登记（`{"claim": "…", "evidence": "file:line 或 PR 号", "verified_at": "…"}）`——radar 复验与执行前 TTL 复验都以此为清单
    - `--ammo-json`：我方独家弹药清单（一句话/条）；`--age-hours`：issue 龄（排位新鲜度用）；probe-salvage 同时把完整 probe 草稿写 `$CONTRIB/pending/rq-<日期>-<issue>.md` 并在 `--note` 里注明草稿路径
    - 简报条目「下一步」改指 `rq-<id>`（不再写"建议手动 build/发"）
-4. 追加 `$CONTRIB/briefs/$(date +%F).md`（格式见下），然后 `scan_gate.sh --drain` 清空 pending。（微信推送由 run-watch.sh 尾部统一 flush，模式内不直接调 hermes send。）
+4. 追加 `$CONTRIB/briefs/$(date +%F).md`（格式见下）。**写回批次文件（卡路协议）**：每条研判完立即写回批次文件该条——`state="done"` + `decision`/`score`/`breakdown`/`rationale`/`space_check` 五字段（崩溃只损当前一条）；兼容源 pending-hits.json 路径下研判完不再调 `scan_gate.sh --drain`（drain 仅 fallback 手动兜底保留）。（微信推送由 run-watch.sh 尾部统一 flush，模式内不直接调 hermes send。）
 5. 终端输出一行摘要清单（编号/标题/决策/分数 + 入队 id）。
 
 简报条目格式：
@@ -52,6 +52,16 @@ launchd 每小时粗滤后有域内命中时调用。步骤：
 - 为什么：<一句话我方角度>
 - 下一步：<own-PR→"雷达将自动构建"或"建议手动 /contrib-watch build <N>"；probe-salvage→附 probe 草稿；review-evidence→附 review 要点；watch→复检日期>
 ```
+
+### 卡模式工作约定（contrib 研判卡 worker 必读，T1 起生效）
+
+以 hermes kanban contrib 卡跑本 skill 时（run-watch 建卡 → contrib profile worker 执行），除上述步骤外遵守：
+
+1. **批次文件协议**：数据源与写回见模式一第 1/4 步——批次文件元素 = 原始 hit 字段（number/title/labels/author/created/comments）+ `state:"pending"|"done"` + 研判结果五字段（decision/score/breakdown/rationale/space_check）。逐条写回、立即落盘；全部 done 后不再调 `--drain`。
+2. **收尾双传**：调 `kanban_complete` 时**必须同时传 `summary` 与 `result`**——只传其一视为收尾不完整（上游 tasks.result 仅在显式传入时非空）。
+3. **-q 模式禁脚本形态**：`python -c` / `jq -e` / 任何 `* -e` 脚本调用一律不可用（-q 沙箱拦截）；写回批次文件用文件读写工具完成。
+4. **红线**：gh 只读（零 issue/PR 写、零评论、零 push）；`rq.sh` 只允许本地渠道动作（list/add/set/set-draft），禁任何对外动作；不写 briefs 与 ready-queue 之外的争议面。
+5. **零订阅语义**：CLI 建卡默认零微信订阅——卡终态变化零推送；摘要类推送需求走 T5 notify 摘要卡 + notify-subscribe 补订，勿在 scan 卡内直接 `hermes send`。
 
 ---
 

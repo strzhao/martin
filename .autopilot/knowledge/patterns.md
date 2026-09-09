@@ -401,3 +401,8 @@ negate 类红线扫描 pattern `\border\b` 把 mktd sources.py 的局部变量 `
 <!-- tags: hermes, kanban, coder, worktree, merge-back, mktd -->
 ## [2026-09-08] coder 卡交付物必须回 merge 主仓：worktree 残留 commit ≠ 持久交付
 kanban worktree 含未推 commit 会被保留（kanban_db.py:5956）但主仓 main 永不含代码——后续任何卡从 main 切 worktree 看不到交付物，worktree 一旦清理交付静默断链（全局 bin symlink 指向 worktree 内 venv 时尤甚）。验收后标准动作：CC 本地 `git merge wt/<task_id>` 回主仓 main + 从主仓 checkout 重装全局 bin。
+
+## [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言
+run-watch.sh（zsh）以 `zsh scan_gate.sh` 显式调用（绕过 shebang）→ 脚本内 bash-only 构造（compgen/shopt）在 zsh 下 command not found。若用在 `if` 条件里则**静默恒假**（不是报错）：scan_gate 积压聚合 guard 在生产 zsh 路径恒假=告警面从未生效。三重掩盖机制叠加：红队验收测试用 bash 调（全绿）、蓝队 unit 恰好阈值单源可达（侥幸绿）、shellcheck 按她bang 按 bash 检查（不报）。防御：①脚本头部按 `${ZSH_VERSION:-}` 分支处理（如 `setopt null_glob`）+ `[[ -e ]]` 守卫双路径；②**测试的调用方式必须镜像生产调用方式**（生产 zsh 调就测 zsh 调）；③验收测试与单元测试至少各用一种 shell 调同一脚本，制造双象性暴露面。
+
+<!-- tags: bash, zsh, shebang, compgen, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing -->

@@ -6,6 +6,17 @@
 #   STUB_HERMES_FAIL_FIRST=<n> → 前 n 次调用 exit 1，之后正常成功（审批卡重试用例：失败 2 次第 3 次成功）
 #   STUB_HERMES_SUCCESS_FALSE=1 → exit 0 但输出 {"success":false}（专测「账面 exit0 ≠ 送达」）
 #   STUB_HERMES_OUT=<text>    → 自定义 stdout 输出模板
+# T1 scan 卡化新增旋钮（kanban 子命令可控终态；fail 类旋钮优先级不变）：
+#   kanban create            → 输出任务 dict（id=t_stub_<n>, status 可控）并登记到
+#                              $LOG_DIR/kanban-cards.jsonl（有状态：list/show 能查到）
+#   STUB_KANBAN_CREATE_STATUS=<s> → create 输出的 status（默认 ready）
+#   kanban list --json       → 输出已登记卡片数组（STUB_KANBAN_LIST_EMPTY=1 → []）；
+#                              STUB_KANBAN_CARD_STATUS=<s> 覆盖全部卡片 status（终态矩阵驱动）
+#   kanban show <id> --json  → 输出 {task,runs:[{outcome}]}；outcome 由
+#                              STUB_KANBAN_RUN_OUTCOME 控制（默认 gave_up）
+#   另：每次调用向 $LOG_DIR/anthropic-env.log 追加一行子进程 env 中三个 ANTHROPIC_*
+#   变量存在性（hermes|base_url=…|auth_token=…|api_key=…，支撑 env -u 剥离断言）；
+#   --body 参数值复制到 bodies/hermes-<n>.txt（卡 body 内容断言用）
 set -u
 NAME="hermes"
 LOG_DIR="${STUB_LOG_DIR:-}"
@@ -22,15 +33,26 @@ line="$NAME|$PWD|"
 first=1
 prev=""
 for a in "$@"; do
+  a="${a//$'\n'/ }"   # argv 内换行平化（calls.log 行完整性；消息体副本仍保留原文）
   if [[ $first -eq 0 ]]; then line="$line "; fi
   line="$line$a"
   first=0
   if [[ "$prev" == "--file" && -f "$a" ]]; then
     cp "$a" "$LOG_DIR/bodies/$NAME-$n.txt" 2>/dev/null || true
   fi
+  if [[ "$prev" == "--body" ]]; then
+    printf '%s' "$a" >"$LOG_DIR/bodies/$NAME-$n.txt" 2>/dev/null || true
+  fi
   prev="$a"
 done
 printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+
+# ANTHROPIC_* 变量存在性记录（子进程 env 视角；env -u 剥离后应为 absent）
+a_base="absent"; [[ -n "${ANTHROPIC_BASE_URL:-}" ]] && a_base="present"
+a_auth="absent"; [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]] && a_auth="present"
+a_key="absent"; [[ -n "${ANTHROPIC_API_KEY:-}" ]] && a_key="present"
+printf 'hermes|base_url=%s|auth_token=%s|api_key=%s\n' "$a_base" "$a_auth" "$a_key" \
+  >>"$LOG_DIR/anthropic-env.log"
 
 if [[ "${STUB_HERMES_FAIL:-}" == "1" ]]; then
   printf '%s\n' '{"success":false,"error":"stub-fail"}'
@@ -44,6 +66,39 @@ if [[ "${STUB_HERMES_SUCCESS_FALSE:-}" == "1" ]]; then
   printf '%s\n' '{"success":false}'
   exit 0
 fi
+
+# kanban 子命令可控终态旋钮（fail 类旋钮已优先处理，保持既有用例语义）
+if [[ "${1:-}" == "kanban" ]]; then
+  case "${2:-}" in
+    create)
+      cid="t_stub_$n"
+      cstatus="${STUB_KANBAN_CREATE_STATUS:-ready}"
+      jq -cn --arg id "$cid" --arg status "$cstatus" \
+        '{id: $id, status: $status, assignee: "contrib", priority: 0}' \
+        | tee -a "$LOG_DIR/kanban-cards.jsonl"
+      exit 0
+      ;;
+    list)
+      if [[ "${STUB_KANBAN_LIST_EMPTY:-}" == "1" || ! -s "$LOG_DIR/kanban-cards.jsonl" ]]; then
+        printf '[]\n'
+        exit 0
+      fi
+      if [[ -n "${STUB_KANBAN_CARD_STATUS:-}" ]]; then
+        jq -s --arg s "$STUB_KANBAN_CARD_STATUS" 'map(.status = $s)' "$LOG_DIR/kanban-cards.jsonl"
+      else
+        jq -s . "$LOG_DIR/kanban-cards.jsonl"
+      fi
+      exit 0
+      ;;
+    show)
+      jq -cn --arg id "${3:-t_stub}" --arg s "${STUB_KANBAN_CARD_STATUS:-blocked}" \
+        --arg o "${STUB_KANBAN_RUN_OUTCOME:-gave_up}" \
+        '{task: {id: $id, status: $s}, runs: [{outcome: $o}]}'
+      exit 0
+      ;;
+  esac
+fi
+
 if [[ -n "${STUB_HERMES_OUT:-}" ]]; then
   printf '%s\n' "$STUB_HERMES_OUT"
   exit 0

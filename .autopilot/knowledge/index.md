@@ -58,3 +58,4 @@
 - [2026-09-08] dry-run 只盖发送不盖账本：notify.sh event 干跑真实入账下轮真推 | tags: bash, dry-run, gate-scope, notify, contrib-watch | → patterns.md
 - [2026-09-08] 红线扫描 \border\b 误报代码标识符：交易关键词用中文+显式短语 | tags: qa, false-positive, red-line, hkstock | → patterns.md
 - [2026-09-08] coder 卡交付须回 merge 主仓（worktree 残留≠持久交付） | tags: hermes, kanban, coder, worktree, mktd | → patterns.md
+- [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言（compgen zsh 静默恒假） | tags: bash, zsh, shebang, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing | → patterns.md

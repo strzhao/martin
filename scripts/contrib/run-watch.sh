@@ -15,6 +15,8 @@ ts() { date "+%Y-%m-%dT%H%M"; }
 # claude CLI 装在 nvm node bin，版本目录随升级漂移——launchd PATH 极简，须运行时探测（09-03 修复 command not found）
 # seam：CLAUDE_BIN env 优先，空则走现有两级探测（默认语义=现状）
 CLAUDE_BIN="${CLAUDE_BIN:-}"
+# hermes seam（T1 卡化）：kanban list/show 终态查询用；kanban_card.sh 经 env 透传同一 seam
+HERMES_BIN="${HERMES_BIN:-hermes}"
 if [[ -z "$CLAUDE_BIN" ]]; then
   CLAUDE_BIN="$(command -v claude 2>/dev/null)"
 fi
@@ -92,19 +94,141 @@ fi
 if (( rc == 10 && QC_OPEN == 1 )); then
   echo "[$(ts)] 有域内命中但断路器打开，研判顺延" >>"$LOG"
 elif (( rc == 10 )); then
-  echo "[$(ts)] 有域内命中 → headless 研判" >>"$LOG"
-  [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch scan" \
-    --permission-mode acceptEdits \
-    --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *)" \
-    >>"$LOG" 2>&1
-  scan_rc=$?
-  echo "[$(ts)] 研判完成 exit=$scan_rc" >>"$LOG"
-  if (( scan_rc != 0 )); then
-    [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
+  # --- scan 研判主路（T1 卡化）：flight 检查 → 建卡（hermes contrib 卡）→ claude -p 降级兜底 ---
+  FLIGHT="$CONTRIB/kanban-flight.json"
+  SCAN_LATEST="$CONTRIB/scan-latest-batch.json"
+  SKILL_MD="$MARTIN/.claude/skills/contrib-watch/SKILL.md"
+  STALE_SECS=21600   # flight 陈旧守卫 6h：防 dispatcher 停机使 flight 永非终态 → 跳过放大停摆
+  hermes_call() {
+    env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
+  }
+
+  fallback_scan() {
+    echo "[$(ts)] scan fallback → claude -p 旧路" >>"$LOG"
+    [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch scan" \
+      --permission-mode acceptEdits \
+      --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh *),Bash(jq *),Bash(cat *),Bash(head *),Bash(tail *),Bash(ls *),Bash(wc *),Bash(grep *)" \
+      >>"$LOG" 2>&1
+    scan_rc=$?
+    echo "[$(ts)] 研判完成 exit=$scan_rc" >>"$LOG"
+    if (( scan_rc != 0 )); then
+      [[ -x "$QC" ]] && zsh "$QC" trip "$LOG" >/dev/null 2>&1 && echo "[$(ts)] 配额签名命中，断路器跳闸" >>"$LOG"
+      "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+        --key "$(date +%F)-scan-exit$scan_rc" --summary "scan 研判 claude -p 失败 exit=$scan_rc" >/dev/null 2>&1 || true
+    else
+      [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1   # 成功 = 配额可用实证
+    fi
+  }
+
+  card_fallback() {  # 卡路失败 → 告警入账 + claude 旧路兜底
     "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
-      --key "$(date +%F)-scan-exit$scan_rc" --summary "scan 研判 claude -p 失败 exit=$scan_rc" >/dev/null 2>&1 || true
+      --key "$(date +%F)-scan-card-fallback" \
+      --summary "scan 建卡路失败（${1:-unknown}），已回落 claude 旧路兜底" >/dev/null 2>&1 || true
+    fallback_scan
+  }
+
+  clear_flight() { rm -f "$FLIGHT"; }
+
+  create_scan_card() {
+    local batch_file body_file card_json card_id body_ts rc=0
+    batch_file="$(jq -r '.batch_file // empty' "$SCAN_LATEST" 2>/dev/null || true)"
+    body_ts="$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$CONTRIB/pending-batches"
+    body_file="$CONTRIB/pending-batches/batch-$body_ts.body.md"
+    {
+      printf '# contrib scan 研判卡\n\n'
+      printf '## 任务\n\n'
+      if [[ -n "$batch_file" ]]; then
+        printf -- '- 批次文件（研判对象，权威数据源）: %s\n' "$batch_file"
+      else
+        printf -- '- 批次文件: 无指针——按 SKILL.md 模式一第 1 步自行读最新含 pending 项的批次文件\n'
+      fi
+      printf -- '- 工作模式与评分 rubric 权威: %s 模式一（scan）\n' "$SKILL_MD"
+      printf -- '- 指针: %s\n\n' "$SCAN_LATEST"
+      printf '## 红线（必须遵守）\n\n'
+      printf -- '- gh 只读：零 issue/PR 写、零评论、零 push\n'
+      printf -- '- rq.sh 只允许本地渠道动作（list/add/set/set-draft 等），禁任何对外动作\n'
+      printf -- '- -q 模式禁脚本形态：python -c / jq -e / * -e 一律不可用\n'
+      printf -- '- 不写 briefs 与 ready-queue 之外的争议面\n\n'
+      printf '## 收尾要求\n\n'
+      printf -- '- 逐条研判完立即写回批次文件该条：state=done + decision/score/breakdown/rationale/space_check\n'
+      printf -- '- 完成调 kanban_complete 时必须同时传 summary 与 result\n'
+    } >"$body_file"
+    card_json="$(bash "$MARTIN/scripts/contrib/kanban_card.sh" create \
+      --kind scan --title "contrib scan 研判 batch-$body_ts" \
+      --body-file "$body_file" \
+      --json-out "$CONTRIB/pending-batches/batch-$body_ts.card.json" 2>>"$LOG")" || rc=$?
+    if (( rc != 0 )); then
+      echo "[$(ts)] scan 建卡失败（rc=${rc}）" >>"$LOG"
+      card_fallback "建卡失败 rc=$rc"
+      return 0
+    fi
+    card_id="$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)"
+    if [[ -z "$card_id" ]]; then
+      echo "[$(ts)] scan 建卡输出缺 id" >>"$LOG"
+      card_fallback "建卡输出缺 id"
+      return 0
+    fi
+    jq -n --arg kind scan --arg id "$card_id" \
+      --arg bf "${batch_file:-}" --argjson e "$(date +%s)" \
+      '{kind: $kind, card_id: $id, batch_file: $bf, created_epoch: $e}' \
+      >"$FLIGHT.tmp" && mv "$FLIGHT.tmp" "$FLIGHT"
+    echo "[$(ts)] scan 研判卡已建 ${card_id}（batch=${batch_file:-无指针}）" >>"$LOG"
+  }
+
+  flight_card_id=""
+  if [[ -s "$FLIGHT" ]] && jq -e 'type == "object"' "$FLIGHT" >/dev/null 2>&1; then
+    flight_card_id="$(jq -r 'if .kind == "scan" then (.card_id // empty) else empty end' "$FLIGHT" 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$flight_card_id" ]]; then
+    # 无在飞卡 → 建卡主路
+    create_scan_card
   else
-    [[ -x "$QC" ]] && zsh "$QC" clear >/dev/null 2>&1   # 成功 = 配额可用实证
+    card_status=""
+    if list_json="$(hermes_call kanban list --json 2>>"$LOG")"; then
+      card_status="$(printf '%s' "$list_json" | jq -r --arg id "$flight_card_id" \
+        '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
+    fi
+    case "$card_status" in
+      done)
+        echo "[$(ts)] scan 卡 $flight_card_id 已 done → 清 flight，本轮新命中另建新卡" >>"$LOG"
+        clear_flight
+        create_scan_card
+        ;;
+      blocked)
+        run_outcome=""
+        if show_json="$(hermes_call kanban show "$flight_card_id" --json 2>>"$LOG")"; then
+          run_outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
+        fi
+        case "$run_outcome" in
+          gave_up|crashed|timed_out|spawn_failed)
+            echo "[$(ts)] scan 卡 $flight_card_id blocked（outcome=${run_outcome}，重试耗尽）→ fallback" >>"$LOG"
+            clear_flight
+            card_fallback "卡 blocked outcome=$run_outcome"
+            ;;
+          *)
+            echo "[$(ts)] scan 卡 $flight_card_id blocked（outcome=${run_outcome:-未知}，非重试耗尽）→ 本轮跳过" >>"$LOG"
+            ;;
+        esac
+        ;;
+      ready|running|triage|todo|scheduled|review)
+        flight_age=$(( $(date +%s) - $(jq -r '.created_epoch // 0' "$FLIGHT" 2>/dev/null || echo 0) ))
+        if (( flight_age > STALE_SECS )); then
+          echo "[$(ts)] scan 卡 $flight_card_id 非终态超 ${STALE_SECS}s（age=${flight_age}s）→ 清 + fallback" >>"$LOG"
+          clear_flight
+          card_fallback "flight 陈旧 ${flight_age}s"
+        else
+          echo "[$(ts)] scan 卡 $flight_card_id 在飞（status=$card_status age=${flight_age}s）→ 本轮跳过" >>"$LOG"
+        fi
+        ;;
+      *)
+        # 查无此 id（archived/清理/异常）→ 异常视同失败
+        echo "[$(ts)] scan 卡 $flight_card_id 查无终态（status=${card_status:-空}）→ 清 + fallback" >>"$LOG"
+        clear_flight
+        card_fallback "flight 卡查无"
+        ;;
+    esac
   fi
 elif (( rc == 0 )); then
   echo "[$(ts)] 无命中" >>"$LOG"

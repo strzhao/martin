@@ -55,6 +55,7 @@ transport_calls="$(awk -F'|' 'NF >= 1 && $1 != "" { c++ } END { printf "%d", c +
 ledger_lines="$(grep -c . "$EVENTS_FILE" 2>/dev/null || true)"
 ledger_appends=$(( ledger_lines - 1 ))   # 减去前缀锚点行
 queue_transitions="$(jq -r '[.items[].history | length] | add // 0' "$QUEUE_FILE" 2>/dev/null || echo 0)"
+SMOKE_STUB_LOG="$SB_ROOT/stublog/calls.log"   # 主链 stub 日志（卡化段换沙箱后仍指主链）
 
 # prefix_preserved：既有行字节级不变（未被 flush 重写破坏/丢失）
 if grep -qF -- "$PREFIX_LINE" "$EVENTS_FILE"; then
@@ -99,8 +100,63 @@ if [[ -z "$FAIL_REASON" ]]; then
   fi
 fi
 
+# ---- T1 scan 卡化全链段（独立沙箱，不受 E2E_STUB_FAIL 影响；恒跑）----
+# A: gate 命中 → 建卡 stub → flight 登记（主路零 claude / 零 hermes send 订阅语义）
+# B: flight done → 清登记 → 本轮新命中另建新卡
+# C: 注毒（hermes 全败）→ claude fallback 被调 + pipeline-failure 入账（账本零假成功）
+card_fail=""
+card_watch_seed() { # <cursor> — 预置游标与两个新 issue
+  printf '{"last_issue":%s}\n' "$1" >"$SB_ROOT/contrib-data/scan-cursor.json"
+  printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+  jq -cn --argjson a $(( $1 + 1 )) --argjson b $(( $1 + 2 )) '[
+    {number:$a,title:"a",labels:[],pull_request:null,user:{login:"x"},created_at:"2026-09-09T00:00:00Z",comments:0},
+    {number:$b,title:"b",labels:[],pull_request:null,user:{login:"x"},created_at:"2026-09-09T00:00:00Z",comments:0}]' \
+    >"$SB_ROOT/gh-issues.json"
+}
+card_run_watch() {
+  sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" ${1:+"-e"} ${1:+"$1"} \
+    'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null 2>&1
+}
+if sb_new >/dev/null 2>&1; then
+  card_watch_seed 2000
+  card_run_watch
+  CARD_FLIGHT="$SB_ROOT/contrib-data/kanban-flight.json"
+  c1="$(jq -r '.card_id // empty' "$CARD_FLIGHT" 2>/dev/null || true)"
+  [[ "$(jq -r '.kind // empty' "$CARD_FLIGHT" 2>/dev/null)" == "scan" ]] || card_fail="A:flight 未登记"
+  [[ -n "$c1" ]] || card_fail="A:$card_fail 建卡无 id"
+  [[ "$(awk -F'|' '$1 == "claude"' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || card_fail="A:主路调了 claude"
+  [[ "$(awk -F'|' '$1 == "hermes" && $0 ~ / send/' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || card_fail="A:卡路出现 hermes send（零订阅语义破）"
+  # B 轮：flight done → 清 + 新卡
+  card_watch_seed 2002
+  card_run_watch "STUB_KANBAN_CARD_STATUS=done"
+  c2="$(jq -r '.card_id // empty' "$CARD_FLIGHT" 2>/dev/null || true)"
+  [[ -n "$c2" && "$c2" != "$c1" ]] || card_fail="B:$card_fail done 后未建新卡"
+  [[ "$(awk -F'|' '$1 == "claude"' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || card_fail="B:done 路调了 claude"
+  sb_cleanup >/dev/null 2>&1
+else
+  card_fail="卡化段 sandbox 失败"
+fi
+if sb_new >/dev/null 2>&1; then
+  card_watch_seed 2000
+  card_run_watch "STUB_HERMES_FAIL=1"
+  [[ "$(awk -F'|' '$1 == "claude" && $0 ~ /contrib-watch scan/' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]] \
+    || card_fail="C:注毒后 claude fallback 未被调"
+  [[ "$(grep -c 'pipeline-failure' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || true)" -ge 1 ]] \
+    || card_fail="C:注毒后账本无 pipeline-failure"
+  [[ "$(jq -r '[.approvals[]?.ok | to_entries[] | select(.value == true)] | length' \
+      "$SB_ROOT/contrib-data/notify-state.json" 2>/dev/null || echo 0)" == "0" ]] \
+    || card_fail="C:注毒后账本出现假成功"
+  sb_cleanup >/dev/null 2>&1
+else
+  card_fail="${card_fail} 卡化注毒段 sandbox 失败"
+fi
+[[ -z "$card_fail" ]] || smoke_fail "scan 卡化链: $card_fail"
+
 # ---- 汇总 JSON（末行）----
-sb_json_path="$SB_ROOT/stublog/calls.log"
+sb_json_path="$SMOKE_STUB_LOG"
 sandbox_key=""
 if [[ "${E2E_KEEP:-}" == "1" ]]; then
   sandbox_key=",\"sandbox\":\"$SB_ROOT\""
@@ -115,9 +171,11 @@ else
   exit_code=1
 fi
 
-printf '{"transport_calls":%d,"ledger_appends":%d,"queue_transitions":%d,"prefix_preserved":%s,"all_lines_valid_json":%s,"stub_log":"%s"%s}\n' \
+card_ok=true
+[[ -z "$card_fail" ]] || card_ok=false
+printf '{"transport_calls":%d,"ledger_appends":%d,"queue_transitions":%d,"prefix_preserved":%s,"all_lines_valid_json":%s,"card_flow_ok":%s,"stub_log":"%s"%s}\n' \
   "$transport_calls" "$ledger_appends" "$queue_transitions" "$prefix_preserved" "$all_lines_valid_json" \
-  "$sb_json_path" "$sandbox_key"
+  "$card_ok" "$sb_json_path" "$sandbox_key"
 if [[ -n "$FAIL_REASON" ]]; then
   echo "e2e-smoke FAIL: $FAIL_REASON" >&2
 fi
