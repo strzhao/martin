@@ -28,12 +28,27 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 | 维度 | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
 | **领域契合** | desktop/无关 | 边缘（browser/kanban/单平台冷门） | 相邻（tools/cli/update） | 核心链路（cron、gateway、sessions/state.db、weixin、compression、memory） |
-| **独家证据/自利** | 无 | 间接相关 | 影响我们部署 | 我方有生产取证/取证能力直接适用（weixin 取证包、state.db 修复线、forensics 栈） |
+| **独家证据/自利** | 无 | 间接相关 | 影响我们部署 | 我方有生产取证/取证能力直接适用（weixin 取证包、state.db 修复线、forensics 栈、kanban 多 profile 派单面） |
 | **空间状态**（实查） | 拥挤（≥3 PR 或活跃车+无空间） | 活车（他人 PR 在动） | 死车（PR 停滞 >14 天） | 空（无 PR 锚 + substance 查重也空） |
 | **需求真实度** | needs-repro/无细节 | 单一环境无实据 | 有 repro/日志 | 生产环境+多站点共鸣/官方已跟踪的类 |
 | **可剥离性** | 大簇/多关注点 | 需维护者先拍板方向 | 可拆但依赖多 | 单关注点、可测、可复现 |
 
    查重纪律：空间状态必须实查 `gh pr list --search "<N> in:body"`；标题含竞品机制关键词再搜一轮 PR（substance 层）。时间紧张时可先按 labels/正文粗判，但 own-PR 候选必须实查后才能给。
+
+### 部署前提（2026-09-09 刷新，独家证据/自利评分必读）
+
+本机**多 profile + kanban 重度生产部署**（不是单 profile；09-08 曾记「profiles=[]」系实查方法错误——判断部署面看 `~/.hermes/profiles/` 目录与各 profile 的 gateway/cron 运行，不是看 config.yaml 顶层 profiles key）：
+
+| profile | 用途/运行 | 相关取证面 |
+|---|---|---|
+| default | 微信主入口（本会话） | weixin 取证、会话/TTL |
+| coder | kanban 编码执行 worker（claude -p 无头驾驶） | 卡生命周期、worktree、goal_mode |
+| contrib | 共建研判 worker（gh 只读） | — |
+| hkstock | 盘前简报/理财 worker（kanban cron 派单） | cron 调度、kanban 依赖链 |
+| life | 生活/点评 worker | kanban 依赖链 |
+| wx-echo | 微信回声 | weixin |
+
+**kanban 域 09-09 起不再黑名单排除**（scan_gate 已修订）——kanban 相关 issue 需按真实部署面评分，勿再以"零 kanban 部署"为由 skip；多 profile/multiplex/调度类 issue 评估弹药时引用本表。
 
 3. 五分类决策：**own-PR**（≥11 且 空间状态=3）/ **probe-salvage**（死车 2 分档，写 probe 评论草稿进简报）/ **review-evidence**（活车但我方有独家证据，写 review 要点进简报）/ **watch**（写入 `ledger.md`，含复检日期）/ **skip**。
 3.5 **入队就绪队列**：决策 ∈ {own-PR, review-evidence, probe-salvage} 且得分 ≥ `config.ready_min_score`（默认 11）→ 逐条 `scripts/contrib/rq.sh add`：

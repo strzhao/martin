@@ -46,13 +46,14 @@ raw=$("$GH_BIN" api "repos/$REPO/issues?state=open&sort=created&direction=desc&p
 max_seen=$(jq '[.[].number] | max // 0' <<<"$raw")
 seen_new=$(jq "[.[] | select(.pull_request == null and .number > $last)] | length" <<<"$raw")
 
-# 粗滤（09-04 反转为黑名单）：只排除已知零契合域（desktop/kanban/dashboard 等我方零部署面），
+# 粗滤（09-04 反转为黑名单；09-09 修订：kanban 移出黑名单——用户 kanban 重度使用）
+# 只排除已知零契合域（desktop/dashboard 等零部署面；kanban 09-09 起放行给 LLM rubric），
 # 其余全部放行给 LLM rubric——rubric 首维「领域契合 0」自动 skip，不会产生队列噪音。
 # 依据：用户拍板 token 充裕 + 扩大 issue 范围；排除 duplicate/invalid；只看 issue（pull_request==null）
 hits=$(jq -c '
   def excluded:
-    (([.labels[].name] | join(",")) | test("comp/desktop|comp/kanban|comp/dashboard"))
-      or (.title | test("desktop|kanban|dashboard|hosted rooms?|local model|wake word|sherpa|bot marketplace|bot mode"; "i"));
+    (([.labels[].name] | join(",")) | test("comp/desktop|comp/dashboard"))
+      or (.title | test("desktop|dashboard|hosted rooms?|local model|wake word|sherpa|bot marketplace|bot mode"; "i"));
   [.[] | select(
       .pull_request == null
       and .number > '"$last"'
