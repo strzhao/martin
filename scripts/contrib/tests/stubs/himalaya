@@ -27,7 +27,12 @@ fi
 case "${1:-}" in
   envelope)
     if [[ -n "${MAIL_STUB_ENVELOPES:-}" && -s "$MAIL_STUB_ENVELOPES" ]]; then
-      cat "$MAIL_STUB_ENVELOPES"
+      # unseen 语义仿真：查询带 flag unseen 时隐藏 flags 含 Seen 的信封（仿真真实服务端）
+      if [[ " $* " == *" flag unseen "* ]]; then
+        jq -c '[.[] | select((.flags // []) | index("Seen") | not)]' "$MAIL_STUB_ENVELOPES"
+      else
+        cat "$MAIL_STUB_ENVELOPES"
+      fi
     else
       printf '[]\n'
     fi
