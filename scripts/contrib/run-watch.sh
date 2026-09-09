@@ -73,14 +73,15 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 
 cd "$MARTIN"
 
-# 配额断路器（09-06 八连 429 空烧沉淀）：开闸期跳过一切 LLM 步骤（scan 研判/radar），
-# 廉价闸门与 notify flush 照跑；冷却到期自动闭合，放一次真实尝试
+# 配额断路器（09-06 八连 429 空烧沉淀；T2 语义收窄）：QC 只管 claude 兜底路（GLM 配额）——
+# radar / mail 研判 / fallback_scan 等 claude 调用受 QC 挡；建卡路（deepseek 卡，零 GLM 成本）
+# 不受限。QC_OPEN 变量仍计算（radar/mail 分支消费）；scan 建卡分支不消费它。
 QC="$MARTIN/scripts/contrib/quota_circuit.sh"
 QC_OPEN=0
 if [[ -x "$QC" ]]; then
   if ! qc_remain="$(zsh "$QC" check)"; then
     QC_OPEN=1
-    echo "[$(ts)] 配额断路器打开（冷却剩余 ${qc_remain}s），本轮跳过 scan/radar LLM 步骤" >>"$LOG"
+    echo "[$(ts)] 配额断路器打开（冷却剩余 ${qc_remain}s，仅挡 claude 兜底路）" >>"$LOG"
   fi
 fi
 
@@ -91,19 +92,27 @@ else
   rc=$?
 fi
 
-if (( rc == 10 && QC_OPEN == 1 )); then
-  echo "[$(ts)] 有域内命中但断路器打开，研判顺延" >>"$LOG"
-elif (( rc == 10 )); then
+if (( rc == 10 )); then
   # --- scan 研判主路（T1 卡化）：flight 检查 → 建卡（hermes contrib 卡）→ claude -p 降级兜底 ---
   FLIGHT="$CONTRIB/kanban-flight.json"
   SCAN_LATEST="$CONTRIB/scan-latest-batch.json"
   SKILL_MD="$MARTIN/.claude/skills/contrib-watch/SKILL.md"
   STALE_SECS=21600   # flight 陈旧守卫 6h：防 dispatcher 停机使 flight 永非终态 → 跳过放大停摆
+  FLIGHT_TIMEOUT="${FLIGHT_TIMEOUT:-30}"   # flight 查询挂死守卫（B4）：hermes list/show 超时秒数
+  # flight 终态查询用：run_phase 包裹（timeout→perl→直跑三级退化）——hermes 挂死不再拖死整轮
   hermes_call() {
-    env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
+    run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
   }
 
   fallback_scan() {
+    # QC gate（T2 语义收窄）：断路器仅挡 claude 兜底路——QC 开 → 跳过 claude + 幂等告警入账
+    if [[ -x "$QC" ]] && ! zsh "$QC" check >/dev/null 2>&1; then
+      echo "[$(ts)] 断路器仅挡兜底路（GLM 配额），本轮 fallback 跳过（claude 未调用）" >>"$LOG"
+      "$MARTIN/scripts/contrib/notify.sh" event pipeline-failure \
+        --key "$(date +%F)-scan-fallback-skipped" \
+        --summary "scan fallback 被配额断路器挡下（GLM 配额冷却中），本轮 claude 兜底未执行" >/dev/null 2>&1 || true
+      return 0
+    fi
     echo "[$(ts)] scan fallback → claude -p 旧路" >>"$LOG"
     [[ -n "$CLAUDE_BIN" ]] && run_phase "$WATCH_PHASE_TIMEOUT" "$CLAUDE_BIN" "${MODEL_FLAG[@]}" -p "/contrib-watch scan" \
       --permission-mode acceptEdits \

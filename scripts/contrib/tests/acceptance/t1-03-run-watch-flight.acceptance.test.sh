@@ -103,7 +103,7 @@ common_setup
 run_watch 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null; RC=$?
 assert_exit 0 $RC "3.1 run-watch exit"
 assert_eq "$(create_calls)" "1" "3.1 恰 1 次 hermes kanban create（主路建卡）"
-assert_eq "$(list_calls)" "0" "3.1 无 flight → 零 kanban list 查询"
+assert_ge "$(list_calls)" "1" "3.1 无 flight → ≥1 次 kanban list（T2 create 前置 healthcheck 探测，语义演进 09-09）"
 assert_eq "$(claude_scan_calls)" "0" "3.1 主路不再直调 claude -p '/contrib-watch scan'（fallback 保留但不在主路触发）"
 flight_exists && _pass "3.1 flight 登记存在" || _fail "3.1 flight 登记存在" "kanban-flight.json 未产出（契约 5）"
 CID="$(flight_card_id)"
@@ -149,7 +149,7 @@ run_watch -e STUB_HERMES_FAIL=1 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"'
 assert_eq "$(claude_scan_calls)" "1" "3.2 建卡失败 → fallback claude -p '/contrib-watch scan' 被调"
 assert_eq "$(create_calls)" "1" "3.2 前置：create 确实被尝试（stub 注毒生效）"
 flight_exists && _fail "3.2 失败不写 flight" "建卡失败仍留下 kanban-flight.json（会把下轮锁死在在飞态）" || _pass "3.2 失败不写 flight"
-assert_eq "$(pipeline_failure_count)" "1" "3.2 pipeline-failure 事件入账（fallback 契约 4）"
+assert_eq "$(pipeline_failure_count)" "2" "3.2 pipeline-failure 事件入账（T2：hermes-down 首败 1 条 + fallback 1 条，语义演进 09-09）"
 sb_cleanup
 
 # =============================================================================
@@ -242,13 +242,13 @@ assert_eq "$(pipeline_failure_count)" "1" "3.7 pipeline-failure 事件入账"
 sb_cleanup
 
 # =============================================================================
-t_case "3.8 QC_OPEN==1 → 顺延语义不变：不建卡、不 fallback、不写 flight（语义收窄是 T2 范围，本任务不越权）"
+t_case "3.8 QC_OPEN==1 → 建卡照常发起（T2 新语义：QC 只挡 claude 兜底路，不挡 deepseek 卡路；旧顺延断言已由 t2-01 独立覆盖新契约）"
 common_setup
 printf '%s\n' "$(( $(date +%s) + 3600 ))" > "$SB_ROOT/contrib-data/.quota-circuit"
 run_watch 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null
-assert_eq "$(create_calls)" "0" "3.8 断路器开闸 → 零建卡"
+assert_eq "$(create_calls)" "1" "3.8 断路器开闸 → 建卡照常发起（T2 契约 1：建卡不受 QC 限）"
 assert_eq "$(claude_scan_calls)" "0" "3.8 断路器开闸 → 零 claude"
-flight_exists && _fail "3.8 开闸期零 flight" "顺延轮不应写 flight" || _pass "3.8 开闸期零 flight"
+flight_exists && _pass "3.8 开闸期 flight 正常登记" || _fail "3.8 开闸期 flight 正常登记" "建卡成功应写 flight"
 sb_cleanup
 
 t_finish

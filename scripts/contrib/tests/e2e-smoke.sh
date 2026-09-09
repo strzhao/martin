@@ -153,6 +153,22 @@ if sb_new >/dev/null 2>&1; then
 else
   card_fail="${card_fail} 卡化注毒段 sandbox 失败"
 fi
+# D: QC 开（未来 epoch）→ 建卡照常发起（QC 不挡建卡，T2 语义收窄）+ 注毒 fallback 被断路器
+#    挡下（claude 零调用）+ -scan-fallback-skipped 幂等事件入账
+if sb_new >/dev/null 2>&1; then
+  card_watch_seed 2000
+  printf '%s\n' "$(( $(date +%s) + 3600 ))" >"$SB_ROOT/contrib-data/.quota-circuit"
+  card_run_watch "STUB_HERMES_FAIL=1"
+  [[ "$(awk -F'|' '$1 == "hermes" && $0 ~ /kanban create/' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]] \
+    || card_fail="D:QC 开闸建卡未照常发起"
+  [[ "$(awk -F'|' '$1 == "claude" && $0 ~ /contrib-watch scan/' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || card_fail="D:QC 开闸 fallback 仍调了 claude"
+  [[ "$(grep -c 'scan-fallback-skipped' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || true)" -ge 1 ]] \
+    || card_fail="D:QC 挡兜底缺 -scan-fallback-skipped 事件"
+  sb_cleanup >/dev/null 2>&1
+else
+  card_fail="${card_fail} QC 段 sandbox 失败"
+fi
 [[ -z "$card_fail" ]] || smoke_fail "scan 卡化链: $card_fail"
 
 # ---- 汇总 JSON（末行）----

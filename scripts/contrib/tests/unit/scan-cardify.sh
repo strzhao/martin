@@ -70,7 +70,7 @@ sb_new >/dev/null 2>&1
 printf '# 研判卡\n- 批次文件: /sandbox/batch.json\n- 红线: gh 只读\n' >"$SB_ROOT/body-scan.md"
 out="$(sb_run 'bash "$MARTIN_DIR/scripts/contrib/kanban_card.sh" create --kind scan --title t --body-file "$MARTIN_DIR/body-scan.md" --json-out "$CONTRIB_DATA_DIR/card-out.json"')"
 assert_exit 0 $?
-assert_eq "$out" '{"id":"t_stub_1","status":"ready"}' "输出归一化两键一行 JSON"
+assert_eq "$out" '{"id":"t_stub_2","status":"ready"}' "输出归一化两键一行 JSON（stub 序号 2=hc 探测在前，T2 gate）"
 assert_file_contains "$SB_ROOT/contrib-data/card-out.json" '"status":"ready"' "--json-out 落盘"
 line="$(last_hermes_line)"
 assert_contains "$line" "kanban create" "hermes kanban create 被调"
@@ -95,7 +95,7 @@ printf '红线正文标记 REDLINE-MARKER-42\n' >"$SB_ROOT/body-r.md"
 sb_run 'bash "$MARTIN_DIR/scripts/contrib/kanban_card.sh" create --kind mail --title m --body-file "$MARTIN_DIR/body-r.md" --priority 7' >/dev/null 2>&1
 assert_exit 0 $?
 assert_contains "$(last_hermes_line)" "--priority 7" "--priority 透传"
-assert_stub_called_times hermes 1
+assert_stub_called_times hermes 2 "hc 探测+create（T2 gate）"
 body_copy="$(stub_last_body hermes)"
 if [[ -n "$body_copy" ]]; then
   assert_file_contains "$body_copy" "REDLINE-MARKER-42" "--body 值完整传入"
@@ -221,11 +221,11 @@ run_watch
 assert_exit 0 $?
 flight="$SB_ROOT/contrib-data/kanban-flight.json"
 assert_eq "$(jq -r '.kind' "$flight" 2>/dev/null)" "scan" "flight kind=scan"
-assert_eq "$(jq -r '.card_id' "$flight" 2>/dev/null)" "t_stub_1" "flight card_id"
+assert_eq "$(jq -r '.card_id' "$flight" 2>/dev/null)" "t_stub_2" "flight card_id（stub 序号 2=hc 探测在前）"
 assert_eq "$(jq -r '.batch_file' "$flight" 2>/dev/null)" "$(jq -r '.batch_file' "$SB_ROOT/contrib-data/scan-latest-batch.json" 2>/dev/null)" "flight batch_file 与指针一致"
 assert_eq "$(jq -r '.created_epoch > 0' "$flight" 2>/dev/null)" "true" "flight created_epoch"
 assert_stub_not_called claude "主路不再调 claude"
-assert_stub_called_times hermes 1 "恰一次 kanban create"
+assert_stub_called_times hermes 2 "hc 前置探测(list)+create（T2 gate）"
 line="$(last_hermes_line)"
 assert_contains "$line" "--assignee contrib" "建卡参数 assignee"
 assert_contains "$line" "--idempotency-key scan-" "建卡参数 idempotency-key"
@@ -241,18 +241,18 @@ run_watch "STUB_HERMES_FAIL=1"
 assert_exit 0 $?
 assert_stub_called claude 1 "fallback claude -p 被调"
 assert_contains "$(scan_claude_line)" "/contrib-watch scan" "fallback 研判 /contrib-watch scan"
-assert_eq "$(grep -c 'pipeline-failure' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || true)" "1" "event 入账"
+assert_eq "$(grep -c 'pipeline-failure' "$SB_ROOT/contrib-data/events.jsonl" 2>/dev/null || true)" "2" "event 入账（T2 gate -hermes-down + -scan-card-fallback）"
 [[ ! -f "$SB_ROOT/contrib-data/kanban-flight.json" ]] && _pass "建卡失败不写 flight" || _fail "建卡失败不写 flight" "登记残留"
 
 t_case "run-watch: flight status=done → 清登记 + 本轮建新卡"
 watch_sb
 run_watch
-assert_stub_called_times hermes 1
+assert_stub_called_times hermes 2 "r1: hc 探测+create（T2 gate）"
 watch_issues 2003
 run_watch "STUB_KANBAN_CARD_STATUS=done"
 assert_exit 0 $?
-assert_stub_called_times hermes 3 "list+create（再建一张新卡）"
-assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_3" "flight 指向新卡"
+assert_stub_called_times hermes 5 "r1:hc+create, r2:flight list+hc+create（T2 gate）"
+assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_5" "flight 指向新卡（stub 序号 5=r2 的 flight list+hc+create）"
 assert_stub_not_called claude "done 路不 fallback"
 
 t_case "run-watch: flight status=blocked 且 outcome 非失败 → 在飞跳过（防误杀可自愈卡，矩阵第 8 态）"
@@ -262,7 +262,7 @@ watch_issues 2003
 run_watch "STUB_KANBAN_CARD_STATUS=blocked" "STUB_KANBAN_RUN_OUTCOME=manual_block"
 assert_exit 0 $?
 assert_stub_not_called claude "blocked+非失败 outcome 不 fallback"
-assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_1" "flight 保留（卡可能自愈或 6h 守卫兜底）"
+assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_2" "flight 保留（卡可能自愈或 6h 守卫兜底）"
 
 t_case "run-watch: flight status=blocked+outcome=gave_up → 清登记 + fallback"
 watch_sb
@@ -281,8 +281,8 @@ watch_issues 2003
 run_watch "STUB_KANBAN_CARD_STATUS=running"
 assert_exit 0 $?
 assert_stub_not_called claude "running 不 fallback"
-assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_1" "flight 保留不重建卡"
-assert_stub_called_times hermes 2 "create+list，只查终态不建卡"
+assert_eq "$(jq -r '.card_id' "$SB_ROOT/contrib-data/kanban-flight.json" 2>/dev/null)" "t_stub_2" "flight 保留不重建卡"
+assert_stub_called_times hermes 3 "r1:hc+create, r2:flight list（T2 gate）"
 
 t_case "run-watch: flight 非终态超 6h → 清登记 + fallback + event"
 watch_sb

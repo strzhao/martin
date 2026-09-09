@@ -406,3 +406,8 @@ kanban worktree 含未推 commit 会被保留（kanban_db.py:5956）但主仓 ma
 run-watch.sh（zsh）以 `zsh scan_gate.sh` 显式调用（绕过 shebang）→ 脚本内 bash-only 构造（compgen/shopt）在 zsh 下 command not found。若用在 `if` 条件里则**静默恒假**（不是报错）：scan_gate 积压聚合 guard 在生产 zsh 路径恒假=告警面从未生效。三重掩盖机制叠加：红队验收测试用 bash 调（全绿）、蓝队 unit 恰好阈值单源可达（侥幸绿）、shellcheck 按她bang 按 bash 检查（不报）。防御：①脚本头部按 `${ZSH_VERSION:-}` 分支处理（如 `setopt null_glob`）+ `[[ -e ]]` 守卫双路径；②**测试的调用方式必须镜像生产调用方式**（生产 zsh 调就测 zsh 调）；③验收测试与单元测试至少各用一种 shell 调同一脚本，制造双象性暴露面。
 
 <!-- tags: bash, zsh, shebang, compgen, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing -->
+
+## [2026-09-09] 账本写入方多形态 × 单格式 grep 幂等检查 = 同 key 重复入账
+notify.sh 的 events.jsonl 有两个写入方：`cmd_event` 追加（jq 紧凑形态 `"key":"..."`）与 flush 的 python `json.dumps` 账本重写（缺省分隔符形态 `"key": "..."` 带空格）。幂等去重 grep 按 jq 形态写 → flush 重写过的账本上同 key 事件重复入账。教训：**幂等检查的 grep 必须枚举所有写入方的真实序列化形态**（`-qF` 逐形态锚定，或读前先 jq 归一化）；「谁写账本」与「谁查账本」格式必须同源（同 [[dry-run 只盖发送不盖账本]] 家族：账面语义与账本物理形态脱节是重复事故源）。
+
+<!-- tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch -->

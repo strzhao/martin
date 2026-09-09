@@ -6,6 +6,7 @@
 #   STUB_HERMES_FAIL_FIRST=<n> → 前 n 次调用 exit 1，之后正常成功（审批卡重试用例：失败 2 次第 3 次成功）
 #   STUB_HERMES_SUCCESS_FALSE=1 → exit 0 但输出 {"success":false}（专测「账面 exit0 ≠ 送达」）
 #   STUB_HERMES_OUT=<text>    → 自定义 stdout 输出模板
+#   STUB_HERMES_DELAY=<secs>  → 响应前先挂死指定秒（T2：healthcheck/create 超时注入用；在 fail 旋钮前生效）
 # T1 scan 卡化新增旋钮（kanban 子命令可控终态；fail 类旋钮优先级不变）：
 #   kanban create            → 输出任务 dict（id=t_stub_<n>, status 可控）并登记到
 #                              $LOG_DIR/kanban-cards.jsonl（有状态：list/show 能查到）
@@ -53,6 +54,11 @@ a_auth="absent"; [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]] && a_auth="present"
 a_key="absent"; [[ -n "${ANTHROPIC_API_KEY:-}" ]] && a_key="present"
 printf 'hermes|base_url=%s|auth_token=%s|api_key=%s\n' "$a_base" "$a_auth" "$a_key" \
   >>"$LOG_DIR/anthropic-env.log"
+
+# T2：delay 旋钮（挂死后仍走下方 fail/成功分支，可组合）
+if [[ -n "${STUB_HERMES_DELAY:-}" ]]; then
+  sleep "$STUB_HERMES_DELAY"
+fi
 
 if [[ "${STUB_HERMES_FAIL:-}" == "1" ]]; then
   printf '%s\n' '{"success":false,"error":"stub-fail"}'

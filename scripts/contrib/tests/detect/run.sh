@@ -133,7 +133,8 @@ NEOF
       echo "bookkeeping-quota-limit-removed.sh" ;;
     bk-dedup-key-check-removed)
       cat >"$TMP_ANCHOR" <<'AEOF'
-  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null; then
+  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null \
+     || grep -qF "\"key\": \"$key\"" "$EVENTS" 2>/dev/null; then
     log "event $key 已在账（幂等跳过）"
     return 0
   fi

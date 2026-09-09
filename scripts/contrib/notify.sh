@@ -291,8 +291,10 @@ cmd_event() {
   done
   [[ -n "$cls" && -n "$key" ]] || { echo "用法: event <class> --key K --summary S [--channel C]" >&2; exit 2; }
   ensure_state
-  # 同 key 幂等
-  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null; then
+  # 同 key 幂等（双格式：jq 紧凑追加形态 + flush 账本重写的 json.dumps 带空格形态——
+  # 09-09 T2 实证：flush 跑过一轮后整本被重写为 "key": "..." 带空格，单格式 grep 会漏判致重复入账）
+  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null \
+     || grep -qF "\"key\": \"$key\"" "$EVENTS" 2>/dev/null; then
     log "event $key 已在账（幂等跳过）"
     return 0
   fi
