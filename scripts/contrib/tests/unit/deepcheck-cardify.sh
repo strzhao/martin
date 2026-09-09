@@ -233,7 +233,7 @@ t_case "harvest: done+awaiting-approval+verdict auto → 编排层 auto-gate rc0
 quiet_sb
 sb_seed_queue_item "rq-20260909-5101" 5101 deep awaiting-approval 40
 mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5101"
-printf '{"decision":"auto","confidence":"high","risk_level":"low","reasons":[]}\n' \
+printf '{"decision":"auto","confidence":"high","risk_level":"low","goods":{"status":"forge-lane","note":"fixture"},"reasons":[]}\n' \
   >"$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5101/verdict.json"
 seed_flight_dc "t_old" "rq-20260909-5101" "deep" "$(date +%s)"
 seed_card_store "t_old" "done"

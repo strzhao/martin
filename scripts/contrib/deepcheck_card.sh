@@ -63,8 +63,13 @@ run_phase() {
   fi
 }
 
+# board seam（T6）：KANBAN_BOARD 非空时 kanban 调用 pin 到该 board——--board 是 kanban 父级
+# flag，必须插在子命令前；空=不 pin（default board 回退态）。与建卡口 kanban_card.sh 同一 env 同源。
 hermes_call() {
-  run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
+  local -a board_args=()
+  [[ -n "${KANBAN_BOARD:-}" ]] && board_args=(--board "$KANBAN_BOARD")
+  run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY \
+    "$HERMES_BIN" kanban ${board_args[@]+"${board_args[@]}"} "$@"
 }
 
 emit_event() { # <key-suffix> <summary> — notify 缺席不阻塞主流程
@@ -91,14 +96,14 @@ rq_state() { # <id> → state（查无 → 空）
 
 card_status_of() { # <card_id> → status（查询失败/查无 → 空）
   local list_json status
-  list_json="$(hermes_call kanban list --json 2>>"$LOG")" || { echo ""; return 0; }
+  list_json="$(hermes_call list --json 2>>"$LOG")" || { echo ""; return 0; }
   status="$(printf '%s' "$list_json" | jq -r --arg id "$1" '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
   printf '%s' "$status"
 }
 
 card_outcome_of() { # <card_id> → 最近 runs outcome（查询失败 → 空）
   local show_json outcome
-  show_json="$(hermes_call kanban show "$1" --json 2>>"$LOG")" || { echo ""; return 0; }
+  show_json="$(hermes_call show "$1" --json 2>>"$LOG")" || { echo ""; return 0; }
   outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
   printf '%s' "$outcome"
 }
@@ -106,11 +111,11 @@ card_outcome_of() { # <card_id> → 最近 runs outcome（查询失败 → 空�
 # child_statuses <preflight_card_id> → " <s1> <s2> ..."（无子卡 → 空串）；查询失败 return 1
 child_statuses() {
   local show_json children c st out=""
-  show_json="$(hermes_call kanban show "$1" --json 2>>"$LOG")" || return 1
+  show_json="$(hermes_call show "$1" --json 2>>"$LOG")" || return 1
   children="$(printf '%s' "$show_json" | jq -r '(.children // []) | .[]' 2>>"$LOG")" || return 1
   while IFS= read -r c; do
     [[ -n "$c" ]] || continue
-    st="$(hermes_call kanban show "$c" --json 2>>"$LOG" | jq -r '.task.status // empty' 2>>"$LOG")" || return 1
+    st="$(hermes_call show "$c" --json 2>>"$LOG" | jq -r '.task.status // empty' 2>>"$LOG")" || return 1
     out="$out ${st:-unknown}"
   done <<<"$children"
   printf '%s' "$out"
@@ -185,6 +190,14 @@ harvest_locked() {
           refund_once "$rq_id" "$lane"
           rm -f "$FLIGHT"
           log "$rq_id 已 failed → 清登记（refund 幂等）"
+          return 0
+          ;;
+        expired)
+          # 09-09 生产首跑实锤：worker premise TTL 复验 NO-GO 置 expired（farm 生态正常损耗，
+          # 候选半衰期小时级）——refund 自身 reserve + 清登记，仅日志不发微信告警（噪音控制）
+          refund_once "$rq_id" "$lane"
+          rm -f "$FLIGHT"
+          log "$rq_id 已 expired（premise 死亡 NO-GO）→ 清登记 + refund（幂等）"
           return 0
           ;;
         "")
@@ -263,7 +276,8 @@ write_body() { # <rq-id> <lane> — preflight 卡 body（stdout；契约见 T4 �
   fi
   printf '\n## verdict.json 契约（deep 车道 redteam 子卡 / probe 车道本卡 必须写出）\n\n'
   printf -- '- 路径: %s/runs/deep-check/%s/verdict.json\n' "$CONTRIB" "$id"
-  printf -- '- 结构: {"decision": "auto | escalate", "confidence": "high | medium | low", "risk_level": "low | medium | high", "reasons": ["escalate 时必填：每条 = 一个具体的、你定不了的点"]}\n'
+  printf -- '- 结构: {"decision": "auto | escalate", "confidence": "high | medium | low", "risk_level": "low | medium | high", "goods": {"status": "offered | forge-lane | none", "note": "三态判定依据一句（见 SKILL 模式四 Goods 判定）"}, "reasons": ["escalate 时必填：每条 = 一个具体的、你定不了的点"]}\n'
+  printf -- '- goods.status 必填（09-09 commit 进仓优先闸）：offered=库存带 offer / forge-lane=缺口可修已立项 / none=纯 review；缺失或非法 = auto-gate fail-closed 升级人工\n'
   printf -- '- auto 门槛（宁升勿放）与判定细则以 %s 模式四第 5 点原文为准\n' "$SKILL_MD"
   printf -- '- 审批卡推送由编排层 auto-gate/补推 sweep 承担：worker 不调 hermes send、不重复推\n'
   printf '\n## 红线（必须遵守）\n\n'

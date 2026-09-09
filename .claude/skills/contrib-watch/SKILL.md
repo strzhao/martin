@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 # contrib-watch — hermes 上游机会流水线
 
 数据目录 `$CONTRIB = /Users/stringzhao/workspace/martin/contrib-data/`（运行产物，不入库）：
-`config.json`（旋钮）/ `scan-cursor.json`（游标）/ `pending-hits.json`（待研判）/ `ready-queue.json`（就绪队列，唯一写入口 `scripts/contrib/rq.sh`）/ `budget.json`（深检预算账本）/ `pending/<rq-id>.md`（待审成稿）/ `events.jsonl`（告警账本）/ `briefs/YYYY-MM-DD.md`（每日简报）/ `radar/YYYY-MM-DD.md`（雷达）/ `runs/`（构建+深检记录）/ `ledger.md`（观察台账）/ `logs/`。
+`config.json`（旋钮）/ `scan-cursor.json`（游标）/ `pending-batches/`（研判批次文件，唯一待研判数据源）/ `ready-queue.json`（就绪队列，唯一写入口 `scripts/contrib/rq.sh`）/ `budget.json`（深检预算账本）/ `pending/<rq-id>.md`（待审成稿）/ `events.jsonl`（告警账本）/ `briefs/YYYY-MM-DD.md`（每日简报）/ `radar/YYYY-MM-DD.md`（雷达）/ `runs/`（构建+深检记录）/ `ledger.md`（观察台账）/ `logs/`。
 
 策略知识库（研判/构建前必读，是评分与纪律的唯一权威）：
 - `/Users/stringzhao/workspace/martin/hermes-contribution.md`（共建策略 + §10 sweeper 机制）
@@ -22,7 +22,7 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 
 launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 worker；claude -p 仅兜底，两者共用本模式）。步骤：
 
-1. 读数据源（批次文件优先，契约 1b）：优先读 `$CONTRIB/pending-batches/batch-*.json` 中**最新且含 `state=="pending"` 项的批次文件**（按文件名 ts 降序取首个含 pending 项的）；为空则回落 `$CONTRIB/pending-hits.json`（兼容源）。仍为空数组 → 输出「无待研判」结束。
+1. 读数据源（唯一数据源=批次文件，契约 1b 已于 T6 收口）：读 `$CONTRIB/pending-batches/batch-*.json` 中**最新且含 `state=="pending"` 项的批次文件**（按文件名 ts 降序取首个含 pending 项的）。为空数组 → 输出「无待研判」结束。
 2. 逐条 `gh issue view <N> --repo NousResearch/hermes-agent`（正文+labels+评论数），对每条打分（满分 15）：
 
 | 维度 | 0 | 1 | 2 | 3 |
@@ -55,7 +55,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
    - `--premises-json` 必填：本项成立所依赖的关键前提逐条登记（`{"claim": "…", "evidence": "file:line 或 PR 号", "verified_at": "…"}）`——radar 复验与执行前 TTL 复验都以此为清单
    - `--ammo-json`：我方独家弹药清单（一句话/条）；`--age-hours`：issue 龄（排位新鲜度用）；probe-salvage 同时把完整 probe 草稿写 `$CONTRIB/pending/rq-<日期>-<issue>.md` 并在 `--note` 里注明草稿路径
    - 简报条目「下一步」改指 `rq-<id>`（不再写"建议手动 build/发"）
-4. 追加 `$CONTRIB/briefs/$(date +%F).md`（格式见下）。**写回批次文件（卡路协议）**：每条研判完立即写回批次文件该条——`state="done"` + `decision`/`score`/`breakdown`/`rationale`/`space_check` 五字段（崩溃只损当前一条）；兼容源 pending-hits.json 路径下研判完不再调 `scan_gate.sh --drain`（drain 仅 fallback 手动兜底保留）。（微信推送由 run-watch.sh 尾部统一 flush，模式内不直接调 hermes send。）
+4. 追加 `$CONTRIB/briefs/$(date +%F).md`（格式见下）。**写回批次文件（卡路协议）**：每条研判完立即写回批次文件该条——`state="done"` + `decision`/`score`/`breakdown`/`rationale`/`space_check` 五字段（崩溃只损当前一条）。人工兜底清账 = `scan_gate.sh --drain`（把批次内 `state=pending` 项改写 `drained`），仅在人工确认已消费时使用。（微信推送由 run-watch.sh 尾部统一 flush，模式内不直接调 hermes send。）
 5. 终端输出一行摘要清单（编号/标题/决策/分数 + 入队 id）。
 
 简报条目格式：
@@ -85,7 +85,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 1. **停滞 PR 雷达**：`gh pr list --state open --limit 1000 --json number,title,author,updatedAt,createdAt,labels`（**全量口径**——`--limit 300` 在洪流下只盖 ~3 天，09-04 已实测失效），过滤 updatedAt 距今 > `config.stale_pr_days`（默认 10）天、作者排除 `teknium1 / OutThisLife / app/ 前缀 / hermes-sweeper`、排除 duplicate 标签。对 top 候选（按域契合排序，最多 15 条）逐个 `gh pr view` 补：是否有 issue 锚、mergeable、行数、我方契合点。给建议动作（probe-salvage / review / watch / skip）。
 2. **自有资产盘点**：`gh pr list --author strzhao --state open` 逐个看 updatedAt/mergeable/reviews/comments——**写 `$CONTRIB/assets-snapshot.json`（PR→{updatedAt, mergeable, reviewDecision, 最新评论作者}）并与上份快照 diff**：新增维护者/sweeper/collaborator 评论、mergeable 翻转、MERGED、>7 天停滞标黄 → `notify.sh event own-pr-activity --key "<PR>-<事件>-<日期>"`。停滞 >7 天的在简报给 ping/再 rebase/关停建议（ping 是对外动作，只建议不执行）。
 3. **观察台账复检 + ready-queue premise 复验**：读 `ledger.md`，到期 watch 项逐个复查状态，状态变化则更新台账并写进简报。然后遍历 `$CONTRIB/ready-queue.json` 中 state ∈ {queued, awaiting-approval} 的活项，**逐条实查 premises**：issue 仍 OPEN？`gh pr list --search "<N> in:body" --state open` 无新占坑？**in-body 抓不到机制占坑（#103315 教训：PR 不引用 issue 号也能占坑，08:29 挂出、08:40 复验漏检）——还须按 issue 的机制关键词/触碰文件再搜一轮**：`gh pr list --search "<机制词1> OR <机制词2>" --state open` + 对照 touched paths；关键 file:line 在当前 origin/main 仍成立？——任一死亡 → `rq.sh set <id> expired` + `notify.sh event probe-premise-dead --key "<id>-<日期>"`（#102413 教训：过期 premise 的审批卡绝不能推）。
-3.5. **库存新鲜度 + 带货率巡检（09-09 commit 进仓优先升级）**：`bash scripts/contrib/forge.sh check` 列库存台账——ready 项抽查 base 是否落后（上游仓 `git rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天 → `forge.sh set-status <id> stale`，简报列「需 rebase/复验」）；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 形态报警**（回炉造货——用户 09-09 拍板：连续无 commit 产出的动作要占少数）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
+3.5. **库存新鲜度 + 带货率巡检（09-09 commit 进仓优先升级）**：`bash scripts/contrib/forge.sh check` 列库存台账（id/status/kind/loc/base_sha/checked龄）——ready 的 forge-commit 项对 base_sha 实查落后量：`git -C ~/workspace/hermes-agent rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天（check 已标 STALE）→ `forge.sh set-status <id> stale`，简报列「需 rebase/复验」；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 形态报警**（回炉造货——用户 09-09 拍板：连续无 commit 产出的动作要占少数）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
 4. **自动构建**（本日仅当 `config.auto_build=true` 且当日 `runs/` 无已完成构建）：从今日 briefs 里挑分数最高且决策=own-PR 的 issue；≥`config.min_build_score` 则直接执行模式三（构建 1 个）；没有候选则跳过。
 5. 产出 `radar/$(date +%F).md`（两节：外部雷达 / 自有资产+台账+构建记录+ready-queue 复验结果），并在 `briefs/$(date +%F).md` 追加「⭐ 雷达摘要」节。（微信推送由 run-watch.sh 尾部统一 flush。）
 
@@ -100,11 +100,11 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 **`--phase preflight`**（阶段 1）：
 1. 读 `$CONTRIB/ready-queue.json` 该项（premises/ammo/score）+ 简报中原始素材（review 要点/probe 草稿）。
 2. **必须**用 Agent 工具调 `hermes-contrib-strategist` 子代理出 preflight 审视报告 → `$CONTRIB/runs/deep-check/<id>/preflight.md`（红旗清单/形态裁决/数字修正/发不发结论）。
-3. **Goods 判定（commit 进仓优先硬闸，09-09 用户拍板升级：机制层强制）**：三态必答，结论写入 preflight.md 的「Goods 判定」节（**缺该节 = redteam 阶段必须打回**）。判定序：
+3. **Goods 判定（commit 进仓优先硬闸，09-09 用户拍板升级：机制层强制）**：三态必答，结论写入 preflight.md 的「Goods 判定」节，并**必须随阶段 4 写进 v2 草稿头部注释块**（redteam 只读 `$CONTRIB/pending/<id>.md`，verdict.goods 以 v2 头部携带的 Goods 结论为准——缺该节 = 阶段 4 不得成稿；机械兜底在 auto-gate：goods.status 缺失/非法一律升级人工）。判定序：
    - `offered`：`bash scripts/contrib/forge.sh check` 输出的 ready 库存与本缺口**域匹配** → 评审稿直接带 cherry-pick offer（#86062 模式；offer 措辞按 hermes-contribution.md §11 署名排序规范，lift 保署名=显式首选）
    - `forge-lane`：无库存货但缺口**可造**（单关注点 / 可剥离 / ≤半日工作量）→ **评审稿照常发（不等待造货）**，同刻 `forge.sh init` 立项造货入库存；成稿发出后 PR 存活期内以 follow-up 评论补 offer（**PR 开窗期 = offer 变现最优期**：可直接 cherry-pick 进在飞 PR；等合入后再 offer 就降级成新 PR 排队）——09-09 #106199 实证：深检发现双缺口但手无货，快合窗内只能眼睁睁
    - `none`：缺口不可修 / 域外 / 纯观察 → 纯 review（合法但计数进 `goods-metrics.json`，连续 ≥3 次 none 触发 radar 形态报警——回炉造货）
-4. 对报告逐条「亲手核」：对当前 origin/main 实查（修行号、核事实），吸收成草稿 v2 写 `$CONTRIB/pending/<id>.md`（头部注释记版次与依据）。
+4. 对报告逐条「亲手核」：对当前 origin/main 实查（修行号、核事实），吸收成草稿 v2 写 `$CONTRIB/pending/<id>.md`（头部注释记版次与依据，**必须携带 Goods 判定结论**供 redteam 产出 verdict.goods）。
 5. `rq.sh set <id> deep-check`（阶段开始时）→ 阶段末不推进状态（等 redteam）。
 
 **`--phase redteam`**（阶段 2，全新进程，**不得读 preflight.md 结论先入为主**）：

@@ -97,6 +97,9 @@ new_count="$(jq 'length' <<<"$new_items")"
 log "cursor=#$last GitHub通知近页=$(jq 'length' <<<"$upstream") 新邮件=$new_count"
 if (( new_count >= FETCH_SIZE )); then
   log "告警：新邮件=$new_count 达采集窗口上限 FETCH_SIZE=$FETCH_SIZE 可能截尾——人工核查 IMAP"
+  # 截尾=潜在永久丢信（下轮 --commit-cursor 拨到最新 id 后窗口外旧信跳过），
+  # 除日志外必须走事件通道（本仓规范：流水线异常→events.jsonl→AI digest）
+  "$MARTIN/scripts/contrib/notify.sh" event mail-window-saturated --key "mail-sat-$(date +%F)" >/dev/null 2>&1 || true
 fi
 
 if (( new_count == 0 )); then

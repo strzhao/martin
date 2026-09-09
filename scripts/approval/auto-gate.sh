@@ -75,7 +75,9 @@ vj="$(jq -c '.' "$V" 2>/dev/null)" || { echo "ESCALATE|verdict.json 不是合法
 dec="$(jq -r '.decision // ""' <<<"$vj")"
 conf="$(jq -r '.confidence // ""' <<<"$vj")"
 risk="$(jq -r '.risk_level // ""' <<<"$vj")"
-goods="$(jq -r '.goods.status // "missing"' <<<"$vj")"
+goods="$(jq -r 'try (.goods.status) catch null
+  | if (. == "offered" or . == "forge-lane" or . == "none") then . else "missing" end' <<<"$vj" 2>/dev/null)"
+[[ -n "$goods" ]] || goods="missing"
 _goods_metrics "$goods"
 
 if [[ "$dec" != "auto" ]]; then

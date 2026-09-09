@@ -13,8 +13,8 @@
 #                   成品入库（inventory.json，status=ready, kind=fork-commit）
 #   forge.sh set-status <id> <ready|stale|in-flight|spent|needs-decision>
 #   forge.sh check [--stale-days <n>]
-#                   新鲜度巡检：ready 项逐个列 base_sha 落后 origin/main 的 commit 数
-#                   与 checked 距今天数（radar 每日研判 + deep-check Goods 判定消费）
+#                   新鲜度巡检：列各项 base_sha 与 checked 距今天数（缺省 14 天标 STALE；
+#                   base 落后量由 radar 每日研判对上游仓 rev-list 实查）
 #   forge.sh list [--status <s>]
 #
 # exit code: 0=成功 1=失败 2=用法/数据错误
@@ -44,10 +44,11 @@ inv_require() {
 today() { date -u +%F; }
 
 # ── 原子改写 inventory（单写方约定：forge lane 人工/卡内单线程；radar check 只读）──
-inv_write() { # <jq-filter...> — stdin 透传给 jq，原子落盘
-  local tmp="$INVENTORY.tmp"
+inv_write() { # <jq-filter...> — stdin 透传给 jq，两跳均落 tmp+mv 原子替换
+  local tmp="$INVENTORY.tmp" new="$INVENTORY.new"
   jq "$@" "$INVENTORY" > "$tmp" && \
-    jq -c --arg d "$(date -u +%FT%TZ)" '.updated = $d' "$tmp" > "$INVENTORY" && rm -f "$tmp"
+    jq -c --arg d "$(date -u +%FT%TZ)" '.updated = $d' "$tmp" > "$new" && \
+    mv "$new" "$INVENTORY" && rm -f "$tmp"
 }
 
 cmd="${1:-}"
@@ -70,24 +71,26 @@ case "$cmd" in
     [[ "$slug" =~ ^[a-z0-9][a-z0-9-]{1,40}$ ]] || die "slug 只许小写字母数字连字符（2-41 位）" 2
     upstream="${dir:-$UPSTREAM}"
     [[ -d "$upstream/.git" ]] || die "上游仓不存在: $upstream （用 --dir 指定）" 2
+    upstream="$(cd "$upstream" && pwd -P)"   # 规范化（symlink/别名路径），worktree 查重按 realpath 比对
 
     "$GIT" -C "$upstream" fetch origin --quiet || die "git fetch 失败（网络/凭据）"
     base="$("$GIT" -C "$upstream" rev-parse origin/main)" || die "origin/main 不存在" 2
     wt="$upstream/.claude/worktrees/forge-$slug"
-    if "$GIT" -C "$upstream" worktree list --porcelain | grep -q "worktree $wt"; then
+    if "$GIT" -C "$upstream" worktree list --porcelain | grep -Fx "worktree $wt" >/dev/null; then
       die "worktree 已存在: $wt （复用或先 git worktree remove）"
     fi
     branch="forge/$slug"
     "$GIT" -C "$upstream" worktree add -b "$branch" "$wt" "$base" >/dev/null \
       || die "worktree 创建失败" 1
+    # 台账自举：fresh 环境无 inventory.json 时先种空表（否则 init 项永不入账、register 卡死）
+    [[ -s "$INVENTORY" ]] || printf '{\n  "version": 1,\n  "updated": "",\n  "note": "可 pick 库存台账（机读版；唯一写入口 scripts/contrib/forge.sh）",\n  "items": []\n}\n' > "$INVENTORY"
     inv_write --arg id "forge-$slug" --arg t "$(today)" --arg slug "$slug" \
       --arg repo "$repo" --arg issue "$issue" --arg base "$base" '
-      (.items //= []) | .items +=
-        [{id: $id, title: ("forge/" + $slug), kind: "forge-commit",
+      .items = ((.items // []) + [{id: $id, title: ("forge/" + $slug), kind: "forge-commit",
           loc: ("fork branch forge/" + $slug + (if $issue != "" then " (base issue #" + $issue + ")" else "" end)),
           domain: ("repo:" + $repo), status: "in-flight", vehicle: "", notes: "",
-          base_sha: $base, fork_sha: null, proof: null, checked: $t}]' \
-      || log "警告：inventory 登记失败（worktree 已建，可手工补 register）"
+          base_sha: $base, fork_sha: null, proof: null, checked: $t}]) | .' \
+      || die "inventory 登记失败（worktree 已建于 $wt ，请修复台账后 register）"
     log "worktree 就绪: $wt"
     log "分支: $branch  基座: ${base:0:12}（origin/main）"
     log "铁律：单关注点 + 可剥离 + mutation 自证（proof 落盘后 register）+ 绝不 push"
@@ -138,11 +141,11 @@ case "$cmd" in
     ;;
 
   check)
-    stale_days="${STALE_DAYS:-30}"
-    if [[ "${1:-}" == "--stale-days" ]]; then stale_days="${2:-30}"; fi
+    stale_days="${STALE_DAYS:-14}"
+    if [[ "${1:-}" == "--stale-days" ]]; then stale_days="${2:-14}"; fi
     inv_require
     now="$(date -u +%s)"
-    while IFS=$'\t' read -r id st kind loc checked; do
+    while IFS=$'\t' read -r id st kind loc checked base_sha; do
       [[ -z "$id" ]] && continue
       age_days=""
       if [[ "$checked" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
@@ -150,9 +153,9 @@ case "$cmd" in
       fi
       flag=""
       [[ -n "$age_days" && "$age_days" -gt "$stale_days" ]] && flag="STALE(checked>${stale_days}d)"
-      printf '%s\t%s\t%s\t%s\t%s%s\n' "$id" "$st" "${kind}" "$loc" "${age_days}d-since-check" "${flag:+ 旗=$flag}"
-    done < <(jq -r '.items[] | [.id, .status, .kind, .loc, (.checked // "")] | @tsv' "$INVENTORY")
-    log "提示：ready 项 base_sha 落后量由 radar 研判时对上游仓 git rev-list 实查（check 只读台账）"
+      printf '%s\t%s\t%s\t%s\t%s\t%s%s\n' "$id" "$st" "${kind}" "$loc" "${base_sha:-—}" "${age_days}d-since-check" "${flag:+ 旗=$flag}"
+    done < <(jq -r '.items[] | [.id, .status, .kind, .loc, (.checked // ""), (.base_sha // "")] | @tsv' "$INVENTORY")
+    log "列: id/status/kind/loc/base_sha/checked龄。ready 项 base_sha 落后量由 radar 对上游仓实查：git -C ~/workspace/hermes-agent rev-list --count <base_sha>..origin/main"
     ;;
 
   list)
