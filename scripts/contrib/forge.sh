@@ -73,7 +73,13 @@ case "$cmd" in
     [[ -d "$upstream/.git" ]] || die "上游仓不存在: $upstream （用 --dir 指定）" 2
     upstream="$(cd "$upstream" && pwd -P)"   # 规范化（symlink/别名路径），worktree 查重按 realpath 比对
 
-    "$GIT" -C "$upstream" fetch origin --quiet || die "git fetch 失败（网络/凭据）"
+    if ! "$GIT" -C "$upstream" fetch origin --quiet 2>/dev/null; then
+      if "$GIT" -C "$upstream" rev-parse --verify --quiet origin/main >/dev/null; then
+        log "警告：git fetch 失败（网络/限流），沿用本地 origin/main@$("$GIT" -C "$upstream" rev-parse --short origin/main)——offer 前必须重新 fetch 核对上游（占坑/漂移）"
+      else
+        die "git fetch 失败且本地无 origin/main ref（先手动 fetch 一次）"
+      fi
+    fi
     base="$("$GIT" -C "$upstream" rev-parse origin/main)" || die "origin/main 不存在" 2
     wt="$upstream/.claude/worktrees/forge-$slug"
     if "$GIT" -C "$upstream" worktree list --porcelain | grep -Fx "worktree $wt" >/dev/null; then
@@ -116,13 +122,18 @@ case "$cmd" in
     [[ -z "$proof" || -s "$proof" ]] || die "proof 文件不存在: $proof" 2
     inv_write --arg id "forge-$slug" --arg b "$branch" --arg s "$sha" \
       --arg d "$domain" --arg p "$proof" --arg n "$notes" --arg t "$(today)" '
-      .items = ((.items // []) | map(
-        if .id == $id
-        then .branch = $b | .fork_sha = $s | .domain = $d | .proof = $p
-           | .notes = $n | .status = "ready" | .kind = "fork-commit" | .checked = $t
-        else . end))
-      | if (any(.items[]; .id == $id)) then . else error("inventory 无 " + $id + "（先 init）") end' \
-      || die "登记失败（inventory 无 forge-$slug 或写盘失败）"
+      def ready_fields: .branch = $b | .fork_sha = $s | .domain = $d | .proof = $p
+           | .notes = $n | .status = "ready" | .kind = "fork-commit" | .checked = $t;
+      .items = (
+        ((.items // []) | map(if .id == $id then ready_fields else . end))
+        + (if any(.items[]; .id == $id)
+           then []
+           else [{id: $id, title: ("forge/" + $id), kind: "fork-commit",
+                  loc: ("fork branch " + $b), domain: $d, status: "ready",
+                  vehicle: "", notes: $n, base_sha: null, branch: $b,
+                  fork_sha: $s, proof: $p, checked: $t} | ready_fields]
+           end))' \
+      || die "登记失败（inventory 写盘失败）"
     log "已入库: forge-$slug → $branch @ ${sha:0:12}（domain=$domain, proof=${proof:-未附}）"
     ;;
 
