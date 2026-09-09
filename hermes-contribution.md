@@ -211,6 +211,8 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 ### 可 pick 库存台账（资产；review 是分发渠道）
 
+> **机读版（09-09 起）**：`contrib-data/inventory.json`（唯一写入口 `scripts/contrib/forge.sh`；radar 每日巡检新鲜度 + 带货率）。下表为散文快照，**以机读版为准**。
+
 | 资产 | 域 | 搭车场景 |
 |---|---|---|
 | #96472 import sanity canary（CI 绿、review 闭环、等复审）| gateway 启动/lifecycle | 同域 PR review 顺带提 |
@@ -223,6 +225,15 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 ### 漏斗度量
 
 review → adoption（点被采纳）→ **pick（commit 被收编入 main，graph 亮灯）** → 关系信号（@提及/直接 ping/进收敛者视野）。review 本身不入 graph，**pick 才是终极产出**；库存是资产、review 是渠道、信任是复利。
+
+### §11.2 goods-gate 与造货引擎（09-09 升级：机制层强制 commit 进仓优先）
+
+> 背景：09-09 #106199 深检发现双缺口但手无货，快合窗内只能裸 review（用户复盘：09-05 拍板的 commit 进仓优先原则是 prompt 教义、流水线无强制点，效果一般）。诊断出**机器层根因**：verdict 指南把「提不提 cherry-pick offer」列为 escalate 事由，制度性把 offer 决策推给人工且全流程无查库存/造货步骤。升级四件：
+
+1. **goods-gate（fail-closed）**：deep-check preflight 阶段新增「Goods 判定」必答节（redteam 缺节打回）；verdict.json 增 `goods.status` 必填字段，`auto-gate.sh` 硬条件 5 机械校验——缺字段/非法值一律升级人工。三态：`offered`（库存域匹配→评审带 offer）/ `forge-lane`（可造→评审照发不等待+同刻造货，**PR 存活期内 follow-up 补 offer**——开窗期是 offer 变现最优期）/ `none`（纯 review，合法但计数）
+2. **verdict escalate 规则修正**：goods 三态判定不再是升级事由（有货必带、可造就造、不可修才纯 review——不存在「提不提 offer 的取舍」）；只有 offer 措辞/署名排序拿不准才 escalate
+3. **造货引擎**：`scripts/contrib/forge.sh`（init=worktree 基于 origin/main 建 forge/<slug> 分支；register=成品入台账 status=ready；check=新鲜度巡检；set-status；list）。红线继承 build：只到本地为止，绝不 push
+4. **度量闭环**：`goods-metrics.json`（auto-gate 每次调用机械记账 missing/offered/forge-lane/none）；radar 3.5 步巡检——连续 ≥3 次 none = 形态报警（goods-drought 事件），库存 stale（checked>14d 或 base 落后>50 commit）进简报
 
 ## 相关记忆
 - `hermes-contribution-followups.md` —— 4 个 PR 的具体进度 + sweeper 反馈机制
