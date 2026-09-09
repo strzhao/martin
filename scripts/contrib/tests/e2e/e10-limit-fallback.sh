@@ -22,6 +22,8 @@ t_case "E10a: 当日限额 3/3 → 拒推 + osascript 兜底 + 事件保留"
 sb_notify event own-pr-activity --key e10-limit --summary "限额日的事件" >/dev/null
 assert_exit 0 $?
 # 时间闸门不 sleep：回拨 state 构造「当日已推 3 条」前置态
+# （09-10：显式 pin 限额=3——种子 max_alert_pushes_per_day 已镜像生产改 30，前置归用例自持）
+sb_config_set '.max_alert_pushes_per_day = 3'
 jq -c --arg d "$TODAY" '.alerts[$d] = 3' "$STATE_FILE" >"$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 before_hermes="$(stub_count hermes)"
 before_osascript="$(stub_count osascript)"

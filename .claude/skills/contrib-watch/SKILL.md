@@ -10,6 +10,8 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 数据目录 `$CONTRIB = /Users/stringzhao/workspace/martin/contrib-data/`（运行产物，不入库）：
 `config.json`（旋钮）/ `scan-cursor.json`（游标）/ `pending-batches/`（研判批次文件，唯一待研判数据源）/ `ready-queue.json`（就绪队列，唯一写入口 `scripts/contrib/rq.sh`）/ `budget.json`（深检预算账本）/ `pending/<rq-id>.md`（待审成稿）/ `events.jsonl`（告警账本）/ `briefs/YYYY-MM-DD.md`（每日简报）/ `radar/YYYY-MM-DD.md`（雷达）/ `runs/`（构建+深检记录）/ `ledger.md`（观察台账）/ `logs/`。
 
+own-PR 小时级机械盯梢（09-10）：`scripts/contrib/own_pr_watch.sh`（run-watch 段 2.5 每小时跑，零 LLM 机械 diff）——问「我的 PR 有没有新动静 / 为什么没收到 PR 告警」→ 看该脚本头注释（exit 语义/事件三级契约）+ 快照 `$CONTRIB/own-pr-watch-snapshot.json` + 日志 `$CONTRIB/logs/own-pr-watch.log`；高级事件（外部评论/merged/closed→微信）受 `config.own_pr_alert_per_day`（缺省 2/日）子上限，低级（mergeable 翻转/停滞→简报）不受限。
+
 策略知识库（研判/构建前必读，是评分与纪律的唯一权威）：
 - `/Users/stringzhao/workspace/martin/hermes-contribution.md`（共建策略 + §10 sweeper 机制）
 - `/Users/stringzhao/workspace/martin/.claude/agents/hermes-contrib-strategist.md`（形态选择框架/锚定铁律/验证纪律全文）
@@ -84,6 +86,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 
 1. **停滞 PR 雷达**：`gh pr list --state open --limit 1000 --json number,title,author,updatedAt,createdAt,labels`（**全量口径**——`--limit 300` 在洪流下只盖 ~3 天，09-04 已实测失效），过滤 updatedAt 距今 > `config.stale_pr_days`（默认 10）天、作者排除 `teknium1 / OutThisLife / app/ 前缀 / hermes-sweeper`、排除 duplicate 标签。对 top 候选（按域契合排序，最多 15 条）逐个 `gh pr view` 补：是否有 issue 锚、mergeable、行数、我方契合点。给建议动作（probe-salvage / review / watch / skip）。
 2. **自有资产盘点**：`gh pr list --author strzhao --state open` 逐个看 updatedAt/mergeable/reviews/comments——**写 `$CONTRIB/assets-snapshot.json`（PR→{updatedAt, mergeable, reviewDecision, 最新评论作者}）并与上份快照 diff**：新增维护者/sweeper/collaborator 评论、mergeable 翻转、MERGED、>7 天停滞标黄 → `notify.sh event own-pr-activity --key "<PR>-<事件>-<日期>"`。停滞 >7 天的在简报给 ping/再 rebase/关停建议（ping 是对外动作，只建议不执行）。
+   - **事件产出移交（09-10）**：own-pr-activity 的 event 产出已移交 `own_pr_watch.sh`（小时级机械盯梢，watcher 是唯一生产者）——radar 盘点/assets-snapshot/简报语义不变，但**不再直接发 own-pr-activity 事件**（防 08 窗与 watcher 同日双报 + 挤占子上限计数）。
 3. **观察台账复检 + ready-queue premise 复验**：读 `ledger.md`，到期 watch 项逐个复查状态，状态变化则更新台账并写进简报。然后遍历 `$CONTRIB/ready-queue.json` 中 state ∈ {queued, awaiting-approval} 的活项，**逐条实查 premises**：issue 仍 OPEN？`gh pr list --search "<N> in:body" --state open` 无新占坑？**in-body 抓不到机制占坑（#103315 教训：PR 不引用 issue 号也能占坑，08:29 挂出、08:40 复验漏检）——还须按 issue 的机制关键词/触碰文件再搜一轮**：`gh pr list --search "<机制词1> OR <机制词2>" --state open` + 对照 touched paths；关键 file:line 在当前 origin/main 仍成立？——任一死亡 → `rq.sh set <id> expired` + `notify.sh event probe-premise-dead --key "<id>-<日期>"`（#102413 教训：过期 premise 的审批卡绝不能推）。
 3.5. **库存新鲜度 + 带货率巡检（09-09 commit 进仓优先升级）**：`bash scripts/contrib/forge.sh check` 列库存台账（id/status/kind/loc/base_sha/checked龄）——ready 的 forge-commit 项对 base_sha 实查落后量：`git -C ~/workspace/hermes-agent rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天（check 已标 STALE）→ `forge.sh set-status <id> stale`，简报列「需 rebase/复验」；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 形态报警**（回炉造货——用户 09-09 拍板：连续无 commit 产出的动作要占少数）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
 4. **自动构建**（本日仅当 `config.auto_build=true` 且当日 `runs/` 无已完成构建）：从今日 briefs 里挑分数最高且决策=own-PR 的 issue；≥`config.min_build_score` 则直接执行模式三（构建 1 个）；没有候选则跳过。

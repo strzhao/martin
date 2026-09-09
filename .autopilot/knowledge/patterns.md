@@ -443,3 +443,19 @@ gateway 哨兵初版选 `hermes kanban list` 作探活——但它是本地 SQLi
 ## [2026-09-10] 开关型 seam 的 `-` vs `:-`：显式空串=显式回退态，测试缺省零改动
 入口脚本做「生产缺省开、测试缺省关」的开关时写 `export VAR="${VAR:-default}"`，空串也被 `:-` 吞成 default → 沙箱整个测试套件随机红。改用 `${VAR-default}`（仅 unset 取缺省）：沙箱显式注入 `VAR=""` 即整链回退，全部既有测试零改动；生产 unset=新缺省。配套：切换行锁进 seam-defaults（逐字符锚定），回退=删一行或外部 export 空串。同族：兼容写撤销三步=①消费证据检查（窗口从功能上线日起算，勿用固定 7 天——旧模式 drain 记录会误命中）②唯一数据源切换+零写入哨兵断言（seed 哨兵内容验「未被触碰」）③一次性无损迁移（旧源独有条目并入新源+旧文件改名留证）。
 <!-- tags: bash, parameter-expansion, feature-flag, rollback, seam, migration, compat-write, contrib-watch -->
+
+## [2026-09-10] 审计型「零 X」谓词的正反两向都要在真实产物形态上实测
+红线检测类 grep（如「零 gh 写」）有两个对称死法：①正则被自身合法查询的字段名命中（mergeable 命中 merge、comments 命中 comment）→ 合规实现必红（自败）；②token 锚定修正后未适配记账行格式（calls.log 整行=`gh|cwd|argv`，argv 前有 `|` 前缀，`(^| )` 锚失配）→ 写调用也零命中（空转恒绿）。防御：谓词定稿前对「应红样本（写调用）」与「应绿样本（真实只读 argv）」各实测一遍。另有不可满足类：观测面与被观测对象机制不相交（要求 production 代码把脚本名写进 stub 的 calls.log）→ 任何实现必红；处置=铁律例外 E1-E3 闭合 + 等价硬观测（被观测行为唯一发起方的调用行）+ 头注留痕 + 重锁。plan-reviewer 两轮各抓一个（先自败后空转），实测是唯一裁判。
+<!-- tags: testing, predicate, vacuous-pass, false-red, red-line, audit-regex, contrib-watch -->
+
+## [2026-09-10] fixture 数据形态漂移诱发假红：错误根因会三处固化（注释+补丁+台账）
+同一 stage-1 查询，unit 夹具 comments 用数组（镜像生产）、acceptance 夹具用标量 → 假红被误诊为真 bug，且「标量=真实 gh 形态」的错误定性写进修复注释、补丁逻辑与变更台账三处；qa-reviewer 用真实 gh 一次只读实测证伪（gh 2.92.0 `pr list --json comments` 返回数组含 author.login）。「测试镜像生产」完整口径=调用方式（shell/argv）+ **数据形态**（字段是数组还是标量）都要镜像；误诊勘误必须覆盖注释/逻辑/台账三处。顺带：真 fallback（行值合法即权威、非法才回落旧值）优于无条件覆盖——前者额外覆盖「外部计数被删后回退」边沿。
+<!-- tags: testing, fixture, data-shape, mirror-production, false-red, misdiagnosis, erratum, contrib-watch -->
+
+## [2026-09-10] 种子 config 隐式依赖：改共享种子值前 grep 全部读者，机制用例 pin 自己的前置
+沙箱种子 max_alert_pushes_per_day=3 被三个既有用例隐式依赖（限额满测试靠它触发机制）；改 30 后三处齐红（2 测试 + 1 detect 探针）。其中探针 pristine=1 属暗红——**detect 维度不计入 run.sh 总分 JSON 但影响退出码**，「全量绿」判定必须看 run.sh 的 exit code 而非总分。修复口径=机制类用例显式 pin 前置（sb_config_set），种子值保持镜像生产现值；改共享种子/夹具前先 grep 键的全部读者。
+<!-- tags: testing, shared-fixture, config-seed, implicit-dependency, exit-code, detect-dim, contrib-watch -->
+
+## [2026-09-10] autopilot 分级字段补判后必须重设 gate：AC-FIELD block 会清空 gate
+stop-hook 对 AC-FIELD-INVALID 的 block 会把 gate 清空（提示语「补判字段后重设 gate=review-accept」是流程步骤非客套）——只补字段不重设 gate → §5.5 自动推进不触发，陷入通用 qa 提示循环空转。同族：任何「重设 X 后继续」类 block 处置，重设动作本身就是完成条件的一半。
+<!-- tags: autopilot, stop-hook, gate, state-machine, field-validation -->

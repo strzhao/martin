@@ -52,6 +52,7 @@ sb_seed_data() { # 沙箱 contrib-data 底座（与生产 config 默认值同构
   "max_auto_builds_per_day": 1,
   "min_build_score": 12,
   "stale_pr_days": 10,
+  "own_pr_alert_per_day": 2,
   "repo": "NousResearch/hermes-agent",
   "auto_deep_check": true,
   "deep_check_per_week": 30,
@@ -60,7 +61,7 @@ sb_seed_data() { # 沙箱 contrib-data 底座（与生产 config 默认值同构
   "ready_min_score": 11,
   "allow_own_pr_push": false,
   "probe_per_day": 1,
-  "max_alert_pushes_per_day": 3,
+  "max_alert_pushes_per_day": 30,
   "max_approval_pushes_per_day": 3,
   "approval_ttl_hours": 48,
   "notify_min_interval_min": 20,
@@ -124,6 +125,11 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
     return 1
   fi
   cp "$stubsrc"/hermes "$stubsrc"/claude "$stubsrc"/gh "$stubsrc"/tunnel "$stubsrc"/osascript "$stubsrc"/pgrep "$stubsrc"/himalaya "$SB_ROOT/bin/"
+  # date 影子 stub（09-10 own-PR 盯梢新增）：STUB_DATE_TODAY 未设=全量透传 /bin/date，
+  # 既有套件零行为变化；存在性守卫兼容外部 CONTRIB_TEST_STUBS 目录未跟进的情形
+  if [[ -f "$stubsrc/date" ]]; then
+    cp "$stubsrc/date" "$SB_ROOT/bin/"
+  fi
   chmod +x "$SB_ROOT"/bin/*
 
   # 3) shim + 数据底座

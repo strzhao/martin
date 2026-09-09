@@ -4,6 +4,10 @@
 #   STUB_GH_FAIL=1          → exit 1
 #   STUB_GH_ISSUES_FILE=<f> → stdout 输出该文件内容（issue JSON 数组，驱动 scan_gate）
 #   STUB_GH_LATEST=<n>      → 对 `--jq '.[0].number'` 的 --init 调用输出该数字
+# own-PR 盯梢新增旋钮（09-10；不设时既有行为 byte 级保留——pr list 落回 ISSUES_FILE/[] 通用尾）：
+#   STUB_GH_PRS_FILE=<f>    → `pr list` 输出该文件内容（own PR JSON 数组，驱动 own_pr_watch）
+#   STUB_GH_VIEW_DIR=<dir>  → `pr view <N>` 输出 <dir>/pr-<N>.json；文件缺失 → exit 1
+#                             （可模拟单 PR 终态核实失败）
 set -u
 NAME="gh"
 LOG_DIR="${STUB_LOG_DIR:-}"
@@ -33,6 +37,27 @@ printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
 if [[ "${STUB_GH_FAIL:-}" == "1" ]]; then
   echo "gh stub: 模拟失败" >&2
   exit 1
+fi
+
+# pr 子命令分派（锚定首 token，非子串；[[ ]] 字面量匹配大小写敏感，避开 case 大小写不敏感坑）。
+# 旋钮未设时**不拦截**——落回文件尾部既有通用行为（ISSUES_FILE/[]），既有用例零影响。
+if [[ "${1:-}" == "pr" ]]; then
+  if [[ "${2:-}" == "list" ]]; then
+    if [[ -n "${STUB_GH_PRS_FILE:-}" && -f "$STUB_GH_PRS_FILE" ]]; then
+      cat "$STUB_GH_PRS_FILE"
+      exit 0
+    fi
+  elif [[ "${2:-}" == "view" ]]; then
+    if [[ -n "${STUB_GH_VIEW_DIR:-}" ]]; then
+      _vf="$STUB_GH_VIEW_DIR/pr-${3:-}.json"
+      if [[ -f "$_vf" ]]; then
+        cat "$_vf"
+        exit 0
+      fi
+      echo "gh stub: pr view 数据文件缺失: $_vf" >&2
+      exit 1
+    fi
+  fi
 fi
 
 # `gh api ... --jq '.[0].number'`（scan_gate --init 游标拨号）

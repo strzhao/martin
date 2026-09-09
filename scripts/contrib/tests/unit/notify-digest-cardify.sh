@@ -114,6 +114,9 @@ assert_eq "$(pushed_count)" "$before_pushed" "零账本动作"
 
 t_case "send-digest: 限额满 → FAIL limit exit1 + sent:false reason=limit + 拒发"
 sb_new >/dev/null 2>&1
+# 显式 pin 限额前置（09-10：种子 max_alert_pushes_per_day 已镜像生产改 30，
+# 本用例测「限额满拒推」机制，前置值归用例自持，不依赖种子缺省）
+sb_config_set '.max_alert_pushes_per_day = 3'
 sb_notify event pipeline-failure --key sd-limit --summary "限额用例" >/dev/null
 BATCH="$SB_ROOT/contrib-data/pending/digest-limit.json"
 DIGEST="$SB_ROOT/contrib-data/pending/digest-limit.digest.md"

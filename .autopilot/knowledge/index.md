@@ -61,3 +61,7 @@
 - [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言（compgen zsh 静默恒假） | tags: bash, zsh, shebang, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing | → patterns.md
 - [2026-09-09] 账本写入方多形态 × 单格式 grep 幂等检查 = 同 key 重复入账 | tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch | → patterns.md
 - [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名） | tags: testing, black-box, date, stub, sandbox, contrib-watch | → patterns.md
+- [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md
+- [2026-09-10] fixture 数据形态漂移诱发假红：错误根因三处固化（注释+补丁+台账）需全量勘误 | tags: testing, fixture, data-shape, mirror-production, erratum, contrib-watch | → patterns.md
+- [2026-09-10] 种子 config 隐式依赖三处齐红 + detect 维度不计总分但影响 exit code | tags: testing, shared-fixture, implicit-dependency, exit-code, contrib-watch | → patterns.md
+- [2026-09-10] autopilot 分级字段补判后必须重设 gate（AC-FIELD block 清空 gate 陷阱） | tags: autopilot, stop-hook, gate, state-machine | → patterns.md

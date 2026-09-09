@@ -596,6 +596,18 @@ maybe_radar() {
 # RADAR_HOUR 测试 seam：空（缺省）=现状 date +%H，生产语义零变化
 maybe_radar "${RADAR_HOUR:-}"
 
+# --- 2.5 own-PR 机械盯梢（09-10）：零 LLM diff——strzhao 名下 open PR 对机械快照比对，
+#     事件入既有 events.jsonl 消费链（高级 own-pr-activity/低级 own-pr-info；当轮被段 3 flush 消费）。
+#     gh 失败断路/快照损坏重建都在脚本内自理（exit 1 只记日志，不拖死 hourly 链）；bash 显式调
+#     （脚本 shebang 是 bash，双 shell 二象性防御），120s 超时兜底防 gh 挂死。---
+OWNPR_WATCH="$MARTIN/scripts/contrib/own_pr_watch.sh"
+if [[ -x "$OWNPR_WATCH" ]]; then
+  ownpr_rc=0
+  run_phase 120 bash "$OWNPR_WATCH" >>"$LOG" 2>&1 || ownpr_rc=$?
+  # 字面 own_pr_watch 入日志（t7-08 场景13.P2 断言锚；保留既有中文短语兼容 unit:540）
+  echo "[$(ts)] own_pr_watch own-PR 盯梢 exit=$ownpr_rc" >>"$LOG"
+fi
+
 # --- 3. 通知层：聚合推送本轮新增告警（失败不影响流水线退出码）---
 if [[ -x "$MARTIN/scripts/contrib/notify.sh" ]]; then
   "$MARTIN/scripts/contrib/notify.sh" flush >>"$LOG" 2>&1 \
