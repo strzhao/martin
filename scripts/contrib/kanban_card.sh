@@ -4,6 +4,7 @@
 # 用法:
 #   kanban_card.sh create --kind <scan|mail|radar|deepcheck|digest>
 #                 --title <t> --body-file <path> [--priority N] [--json-out <path>]
+#                 [--idempotency-key <k>]
 #   kanban_card.sh healthcheck
 #
 # 输出: stdout 一行归一化 JSON {"id":"...","status":"..."}（两键，jq -c 生成）；
@@ -93,7 +94,15 @@ run_healthcheck() {
   resp="$(hermes_call "$secs" kanban list --json 2>"$err_file")" || rc=$?
   reason="$(tail -c 160 "$err_file" 2>/dev/null | tr '\n' ' ')"
   rm -f "$err_file"
-  if [[ $rc -eq 0 ]] && printf '%s' "$resp" | grep -q '^[[:space:]]*\['; then
+  # 热修 09-09：grep -q 提前退出 × pipefail → 大输出（>64KB 管道缓冲）时 printf SIGPIPE
+  # 使整条管道 141 被误判失败（生产实锤：卡片列表涨过阈值后 healthcheck 连续误报 hermes
+  # down、建卡全停）。改参数展开剥前导空白判首字符，零管道零竞速。
+  local _first="" _healthy=1
+  if [[ $rc -eq 0 ]]; then
+    _first="${resp#"${resp%%[![:space:]]*}"}"   # 剥前导空白（bash 3.2 兼容）
+    [[ ${_first:0:1} == "[" ]] && _healthy=0
+  fi
+  if [[ $_healthy -eq 0 ]]; then
     rm -f "$DOWN_FILE"   # 唯一清零点：任一次探测成功
     echo "OK"
     return 0
@@ -117,7 +126,7 @@ run_healthcheck() {
 }
 
 create_card() {
-  local kind="" title="" body_file="" priority="" json_out=""
+  local kind="" title="" body_file="" priority="" json_out="" idem_override=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --kind) kind="${2:-}"; shift 2 ;;
@@ -125,6 +134,8 @@ create_card() {
       --body-file) body_file="${2:-}"; shift 2 ;;
       --priority) priority="${2:-}"; shift 2 ;;
       --json-out) json_out="${2:-}"; shift 2 ;;
+      # T4：可选覆盖（attempt 级 key，防同 rq-id 重试循环拿回既有卡死锁）；缺省现行为不变
+      --idempotency-key) idem_override="${2:-}"; shift 2 ;;
       *) usage ;;
     esac
   done
@@ -150,7 +161,7 @@ create_card() {
   esac
 
   local idem_key resp rc=0 normalized err_file err_tail
-  idem_key="${kind}-$(date +%Y%m%d-%H%M%S)"
+  idem_key="${idem_override:-${kind}-$(date +%Y%m%d-%H%M%S)}"
   err_file="$(mktemp "${TMPDIR:-/tmp}/kbc-create.XXXXXX" 2>/dev/null)" || err_file="${TMPDIR:-/tmp}/kbc-create.$$"
   resp="$(hermes_call "${HERMES_TIMEOUT:-60}" kanban create "$title" \
       --body "$(cat "$body_file")" \

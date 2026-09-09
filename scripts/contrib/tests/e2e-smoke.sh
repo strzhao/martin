@@ -31,9 +31,11 @@ TODAY="$(date +%F)"
 PREFIX_LINE="$(python3 -c 'import json; print(json.dumps({"ts": "2026-01-01T00:00:00+08:00", "class": "probe-premise-dead", "key": "smoke-prefix", "channel": "contrib", "summary": "既有已推行（前缀锚点）", "pushed": True, "attempts": 0, "pushed_at": None}, ensure_ascii=False))')"
 printf '%s\n' "$PREFIX_LINE" >>"$EVENTS_FILE"
 
-# ---- 链路：队列种子 → run-deepcheck（gate→深检→审批卡）→ 事件+flush（告警链）----
+# ---- 链路：队列种子 → run-deepcheck（T4 卡化：建 preflight 卡主路）→ worker 收尾模拟 →
+#      事件+flush（告警链）----
 sb_seed_queue_item "rq-$(date +%Y%m%d)-7001" 7001 probe queued 40
 sb_notify event own-pr-activity --key smoke-alert --summary "radar：自有 PR 收到维护者评论" >/dev/null 2>&1
+DC_ID="rq-$(date +%Y%m%d)-7001"
 
 STUB_FAIL_KNOB=""
 if [[ -n "${E2E_STUB_FAIL:-}" ]]; then
@@ -43,11 +45,14 @@ if [[ -n "${E2E_STUB_FAIL:-}" ]]; then
   esac
 fi
 
-# 传输链（deep-check 审批卡 + flush 告警），STUB_FAIL 注入到整条链
+# 传输链（deepcheck 卡 / fallback 审批卡 + flush 告警），STUB_FAIL 注入到整条链。
+# worker 收尾模拟：卡化后状态推进由 contrib worker 在卡内做（rq set deep-check），stub 世界
+# 用 sb_rq 显式推进一格，代表 worker 已接单（queue_transitions 计数的数据基础）。
 if [[ -z "$FAIL_REASON" ]]; then
   sb_run -e "NOTIFY_DRY_RUN=false" ${STUB_FAIL_KNOB:+"-e"} ${STUB_FAIL_KNOB:+"$STUB_FAIL_KNOB"} \
-    'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"
-bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
+    "zsh \"\$MARTIN_DIR/scripts/contrib/run-deepcheck.sh\"
+bash \"\$MARTIN_DIR/scripts/contrib/rq.sh\" set $DC_ID deep-check --note 'worker 收尾模拟' >/dev/null 2>&1 || true
+bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" flush" >/dev/null 2>&1
 fi
 
 # ---- 计数器 ----
@@ -81,7 +86,15 @@ fail_count="$(jq -r --arg d "$TODAY" '([.approvals[$d].fail | to_entries[] | sel
   + ([inputs | select(.pushed == false and .attempts >= 1)] | length)' "$STATE_FILE" "$EVENTS_FILE" 2>/dev/null || echo 0)"
 
 if [[ -z "$FAIL_REASON" ]]; then
-  if [[ -n "${E2E_STUB_FAIL:-}" ]]; then
+  if [[ "${E2E_STUB_FAIL:-}" == "claude" ]]; then
+    # T4 卡化语义：claude 降格为兜底层——注毒 claude 时主路（hermes 卡）交付仍达成，
+    # 且深检主路零 claude（降格的自证）
+    [[ "$transport_calls" -ge 1 ]] || smoke_fail "claude 注毒轮 transport_calls=$transport_calls < 1"
+    [[ "$queue_transitions" -ge 1 ]] || smoke_fail "claude 注毒轮 queue_transitions=$queue_transitions < 1"
+    [[ "$ok_count" -ge 1 || "$pushed_count" -ge 1 ]] || smoke_fail "claude 注毒轮零成功记录"
+    claude_calls="$(awk -F'|' '$1 == "claude" { c++ } END { printf "%d", c + 0 }' "$SMOKE_STUB_LOG/calls.log" 2>/dev/null)"
+    [[ "$claude_calls" -eq 0 ]] || smoke_fail "claude 注毒但建卡主路调了 claude $claude_calls 次（降格破约）"
+  elif [[ -n "${E2E_STUB_FAIL:-}" ]]; then
     # 注毒轮：交付未达成 → 冒烟判失败（场景3.P2：exit!=0）
     smoke_fail "传输 stub $E2E_STUB_FAIL 非零退出 → 交付未达成"
     # 附加账实核验：零新增成功记录 + 至少一条失败记录（场景7.P3 账本按类型计数的数据基础）
@@ -210,6 +223,45 @@ else
   card_fail="${card_fail} mail/radar 段 sandbox 失败"
 fi
 [[ -z "$card_fail" ]] || smoke_fail "mail/radar 卡化链: $card_fail"
+
+# ---- T4 深检依赖卡链段（独立沙箱）----
+# F: gate rc10 → 建 preflight 卡 + flight-deepcheck 六键（零 claude 主路）
+# G: worker 收尾模拟（deep-check + verdict auto + awaiting-approval + 卡 done）→ 再跑 run-deepcheck
+#    → harvest 链完成判定 → auto-gate rc0 → rq approved（L2-auto 桥接保留）→ 登记清；
+#    execute 链在沙箱内 gh TTL 失败转 failed → gate 下轮 retry 重启新卡（失败重试闭环自证）
+if sb_new >/dev/null 2>&1; then
+  dc_fail=""
+  DC2_ID="rq-$(date +%Y%m%d)-7101"
+  sb_seed_queue_item "$DC2_ID" 7101 deep queued 40
+  sb_run 'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
+  DC_FLIGHT="$SB_ROOT/contrib-data/kanban-flight-deepcheck.json"
+  [[ "$(jq -r '.kind // empty' "$DC_FLIGHT" 2>/dev/null)" == "deepcheck" ]] || dc_fail="F:flight 未登记"
+  [[ "$(jq -r '.rq_id // empty' "$DC_FLIGHT" 2>/dev/null)" == "$DC2_ID" ]] || dc_fail="$dc_fail F:rq_id 缺"
+  [[ "$(jq -r '.lane // empty' "$DC_FLIGHT" 2>/dev/null)" == "deep" ]] || dc_fail="$dc_fail F:lane 缺"
+  [[ "$(jq -r '.batch_file' "$DC_FLIGHT" 2>/dev/null)" == "" ]] || dc_fail="$dc_fail F:batch_file 非空串"
+  [[ "$(awk -F'|' '$1 == "claude"' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || dc_fail="$dc_fail F:主路调了 claude"
+  DC_CARD_1="$(jq -r '.card_id // empty' "$DC_FLIGHT" 2>/dev/null)"
+  # G: worker 模拟收尾（卡内职责）→ preflight 卡 done
+  sb_rq set "$DC2_ID" deep-check --note "worker 模拟" >/dev/null 2>&1
+  mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/$DC2_ID"
+  printf '{"decision":"auto","confidence":"high","risk_level":"low","reasons":[]}\n' \
+    >"$SB_ROOT/contrib-data/runs/deep-check/$DC2_ID/verdict.json"
+  sb_rq set "$DC2_ID" awaiting-approval --note "worker 模拟 final" >/dev/null 2>&1
+  printf '{"id":"%s","status":"done","assignee":"contrib","priority":0}\n' "$DC_CARD_1" \
+    >"$SB_ROOT/stublog/kanban-cards.jsonl"
+  sb_run 'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
+  history="$(jq -r --arg id "$DC2_ID" '[.items[] | select(.id == $id) | .history[].event] | join(",")' \
+    "$SB_ROOT/contrib-data/ready-queue.json" 2>/dev/null)"
+  [[ "$history" == *"approved"* ]] || dc_fail="$dc_fail G:auto-gate 桥接未 approved（history=${history}）"
+  [[ "$(awk -F'|' '$1 == "claude"' "$SB_ROOT/stublog/calls.log" 2>/dev/null | wc -l | tr -d ' ')" == "0" ]] \
+    || dc_fail="$dc_fail G:链收尾调了 claude"
+  [[ -f "$DC_FLIGHT" ]] || dc_fail="$dc_fail G:失败重试闭环未重启新卡（flight 应重建）"
+  sb_cleanup >/dev/null 2>&1
+else
+  dc_fail="deepcheck 段 sandbox 失败"
+fi
+[[ -z "$dc_fail" ]] || smoke_fail "deepcheck 卡化链: $dc_fail"
 
 # ---- 汇总 JSON（末行）----
 sb_json_path="$SMOKE_STUB_LOG"

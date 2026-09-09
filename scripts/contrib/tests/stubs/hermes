@@ -12,9 +12,13 @@
 #                              $LOG_DIR/kanban-cards.jsonl（有状态：list/show 能查到）
 #   STUB_KANBAN_CREATE_STATUS=<s> → create 输出的 status（默认 ready）
 #   kanban list --json       → 输出已登记卡片数组（STUB_KANBAN_LIST_EMPTY=1 → []）；
-#                              STUB_KANBAN_CARD_STATUS=<s> 覆盖全部卡片 status（终态矩阵驱动）
-#   kanban show <id> --json  → 输出 {task,runs:[{outcome}]}；outcome 由
-#                              STUB_KANBAN_RUN_OUTCOME 控制（默认 gave_up）
+#                              STUB_KANBAN_CARD_STATUS=<s> 覆盖全部卡片 status（终态矩阵驱动）；
+#                              STUB_KANBAN_STATUS_MAP=<json> 逐卡 id→status 覆盖（优先级最高，
+#                              T4 深检链 preflight/子卡异态矩阵用）
+#   kanban show <id> --json  → 输出 {task,runs:[{outcome}],children:[]}；outcome 由
+#                              STUB_KANBAN_RUN_OUTCOME 控制（默认 gave_up）；children 由
+#                              STUB_KANBAN_CHILDREN=<json> 注入（T4 链式终态判定）；status 同受
+#                              STUB_KANBAN_STATUS_MAP（按 id）→ STUB_KANBAN_CARD_STATUS（全局）控制
 #   另：每次调用向 $LOG_DIR/anthropic-env.log 追加一行子进程 env 中三个 ANTHROPIC_*
 #   变量存在性（hermes|base_url=…|auth_token=…|api_key=…，支撑 env -u 剥离断言）；
 #   --body 参数值复制到 bodies/hermes-<n>.txt（卡 body 内容断言用）
@@ -89,7 +93,9 @@ if [[ "${1:-}" == "kanban" ]]; then
         printf '[]\n'
         exit 0
       fi
-      if [[ -n "${STUB_KANBAN_CARD_STATUS:-}" ]]; then
+      if [[ -n "${STUB_KANBAN_STATUS_MAP:-}" ]]; then
+        jq -s --argjson m "$STUB_KANBAN_STATUS_MAP" 'map(.status = ($m[.id] // .status))' "$LOG_DIR/kanban-cards.jsonl"
+      elif [[ -n "${STUB_KANBAN_CARD_STATUS:-}" ]]; then
         jq -s --arg s "$STUB_KANBAN_CARD_STATUS" 'map(.status = $s)' "$LOG_DIR/kanban-cards.jsonl"
       else
         jq -s . "$LOG_DIR/kanban-cards.jsonl"
@@ -97,9 +103,15 @@ if [[ "${1:-}" == "kanban" ]]; then
       exit 0
       ;;
     show)
-      jq -cn --arg id "${3:-t_stub}" --arg s "${STUB_KANBAN_CARD_STATUS:-blocked}" \
+      stub_status="${STUB_KANBAN_CARD_STATUS:-blocked}"
+      if [[ -n "${STUB_KANBAN_STATUS_MAP:-}" ]]; then
+        mapped="$(jq -n -r --arg id "${3:-t_stub}" --argjson m "$STUB_KANBAN_STATUS_MAP" '$m[$id] // empty' 2>/dev/null)"
+        [[ -n "$mapped" ]] && stub_status="$mapped"
+      fi
+      jq -cn --arg id "${3:-t_stub}" --arg s "$stub_status" \
         --arg o "${STUB_KANBAN_RUN_OUTCOME:-gave_up}" \
-        '{task: {id: $id, status: $s}, runs: [{outcome: $o}]}'
+        --argjson ch "${STUB_KANBAN_CHILDREN:-[]}" \
+        '{task: {id: $id, status: $s}, runs: [{outcome: $o}], children: $ch}'
       exit 0
       ;;
   esac

@@ -227,7 +227,7 @@ import os
 base = os.environ["STRIP_CD"]
 CD_ANCHORS = ('cd "$MARTIN" || exit 1', 'cd "$MARTIN"')
 NL = chr(10)
-for f in ("deep-check.sh", "run-watch.sh"):
+for f in ("deep-check.sh", "run-watch.sh", "run-deepcheck.sh"):
     fp = os.path.join(base, "scripts", "contrib", f)
     src = open(fp).read()
     out = NL.join(l for l in src.split(NL) if l.strip() not in CD_ANCHORS)

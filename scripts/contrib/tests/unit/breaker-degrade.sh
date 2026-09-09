@@ -245,4 +245,20 @@ case "$trip_val" in
   *) _pass "trip 写单整数 epoch（${trip_val}）" ;;
 esac
 
+t_case "healthcheck: 大输出（>64KB 管道缓冲）SIGPIPE 回归——grep -q 提前退出不得误判（09-09 生产实锤）"
+sb_new >/dev/null 2>&1
+# 播种一张带超大 body 的卡，使 stub kanban list 输出远超 64KB 管道缓冲——
+# 必须 ≥70KB（qa-reviewer B-2：400 字节版距缓冲差 160 倍，SIGPIPE 不触发=突变体存活假锚）
+big_body="$(head -c 72000 /dev/zero | tr '\0' 'A')"
+# 热修 09-09（T4 蓝队顺手）：../../ 多跳一层致截断恒 ENOENT（2>/dev/null 静默吞错，但 stderr
+# 在 s2 env -i 合流下泄漏进 2.P3 断言）——正确路径应为 $SB_ROOT/stublog
+: >"$SB_ROOT/stublog/kanban-cards.jsonl" 2>/dev/null || true
+printf '{"id":"t_bigbody","status":"done","title":"big","body":"%s"}\n' "$big_body" \
+  >"$CONTRIB_TEST_STUB_LOG/kanban-cards.jsonl" 2>/dev/null || \
+  printf '{"id":"t_bigbody","status":"done","title":"big","body":"%s"}\n' "$big_body" \
+  >"$SB_ROOT/stublog/kanban-cards.jsonl"
+sb_run 'bash "$MARTIN_DIR/scripts/contrib/kanban_card.sh" healthcheck' >/dev/null 2>&1
+assert_exit 0 $? "70KB 级 list 输出下 healthcheck 必须 OK（SIGPIPE 竞速回归锚）"
+[[ ! -f "$SB_ROOT/contrib-data/.hermes-down" ]] && _pass "成功探测清零 down 计数" || _fail "成功探测清零 down 计数" "计数残留"
+
 t_finish

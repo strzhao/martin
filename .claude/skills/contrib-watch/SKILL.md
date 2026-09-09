@@ -107,6 +107,26 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 
 **失败处理**：任一阶段 exit≠0 → `rq.sh set <id> failed --note "<阶段>"`；预算按 `config.refund_failed_deep_check` 决定是否返还（默认不返还）；次日 gate 可自动重试（`failed → queued` 迁移由 gate 执行）。
 
+### 卡模式工作约定（T4 起生效：深检主路 = kanban 依赖卡链）
+
+深检两阶段的**主路**由编排层（run-watch 快车道 / run-deepcheck 09:37，共用 `scripts/contrib/deepcheck_card.sh`）建 preflight 卡（`--kind deepcheck`，attempt 级幂等键 `deepcheck-<rq-id>-<epoch>`，flight 登记 `kanban-flight-deepcheck.json`）；本节是 preflight/redteam 卡 worker 的职责契约。claude 编排（`deep-check.sh`）降格为 fallback（建卡失败才走），不再是 worker 的执行形态。
+
+**preflight 卡 worker 职责**：
+1. 读卡 body 传入的 rq-id/lane → 按模式四 `--phase preflight` 阶段 1-3 执行（strategist agent + 亲手核 + 草稿 v2 + 产出 `$CONTRIB/runs/deep-check/<id>/preflight.md` 与 `$CONTRIB/pending/<id>.md`）。
+2. `rq.sh set <id> deep-check`（阶段开始时项仍为 queued——编排层建卡时不动状态，状态推进是 worker 职责）。
+3. **lane 分叉（钉死）**：
+   - `lane=deep` → 按 body 命令模板**自建 redteam 子卡**：`hermes kanban create ... --parent <本卡 id> --assignee contrib --idempotency-key "deepcheck-redteam-<id>-<attempt-epoch>" ...`（**必须带 `--assignee contrib`**，default_assignee 是 default profile，缺省会错轨）；子卡 body 必含模式四 redteam 段职责 + verdict.json 契约原文。
+   - `lane=probe` → **免红队、不建子卡**（probe 单轮免红队策略红线）：自己写 verdict.json + `rq.sh set <id> awaiting-approval` 后收尾。
+4. 收尾双传（kanban_complete 同时传 summary 与 result）。
+
+**redteam 卡 worker 职责**：fresh-context（模式四阶段 2 铁律：不得读 preflight.md 结论先入为主）→ 逐断言核验 → final 吸收 → **必须写 verdict.json**（契约原文见模式四第 5 点）→ `rq.sh set <id> awaiting-approval` → complete 双传。审批卡推送由编排层 auto-gate/补推 sweep 承担，worker 不调 `hermes send`、不重复推。
+
+**授权边界（钉死）**：worker 的 `rq.sh` 仅限 `set/list/show` 且只针对本项；**`budget reserve/refund` 为编排层专属，卡内绝对禁碰**（rq.sh refund 对 used 计数每调必减，双调=预算超发）。gh 只读；-q 模式禁 `python -c` / `jq -e` 脚本形态。
+
+**链悬挂纪律**：redteam worker 无法完成时必须先 `rq.sh set <id> failed` + `notify.sh event pipeline-failure` 再收尾——编排层下轮 harvest 的 failed 分支接管 refund；子卡 blocked 由编排层补查收口（`-deepcheck-stale` 事件）。
+
+**编排层链完成判定（worker 不感知，仅供理解）**：preflight 卡 done ≠ 链完成；编排层每轮 harvest——verdict+awaiting-approval → auto-gate（rc0 自动批准进执行链）；deep-check → 补查子卡终态；failed → 清+refund；查无/异常 → `-deepcheck-orphan`。
+
 ---
 
 ## 模式三：build <issue#>（本地 PR 构建流水线）

@@ -416,3 +416,13 @@ notify.sh 的 events.jsonl 有两个写入方：`cmd_event` 追加（jq 紧凑�
 run-watch 的 radar 窗口逻辑依赖 `date +%H`，但实现内部 `export PATH` 前置系统目录使 PATH 注入 stub 失效，而给实现加 hour seam 又侵入生产代码。解法：沙箱 `$HOME/.local/bin/date` 影子 stub（run-watch 的 PATH 恰好前置 ~/.local/bin）——只劫持裸 `+%H` 调用、其余参数透传 `/bin/date`，黑盒且零实现耦合。启示：**时间/环境依赖的黑盒注入优先找「实现自己已经前置的路径」下钩，其次才要求实现开 seam**；stub 必须透传非目标调用形态（防误伤同脚本其他 date 用途）。
 
 <!-- tags: testing, black-box, date, stub, shadow-binary, hour-injection, sandbox, contrib-watch -->
+
+## [2026-09-09] grep -q 提前退出 × pipefail = 输入尺寸依赖的偶发误判（vacuous-PASS 第三例）
+`printf "$big" | grep -q pattern` 在匹配后立即退出 → 大输入（>64KB 管道缓冲）时上游 printf 收 SIGPIPE → pipefail 判整条管道 141 → if 条件误 false。**小输入沙箱测试必绿**（printf 先写完），输入涨过阈值后生产才开始偶发——healthcheck 据此连续误报 hermes down、建卡全停（16:07 好 转 17:07 坏的「漂移」即列表尺寸过阈）。防御：①健康判定类「读头字符」逻辑用参数展开（`${resp#"${resp%%[![:space:]]*}"}"`）替代 grep 管道；②回归测试必须用超过管道缓冲的输入（本例 70KB stub 卡 body）；③同族教训叠加：工具链遮蔽（双 shell）、账本格式漂移、本条 = 沙箱与生产的**输入规模**差异，三类差异都须在测试中显式复刻。
+
+<!-- tags: grep, sigpipe, pipefail, vacuous-pass, input-size, healthcheck, contrib-watch, incident -->
+
+## [2026-09-09] 共享基建文件的「零改动自证」必须锚定任务暂存集，而非工作树 vs HEAD
+长任务验收里的「本任务没碰 X 文件」断言若写成 `git diff HEAD -- X`，任何并行会话对 X 的合法未提交改动（如另一任务给 rq.sh 加 release-gate 车道）都会误伤成红。正确口径：`git diff --cached <任务基线锚> -- X`——任务问责边界=自己的暂存集，工作树是共享现场。附：回归测试的触发条件体量必须真达标（SIGPIPE 锚 400B 假绿 160 倍差距，qa-reviewer 抓获），突变自证是唯一可信的锚有效性证明。
+
+<!-- tags: git, staged-diff, zero-change-assertion, parallel-sessions, regression-test, mutation, vacuous-pass, contrib-watch -->

@@ -588,13 +588,41 @@ if [[ -x "$MARTIN/scripts/contrib/notify.sh" ]]; then
     || echo "[$(ts)] 审批卡补推 sweep 异常（下轮重试）" >>"$LOG"
 fi
 
-# --- 4. 快车道（09-04）：scan 刚产出候选 → 立即后台深检，不等明早 09:37（该窗口保留为兜底）---
+# --- 4. 快车道（09-04；T4 卡化）：深检两阶段改 kanban 依赖卡链（preflight 卡 → worker 自建
+#     redteam 子卡 --parent 关联）。建卡主路 = deepcheck_card.sh create（两入口等价地基）；
+#     claude 编排（deep-check.sh）降级为 fallback（建卡失败才走，nohup 不阻塞下一轮 scan；
+#     contrib-watch.plist 已确认 AbandonProcessGroup=true，收割坑已解）---
+DEEPCHECK_CARD="$MARTIN/scripts/contrib/deepcheck_card.sh"
+if [[ -x "$DEEPCHECK_CARD" ]]; then
+  # 终态收割先行（radar 先例：凡存在登记每轮即查，不受 gate 命中门控）——
+  # 链完成 → auto-gate 编排层桥接（L2-auto 保留）
+  bash "$DEEPCHECK_CARD" harvest >>"$LOG" 2>&1 \
+    || echo "[$(ts)] deepcheck flight 收割异常（下轮重试）" >>"$LOG"
+fi
 if [[ -x "$MARTIN/scripts/contrib/deep_check_gate.sh" ]]; then
   zsh "$MARTIN/scripts/contrib/deep_check_gate.sh" >>"$LOG" 2>&1
   gate_rc=$?
   if (( gate_rc == 10 )); then
-    echo "[$(ts)] 快车道：深检候选就绪 → 后台启动 deep-check.sh（nohup，不阻塞下一轮 scan）" >>"$LOG"
-    nohup zsh "$MARTIN/scripts/contrib/deep-check.sh" >>"$LOG" 2>&1 &
+    if [[ -x "$DEEPCHECK_CARD" ]]; then
+      bash "$DEEPCHECK_CARD" create >>"$LOG" 2>&1
+      dc_rc=$?
+      case $dc_rc in
+        0)
+          echo "[$(ts)] 快车道：深检 preflight 卡已建（主路）" >>"$LOG"
+          ;;
+        10)
+          # 在飞/全局单深检 → 跳过（绝不 fallback：在飞走 fallback = 双轨并发 + 双 reserve）
+          echo "[$(ts)] 快车道：深检卡在飞/跳过（全局单深检语义）" >>"$LOG"
+          ;;
+        *)
+          echo "[$(ts)] 快车道：深检建卡失败 rc=$dc_rc → fallback deep-check.sh（nohup）" >>"$LOG"
+          nohup zsh "$MARTIN/scripts/contrib/deep-check.sh" >>"$LOG" 2>&1 &
+          ;;
+      esac
+    else
+      echo "[$(ts)] 快车道：deepcheck_card.sh 缺失 → fallback deep-check.sh（nohup）" >>"$LOG"
+      nohup zsh "$MARTIN/scripts/contrib/deep-check.sh" >>"$LOG" 2>&1 &
+    fi
   elif (( gate_rc == 0 )); then
     echo "[$(ts)] 快车道：无可跑项" >>"$LOG"
   else

@@ -107,6 +107,16 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
   cp "$src"/*.sh "$SB_ROOT/scripts/contrib/"
   chmod +x "$SB_ROOT"/scripts/contrib/*.sh 2>/dev/null || true
 
+  # 1b) approval 域脚本（T4 deepcheck_card.sh 的 auto-gate/execute 桥接依赖）：
+  #     被测目录的兄弟 approval/ 一并镜像；目录不存在时跳过（向前兼容）
+  local apprv_dir
+  apprv_dir="$(dirname "$src")/approval"
+  if [[ -d "$apprv_dir" ]] && ls "$apprv_dir"/*.sh >/dev/null 2>&1; then
+    mkdir -p "$SB_ROOT/scripts/approval"
+    cp "$apprv_dir"/*.sh "$SB_ROOT/scripts/approval/"
+    chmod +x "$SB_ROOT"/scripts/approval/*.sh 2>/dev/null || true
+  fi
+
   # 2) 影子 stub
   local stubsrc="${CONTRIB_TEST_STUBS:-}"
   if [[ -z "$stubsrc" ]]; then

@@ -1,6 +1,7 @@
 #!/bin/bash
 # lint-shellcheck.sh — Tier S 静态检查门：bash 系脚本零发现（场景10.P1，-x -S warning）
-# 范围：bash 系生产脚本 4 个 + 套件全部 .sh + 6 个 stub（zsh 3 个豁免，以 zsh -n 覆盖）
+# 范围：bash 系生产脚本 6 个（T1 kanban_card.sh / T4 deepcheck_card.sh 补齐）+ 套件全部 .sh + 6 个 stub
+#（zsh 3 个豁免，以 zsh -n 覆盖）
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_ROOT="$(cd "$HERE/.." && pwd)"
@@ -19,7 +20,7 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 
 t_case "文件集计数 >= 10"
-files="$TARGET/notify.sh $TARGET/rq.sh $TARGET/scan_gate.sh $TARGET/deep_check_gate.sh"
+files="$TARGET/notify.sh $TARGET/rq.sh $TARGET/scan_gate.sh $TARGET/deep_check_gate.sh $TARGET/kanban_card.sh $TARGET/deepcheck_card.sh"
 for f in $(cd "$TESTS_ROOT" && find . -name '*.sh' -type f | sort); do
   files="$files $TESTS_ROOT/$f"
 done
