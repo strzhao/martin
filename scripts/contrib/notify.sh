@@ -302,11 +302,14 @@ _digest_lock() {
 }
 
 # _digest_card_status <card_id> → stdout 卡状态（空=不可得）；hermes kanban list 带 30s
-# alarm 包裹（launchd flush 防挂死），env -u 三 ANTHROPIC_* 变量（CC shell 劫持防御）
+# alarm 包裹（launchd flush 防挂死），env -u 三 ANTHROPIC_* 变量（CC shell 劫持防御）。
+# board seam（T6）：KANBAN_BOARD 非空时 pin（--board 父级 flag 插子命令前）；空=不 pin。
 _digest_card_status() {
   local out
+  local -a bargs=()
+  [[ -n "${KANBAN_BOARD:-}" ]] && bargs=(--board "$KANBAN_BOARD")
   out="$(env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY \
-    perl -e 'alarm 30; exec @ARGV' "$HERMES_BIN" kanban list --json 2>/dev/null || true)"
+    perl -e 'alarm 30; exec @ARGV' "$HERMES_BIN" kanban ${bargs[@]+"${bargs[@]}"} list --json 2>/dev/null || true)"
   printf '%s' "$out" | jq -r --arg id "$1" '[.[] | select(.id == $id)][0].status // empty' 2>/dev/null || true
 }
 
@@ -331,6 +334,32 @@ _digest_batch_sent() {
   local n
   n="$(jq -s '[.[] | select(.sent == true)] | length' "$1" 2>/dev/null || echo 0)"
   [[ "${n:-0}" -ge 1 ]] && printf 'true' || printf 'false'
+}
+
+# _digest_cleanup_files <snapshot> — 消费/失败即删该轮全部派生文件（B-3 消费清理，T6）：
+# 快照 + 摘要 + 卡 body + 卡 json（约定同 ts 前缀 digest-<ts>.{json,digest.md,body.md,card.json}）。
+# 磁盘零残留；事件本体在账本（events.jsonl），删除派生文件不丢数据。
+_digest_cleanup_files() {
+  local snap="$1"
+  if [[ -n "$snap" ]]; then
+    rm -f "$snap" "${snap%.json}.digest.md" "${snap%.json}.body.md" "${snap%.json}.card.json"
+  fi
+}
+
+# _send_result_fresh <started_epoch> → stdout：NOTIFY_SEND_LAST 路径（仅当其 mtime ≥ 调用起点，
+# 即确实是本次 send 的回写）或空串（B-2 陈旧佐证防御，T6：send 失败回写不得携带上一轮成功
+# 发送的残留遥测——那会把旧 send_result 冒充本次失败证据）
+_send_result_fresh() {
+  local started="$1" m
+  [[ -s "$NOTIFY_SEND_LAST" ]] || { printf ''; return 0; }
+  m="$(stat -f %m "$NOTIFY_SEND_LAST" 2>/dev/null || echo 0)"
+  case "$m" in
+    ''|*[!0-9]*) m=0 ;;
+  esac
+  if (( m >= started )); then
+    printf '%s' "$NOTIFY_SEND_LAST"
+  fi
+  return 0
 }
 
 # _digest_write_sent <batch_file> <true|false> <reason> [send_result_file] — 批次文件尾部
@@ -499,7 +528,8 @@ _digest_flush() {
       if [[ -n "$snap" && -f "$snap" && "$(_digest_batch_sent "$snap")" == "true" ]]; then
         # worker 已发送并标记账本：清登记+清快照（消费即删不留磁盘噪音），flush 零重复动作
         # （账本双写禁止）；本轮 return 不再建新卡（新批下小时轮自然建卡）
-        rm -f "$flight" "$snap" "${snap%.json}.digest.md"
+        rm -f "$flight"
+        _digest_cleanup_files "$snap"
         log "digest 卡 ${card_id} done 且已发送——消费闭环（零账本动作，本轮不建新卡）"
         return 0
       fi
@@ -508,15 +538,17 @@ _digest_flush() {
       log "digest 卡 ${card_id} done 但批次未标 sent——异常收口，走 fallback"
       fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
       frc=$?
-      [[ -n "$snap" ]] && rm -f "$snap" "${snap%.json}.digest.md"
+      [[ -n "$snap" ]] && _digest_cleanup_files "$snap"
       return "$frc"
     fi
     if [[ "$status" == "blocked" ]]; then
       # 闭集 outcome 判定（T5 红队 D7：非闭集 outcome=可自愈，保留登记零 fallback）——
       # 同 scan/mail 先例：gave_up|crashed|timed_out|spawn_failed 才算失败终态
       local oc=""
+      local -a sargs=()
+      [[ -n "${KANBAN_BOARD:-}" ]] && sargs=(--board "$KANBAN_BOARD")
       oc="$(env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY \
-        perl -e 'alarm 15; exec @ARGV' "$HERMES_BIN" kanban show "$card_id" --json 2>/dev/null \
+        perl -e 'alarm 15; exec @ARGV' "$HERMES_BIN" kanban ${sargs[@]+"${sargs[@]}"} show "$card_id" --json 2>/dev/null \
         | jq -r '.runs[-1].outcome // empty' 2>/dev/null || true)"
       case "$oc" in
         gave_up|crashed|timed_out|spawn_failed)
@@ -525,7 +557,7 @@ _digest_flush() {
           log "digest 卡 ${card_id} 失败终态（blocked outcome=${oc}）——清登记走 fallback"
           fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
           frc=$?
-          [[ -n "$snap" ]] && rm -f "$snap" "${snap%.json}.digest.md"
+          [[ -n "$snap" ]] && _digest_cleanup_files "$snap"
           return "$frc"
           ;;
         *)
@@ -546,7 +578,7 @@ _digest_flush() {
       log "digest 卡 ${card_id} stale（>${stale_secs}s）——清登记走 fallback"
       fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
       frc=$?
-      [[ -n "$snap" ]] && rm -f "$snap" "${snap%.json}.digest.md"
+      [[ -n "$snap" ]] && _digest_cleanup_files "$snap"
       return "$frc"
     fi
     log "digest 卡 ${card_id} 在飞（status=${status:-unknown}），本批挂账（attempts 不增）"
@@ -575,7 +607,8 @@ _digest_flush() {
     log "digest 建卡失败（rc=${rc}）——走 fallback"
     fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
     frc=$?
-    rm -f "$snapshot" "$digest_file"
+    rm -f "$digest_file"
+    _digest_cleanup_files "$snapshot"
     return "$frc"
   fi
   card_id_new="$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)"
@@ -583,7 +616,8 @@ _digest_flush() {
     log "digest 建卡输出缺 id——走 fallback"
     fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
     frc=$?
-    rm -f "$snapshot" "$digest_file"
+    rm -f "$digest_file"
+    _digest_cleanup_files "$snapshot"
     return "$frc"
   fi
   # flight 四键（kind/card_id/batch_file=快照路径/created_epoch）——与 scan flight 同构
@@ -643,8 +677,9 @@ cmd_send_digest() {
     echo "OK"
     exit 0
   fi
-  local rc=0 keys_file
-  _send "$digest" "contrib-watch 告警" || rc=$?
+  local rc=0 keys_file send_started
+  send_started="$(now_epoch)"   # B-2（T6）：佐证新鲜度基准——NOTIFY_SEND_LAST 的 mtime 必须
+  _send "$digest" "contrib-watch 告警" || rc=$?   # ≥ 本轮调用起点才算本次 send 的回写
   if (( rc == 0 )); then
     # 账本标记该批 pushed（按批次 keys；attempts 逻辑留给 flush fallback 路——防双重计数）
     keys_file="$(mktemp "${TMPDIR:-/tmp}/contrib-digest-keys-XXXXXX")"
@@ -652,12 +687,12 @@ cmd_send_digest() {
     _flush_push_mark "$keys_file"
     rm -f "$keys_file"
     state_bump alerts "$(today)"
-    _digest_write_sent "$batch" true "" "$NOTIFY_SEND_LAST"
+    _digest_write_sent "$batch" true "" "$(_send_result_fresh "$send_started")"
     log "send-digest 摘要已发送并标记账本（批次 $(basename "$batch")）"
     echo "OK"
     exit 0
   fi
-  _digest_write_sent "$batch" false "send" "$NOTIFY_SEND_LAST"
+  _digest_write_sent "$batch" false "send" "$(_send_result_fresh "$send_started")"
   echo "FAIL send"
   exit 1
 }

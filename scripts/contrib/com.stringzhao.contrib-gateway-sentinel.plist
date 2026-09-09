@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stringzhao.contrib-gateway-sentinel</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/stringzhao/workspace/martin/scripts/contrib/gateway_sentinel.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/stringzhao/workspace/martin/contrib-data/logs/sentinel-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/stringzhao/workspace/martin/contrib-data/logs/sentinel-stderr.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <!-- 防御性：本脚本自身无后台子进程；AbandonProcessGroup 让未来可能加入的 nohup 型子进程
+         不被 launchd 按进程组收割（contrib-watch 09-05 收割坑先例） -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+</dict>
+</plist>

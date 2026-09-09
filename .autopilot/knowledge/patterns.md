@@ -426,3 +426,20 @@ run-watch 的 radar 窗口逻辑依赖 `date +%H`，但实现内部 `export PATH
 长任务验收里的「本任务没碰 X 文件」断言若写成 `git diff HEAD -- X`，任何并行会话对 X 的合法未提交改动（如另一任务给 rq.sh 加 release-gate 车道）都会误伤成红。正确口径：`git diff --cached <任务基线锚> -- X`——任务问责边界=自己的暂存集，工作树是共享现场。附：回归测试的触发条件体量必须真达标（SIGPIPE 锚 400B 假绿 160 倍差距，qa-reviewer 抓获），突变自证是唯一可信的锚有效性证明。
 
 <!-- tags: git, staged-diff, zero-change-assertion, parallel-sessions, regression-test, mutation, vacuous-pass, contrib-watch -->
+
+## [2026-09-09] 同文件并行暂存污染：混合 commit 的「dormant 判定」决策法
+长任务与并行会话撞同一文件（notify.sh）时，暂存集必混对方 hunks。拆分 vs 整体提交的判定：**对方 hunks 在缺少其配套依赖（如 rq.sh 未提交）时是否可达**——不可达（dormant）则整体提交+message 显式标注混入内容安全；可达（激活路径存在）则必须拆分或等对方先落地。附：验收断言「工作树 vs HEAD 零 diff」类检查在并行活跃仓会随机红，一律锚定任务暂存集（见 09-09 暂存集条目）。
+
+<!-- tags: git, parallel-sessions, staged-pollution, dormant-code, commit-strategy, contrib-watch -->
+
+## [2026-09-10] 探活选型：探测必须走被监控对象的故障路径
+gateway 哨兵初版选 `hermes kanban list` 作探活——但它是本地 SQLite 读，不经 gateway，gateway 死时探活照样成功 → 哨兵在核心场景永不报警。选探测手段前先回答「被监控对象死时，这个探测会跟着失败吗」；答不出就是假探针。语义同时钉死两件事：唯一告警信号=进程存活探测（pgrep 死→event，key 含日期=日级幂等，检测≠送达——down 期间只入账、恢复后 flush 送达）；**探针自身异常只日志不告警**（探针故障不得伪装成被监控对象故障）。
+<!-- tags: monitoring, probe, sentinel, fail-path, launchd, contrib-watch -->
+
+## [2026-09-10] CLI 父级 flag 位置 trap：stub 不校验未知参数 = 沙箱全绿生产全红
+`--board` 是 `hermes kanban` 的父级 flag（必须 `kanban --board X create`）；尾部追加在生产=argparse unrecognized arguments 硬失败，但影子 stub 按 `$2` 匹配子命令、不校验未知参数 → 带错 argv 的调用在沙箱里静默走通用成功分支，全绿。防御：①给 CLI 加 seam 前，先读上游 parser 确认 flag 层级；②unit 必须断言 **argv 顺序形态**（正则锚 `kanban --board X <sub>`），不能只断言「调用发生过」；③stub 侧同步支持新形态时注意带值 flag 使后续位置参数整体左移（`show <id>` 的 id 从 $3 变 $6）。
+<!-- tags: cli, flag-position, stub, argv-order, vacuous-pass, sandbox-gap, contrib-watch -->
+
+## [2026-09-10] 开关型 seam 的 `-` vs `:-`：显式空串=显式回退态，测试缺省零改动
+入口脚本做「生产缺省开、测试缺省关」的开关时写 `export VAR="${VAR:-default}"`，空串也被 `:-` 吞成 default → 沙箱整个测试套件随机红。改用 `${VAR-default}`（仅 unset 取缺省）：沙箱显式注入 `VAR=""` 即整链回退，全部既有测试零改动；生产 unset=新缺省。配套：切换行锁进 seam-defaults（逐字符锚定），回退=删一行或外部 export 空串。同族：兼容写撤销三步=①消费证据检查（窗口从功能上线日起算，勿用固定 7 天——旧模式 drain 记录会误命中）②唯一数据源切换+零写入哨兵断言（seed 哨兵内容验「未被触碰」）③一次性无损迁移（旧源独有条目并入新源+旧文件改名留证）。
+<!-- tags: bash, parameter-expansion, feature-flag, rollback, seam, migration, compat-write, contrib-watch -->

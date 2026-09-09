@@ -26,6 +26,20 @@ seam_in() {
   fi
 }
 
+# seam_absent_in <script> <精确片段> [label] — 该片段必须不出现在脚本中（撤销/删除守卫）
+seam_absent_in() {
+  local f="$TARGET/$1" needle="$2" label="${3:-$1}"
+  if [[ ! -f "$f" ]]; then
+    _fail "$label" "脚本缺失: $f"
+    return 0
+  fi
+  if grep -qF -- "$needle" "$f"; then
+    _fail "$label" "已撤销的片段重新出现: $needle"
+  else
+    _pass "$label"
+  fi
+}
+
 # ---------------- notify.sh ----------------
 t_case "notify: 路径 seam"
 seam_in notify.sh 'MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"'
@@ -68,7 +82,8 @@ t_case "scan_gate: 路径/命令 seam"
 seam_in scan_gate.sh 'MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"'
 seam_in scan_gate.sh 'DATA="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"'
 seam_in scan_gate.sh 'CURSOR="$DATA/scan-cursor.json"'
-seam_in scan_gate.sh 'PENDING="$DATA/pending-hits.json"'
+# T6 撤销兼容写：PENDING seam 已随 pending-hits.json 删除——显式断言其不再存在（防回潮）
+seam_absent_in scan_gate.sh 'pending-hits.json'
 seam_in scan_gate.sh 'GH_BIN="${GH_BIN:-gh}"'
 seam_in scan_gate.sh '"$GH_BIN" api'
 
@@ -122,5 +137,13 @@ seam_in run-watch.sh 'local hour="${1:-$(date +%H)}"'
 t_case "run-watch: 模型 pin + 阶段超时 seam（09-06 同款挂死模式预防）"
 seam_in run-watch.sh 'MODEL_PIN="${CLAUDE_MODEL_PIN:-}"'
 seam_in run-watch.sh 'WATCH_PHASE_TIMEOUT="${WATCH_PHASE_TIMEOUT:-2700}"'
+
+# ---------------- T6 board seam（缺省=空=不 pin，回退态语义零变化） ----------------
+t_case "board seam: kanban_card KANBAN_BOARD 缺省空（回退态）"
+seam_in kanban_card.sh 'KANBAN_BOARD="${KANBAN_BOARD:-}"'
+
+t_case "board seam: 入口切换行（T6 实机验证 PASS 后的生产缺省； dollar-brace 负号形态=仅 unset 取缺省，显式空串=回退）"
+seam_in run-watch.sh 'export KANBAN_BOARD="${KANBAN_BOARD-contrib}"'
+seam_in run-deepcheck.sh 'export KANBAN_BOARD="${KANBAN_BOARD-contrib}"'
 
 t_finish

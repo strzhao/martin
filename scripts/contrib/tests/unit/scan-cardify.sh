@@ -44,11 +44,24 @@ watch_issues() {
   { gh_issue "$1" "a"; gh_issue $((1 + $1)) "b"; } >"$SB_ROOT/gh.rows"
   jq -s . "$SB_ROOT/gh.rows" >"$SB_ROOT/gh-issues.json"
 }
+# pending_hits_sentinel — 撤销兼容写后的哨兵前置态：scan_gate 全程不得读/写该文件
+pending_hits_sentinel() {
+  printf '[{"number":999999,"title":"SENTINEL-REVOKED-PROBE"}]\n' \
+    >"$SB_ROOT/contrib-data/pending-hits.json"
+}
+# sentinel_intact — 哨兵未被触碰（零写撤销断言的查询端）
+sentinel_intact() {
+  local n
+  n="$(jq -r '[.[] | select(.number == 999999)] | length' \
+    "$SB_ROOT/contrib-data/pending-hits.json" 2>/dev/null || echo 0)"
+  [[ "$n" == "1" ]] && [[ "$(jq -r 'length' "$SB_ROOT/contrib-data/pending-hits.json" 2>/dev/null)" == "1" ]]
+}
+
 # watch_sb — 每用例新沙箱 + 游标 2000 + 首轮 issue 2001/2002
 watch_sb() {
   sb_new >/dev/null 2>&1
   printf '{"last_issue":2000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-  printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+  pending_hits_sentinel
   watch_issues 2001
 }
 # run_watch [K=V ...] — 注入 gh issues 数据源跑一轮 run-watch
@@ -121,10 +134,10 @@ assert_ne $? 0 "hermes 建卡失败 → exit≠0"
 
 # ---------------- ② scan_gate.sh ----------------
 
-t_case "scan_gate: 命中双写——批次文件(state=pending) + pending-hits 兼容 + 指针文件"
+t_case "scan_gate: 命中单写（T6 兼容写撤销）——批次文件唯一数据源 + pending-hits 零写入 + 指针文件"
 sb_new >/dev/null 2>&1
 printf '{"last_issue":5000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+pending_hits_sentinel
 { gh_issue 5001 "gateway weixin 投递失败"; gh_issue 5002 "sessions state.db 锁"; } >"$SB_ROOT/gh.rows"
 jq -s . "$SB_ROOT/gh.rows" >"$SB_ROOT/gh-issues.json"
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
@@ -134,7 +147,7 @@ assert_eq "$(ls "$batch_dir"/batch-*.json 2>/dev/null | wc -l | tr -d ' ')" "1" 
 batch_file="$(ls "$batch_dir"/batch-*.json 2>/dev/null | head -1)"
 assert_eq "$(jq -r '[.[] | select(.state == "pending")] | length' "$batch_file" 2>/dev/null)" "2" "批次条目 state=pending"
 assert_eq "$(jq -r '.[0].number' "$batch_file" 2>/dev/null)" "5001" "批次条目保留原始 hit 字段"
-assert_eq "$(jq -r '[.[] | select(.number == 5001)] | length' "$SB_ROOT/contrib-data/pending-hits.json")" "1" "pending-hits 兼容写保留"
+sentinel_intact && _pass "pending-hits 零写入（兼容写已撤销，哨兵原样）" || _fail "pending-hits 零写入（兼容写已撤销，哨兵原样）" "哨兵被读改写——兼容写未撤干净"
 if printf '%s' "$(basename "$batch_file")" | grep -qE '^batch-[0-9]{8}-[0-9]{6}\.json$'; then
   _pass "批次文件名秒级 TS"
 else
@@ -144,10 +157,10 @@ ptr="$SB_ROOT/contrib-data/scan-latest-batch.json"
 assert_eq "$(jq -r '.batch_file' "$ptr" 2>/dev/null)" "$batch_file" "指针文件指向批次"
 assert_eq "$(jq -r '.count' "$ptr" 2>/dev/null)" "2" "指针文件 count"
 
-t_case "scan_gate: 无 cap 挤出——60 条命中全保留"
+t_case "scan_gate: 无 cap 挤出——60 条命中全保留（批次文件单源锚定）"
 sb_new >/dev/null 2>&1
 printf '{"last_issue":4000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+pending_hits_sentinel
 : >"$SB_ROOT/gh.rows"
 i=0
 while (( i < 60 )); do
@@ -157,14 +170,18 @@ done
 jq -s . "$SB_ROOT/gh.rows" >"$SB_ROOT/gh-issues.json"
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
 assert_exit 10 $?
-assert_eq "$(jq -r 'length' "$SB_ROOT/contrib-data/pending-hits.json")" "60" "60 条命中零挤出"
+batch_file="$(ls "$SB_ROOT/contrib-data/pending-batches"/batch-*.json 2>/dev/null | head -1)"
+assert_eq "$(jq -r 'length' "$batch_file" 2>/dev/null)" "60" "60 条命中零挤出（全部在批次文件）"
 
-t_case "scan_gate: backlog 两源去重口径 + >80 告警幂等"
+t_case "scan_gate: backlog 批次单源去重口径（T6 撤销后） + >80 告警幂等"
 sb_new >/dev/null 2>&1
 printf '{"last_issue":3000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-# 两源同 hit 只计一次：pending-hits 预置 #3001，本轮批次亦含 #3001 → 去重后 81（若双计=82 仍 >80，
-# 故以「批次 done 写回后仅剩 pending-hits 侧」场景验证去重更弱——此处直接断言告警存在 + 幂等）
-printf '[%s]\n' "$(gh_issue 3001 "既有积压")" >"$SB_ROOT/contrib-data/pending-hits.json"
+pending_hits_sentinel
+# 跨批次文件去重：既有批次预置 pending #3001，本轮批次亦含 #3001 → 去重后 81
+# （若跨文件双计=82 仍 >80，故直接断言告警存在 + 幂等——口径为「跨批次按 .number 去重」）
+mkdir -p "$SB_ROOT/contrib-data/pending-batches"
+printf '[%s]\n' "$(gh_issue 3001 "既有积压")" \
+  | jq 'map(. + {state: "pending"})' >"$SB_ROOT/contrib-data/pending-batches/batch-20260908-000000.json"
 : >"$SB_ROOT/gh.rows"
 gh_issue 3001 "既有积压" >>"$SB_ROOT/gh.rows"
 i=0
@@ -185,11 +202,12 @@ fi
 # 同日再跑（积压仍在账）：告警不重复入账
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
 assert_eq "$(grep -c 'pipeline-failure' "$events" 2>/dev/null || true)" "1" "同日重跑告警不重复（--key 幂等）"
+sentinel_intact && _pass "积压聚合不再读 pending-hits（哨兵原样）" || _fail "积压聚合不再读 pending-hits（哨兵原样）" "哨兵被触碰"
 
 t_case "scan_gate: 批次文件损坏容错——坏文件显式告警 + 好文件仍计入积压"
 sb_new >/dev/null 2>&1
 printf '{"last_issue":7000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+pending_hits_sentinel
 mkdir -p "$SB_ROOT/contrib-data/pending-batches"
 # 坏文件（worker 写坏形态：截断 JSON）
 printf '[{"number":7001,"title":"broken","state":"pendi' >"$SB_ROOT/contrib-data/pending-batches/batch-20260909-010101.json"
@@ -207,11 +225,34 @@ assert_eq "$(jq -r '.count' "$SB_ROOT/contrib-data/scan-latest-batch.json" 2>/de
 t_case "scan_gate: 无命中 → exit 0 零批次文件"
 sb_new >/dev/null 2>&1
 printf '{"last_issue":6000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
+pending_hits_sentinel
 printf '[]\n' >"$SB_ROOT/gh-issues.json"
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
 assert_exit 0 $?
 assert_eq "$(ls "$SB_ROOT/contrib-data/pending-batches"/batch-*.json 2>/dev/null | wc -l | tr -d ' ')" "0" "零命中零批次"
+
+t_case "scan_gate: --init 游标拨号——零 pending-hits 写（哨兵原样）"
+sb_new >/dev/null 2>&1
+pending_hits_sentinel
+{ gh_issue 5554 "旧"; gh_issue 5555 "最新"; } >"$SB_ROOT/gh.rows"
+jq -s . "$SB_ROOT/gh.rows" >"$SB_ROOT/gh-issues.json"
+sb_run -e "STUB_GH_LATEST=5555" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh" --init' >/dev/null 2>&1
+assert_exit 0 $?
+assert_eq "$(jq -r '.last_issue' "$SB_ROOT/contrib-data/scan-cursor.json" 2>/dev/null)" "5555" "--init 游标拨到最新 issue"
+sentinel_intact && _pass "--init 不再写 pending-hits（哨兵原样）" || _fail "--init 不再写 pending-hits（哨兵原样）" "哨兵被清/写——--init 语义未收窄"
+
+t_case "scan_gate: --drain 批次文件语义——pending → drained，done 不动，pending-hits 零读写"
+sb_new >/dev/null 2>&1
+pending_hits_sentinel
+mkdir -p "$SB_ROOT/contrib-data/pending-batches"
+printf '[{"number":8001,"title":"待研判","state":"pending"},{"number":8002,"title":"已研判","state":"done"}]\n' \
+  >"$SB_ROOT/contrib-data/pending-batches/batch-20260909-010101.json"
+sb_run 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh" --drain' >/dev/null 2>&1
+assert_exit 0 $?
+bf="$SB_ROOT/contrib-data/pending-batches/batch-20260909-010101.json"
+assert_eq "$(jq -r '[.[] | select(.number == 8001)][0].state' "$bf" 2>/dev/null)" "drained" "--drain 把 pending 项改写 drained（人工兜底清账）"
+assert_eq "$(jq -r '[.[] | select(.number == 8002)][0].state' "$bf" 2>/dev/null)" "done" "--drain 不动 done 项"
+sentinel_intact && _pass "--drain 不再操作 pending-hits（哨兵原样）" || _fail "--drain 不再操作 pending-hits（哨兵原样）" "哨兵被清/写"
 
 # ---------------- ③ run-watch.sh scan 段矩阵 ----------------
 

@@ -55,9 +55,11 @@
 
 **lane 模式接入（2026-09-07 实施；09-08 lane 改造，详见 [`hermes-lane-protocol.md`](hermes-lane-protocol.md) §8）**：contrib 域 lane 现状——①`contrib` profile（hermes worker，只读研判专家：premise 复验/状态核查/报告解读；gh 只读红线，SOUL.md 含 hermes-contribution.md 知识源路由）；②own-PR 执行走 **coder lane 全自动**（09-08 起，`contrib-cc` lane 已下线：execute.sh own-PR 已批分支自动建 coder 卡，dispatcher spawn worker 驱动 claude -p 完成 push fork + gh pr create，rq set executed 由 worker 收尾）。escalate 审批项**不建卡**（消费者是用户非 worker，防双消费）。流水线主链与三路 L2 审批全部原样保留。
 
-### 机会流水线 contrib-watch（09-02 上线，试点 local-only）
+### 机会流水线 contrib-watch（09-02 上线；09-09 起卡化架构，T1-T6 交付）
 
-主轴 2.0 的执行层：launchd `com.stringzhao.contrib-watch`（每小时 :07）跑 `scripts/contrib/run-watch.sh`——廉价闸门粗滤新 issue（`scan_gate.sh`，零命中不开 LLM）→ 有命中才 `claude -p "/contrib-watch scan"` 研判（15 分 rubric → own-PR / probe-salvage / review-evidence / watch / skip 五分类）；每日 08 窗口 radar（停滞 PR 雷达 = salvage 供给线 + 自有 PR 资产盘点 + 台账复检 + 至多 1 个自动构建）。产物全落 `contrib-data/`（gitignore）：briefs（每日简报）/ radar / runs（构建记录）/ ledger.md（观察台账）。手动入口：`/contrib-watch scan|radar|build <issue#>`。
+主轴 2.0 的执行层，**卡化架构**：launchd `com.stringzhao.contrib-watch`（每小时 :07）跑 `scripts/contrib/run-watch.sh` 五段骨架（scan 闸门→mail 闸门→radar→notify flush→深检快车道），**每段=廉价闸门（零 LLM）→ 建 hermes contrib 研判卡（`kanban_card.sh` 唯一建卡口，卡 on contrib 专用 board，`export KANBAN_BOARD` 切换/回退一个开关）→ flight 登记终态跟踪 → flush**；批量研判由 contrib profile worker 按 `.claude/skills/contrib-watch/SKILL.md` 六模式执行（scan/radar/build/deep-check/mail/digest），**claude -p 降级为兜底路**（建卡失败/QC 开闸时才走）。待研判唯一数据源=`contrib-data/pending-batches/` 批次文件（pending-hits.json 兼容写已于 09-10 撤销，旧 77 条中 39 条独有条目一次性迁移并入批次，双写重复项自然收敛）。产物全落 `contrib-data/`（gitignore）：briefs / radar / runs / ledger.md / pending-batches。手动入口：`/contrib-watch scan|radar|build|deep-check|mail|digest`。
+
+**gateway 存活哨兵（09-10 新增，未装载）**：`scripts/contrib/gateway_sentinel.sh` + `com.stringzhao.contrib-gateway-sentinel.plist`（每 15min；pgrep 死→event `<日期>-gateway-down` 日级幂等，探针异常只日志；检测≠送达，恢复后随 flush 送达）。**装载是人工步骤**：`launchctl bootstrap gui/$(id -u) ~/workspace/martin/scripts/contrib/com.stringzhao.contrib-gateway-sentinel.plist`（命令在脚本头注释）。何时用：怀疑「消息没发/cron 全败」时先查哨兵日志 `contrib-data/logs/sentinel.log`。
 
 **边界**：scan/radar 严格 L1 只读（gh 读+本地写）；build 产出本地 worktree 分支 + PR-DRAFT 草稿，**绝不 push / 绝不 gh pr create**——提交永远人工，L2 闸门不豁免；自动构建旋钮在 `contrib-data/config.json`（auto_build / min_build_score=12 / 每日上限 1）。观察真实运转质量后再评估是否放开自动提交。
 

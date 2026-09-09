@@ -11,7 +11,10 @@
 #  - `kanban list --json` 输出 $STUB_LOG_DIR/kanban-cards.jsonl 卡库（每行一卡 JSON 对象）
 #    → 终态前置态经该文件播种（status: done/blocked/running/…）
 #  - `kanban show <id> --json` 输出 {"task":{"id","status"},"runs":[{"outcome"}]}，
-#    status/outcome 由 STUB_KANBAN_STATUS / STUB_KANBAN_OUTCOME env 控制
+#    status/outcome 由 STUB_KANBAN_CARD_STATUS / STUB_KANBAN_RUN_OUTCOME env 控制
+#    （09-10 T6 修正：原文 STUB_KANBAN_STATUS/STUB_KANBAN_OUTCOME 为无效旋钮名——stub 实际
+#    旋钮见 tests/stubs/hermes 头注释；该用例彼时靠 seed 卡库+stub 缺省 outcome 侥幸通过，
+#    断言仍真但注释与传参均漂移。本修正让 gave_up 注入真实生效。）
 #  - 「card_id 查无（archived/异常）视同失败」→ 卡库清空表达「查无」
 #  - 建卡失败 → STUB_HERMES_FAIL=1
 # CONTRACT_AMBIGUOUS：
@@ -175,7 +178,7 @@ t_case "3.4 flight blocked+outcome=gave_up → 清登记 + fallback + event（bl
 common_setup
 seed_flight "t_old" "$(date +%s)"
 seed_card_store "blocked"
-run_watch -e STUB_KANBAN_STATUS=blocked -e STUB_KANBAN_OUTCOME=gave_up 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null; RC=$?
+run_watch -e STUB_KANBAN_CARD_STATUS=blocked -e STUB_KANBAN_RUN_OUTCOME=gave_up 'zsh "$MARTIN_DIR/scripts/contrib/run-watch.sh"' >/dev/null; RC=$?
 ge1 "$(list_calls)" "3.4 在飞查询被调"
 assert_eq "$(scan_create_calls)" "0" "3.4 失败终态不建新 scan 卡（digest 告警卡合法，语义演进 09-09）"
 assert_eq "$(claude_scan_calls)" "1" "3.4 blocked → fallback claude 旧路被调"

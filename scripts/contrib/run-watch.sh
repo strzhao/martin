@@ -1,7 +1,11 @@
 #!/bin/zsh
-# contrib-watch launchd 入口：每小时 :07 触发
-#   1. 廉价闸门（无 LLM）；有命中 → headless claude -p 研判（contrib-watch skill 的 scan 模式）
-#   2. 每日 08 窗口 → radar（停滞 PR 雷达 + 自有资产盘点 + 至多 1 个本地自动构建）
+# contrib-watch launchd 入口：每小时 :07 触发（T1-T5 卡化后编排骨架：每段=闸门→建卡→flight→flush）
+#   1. 廉价闸门（无 LLM）；有命中 → contrib 研判卡主路（hermes kanban 卡，worker 研判；
+#      claude -p 仅兜底）
+#   1.5 邮件闸门 → mail 研判卡（同上分层）
+#   2. 每日 08 窗口/补跑旗标 → radar 研判卡
+#   3. notify flush（叙事批 digest 卡异步 + 审批卡补推 sweep）
+#   4. 快车道深检 → deepcheck 依赖卡链（preflight 卡 → worker 自建 redteam 子卡）
 # 所有产物落 contrib-data/，本脚本只做编排，不做任何对外动作（无 push/无评论）。
 set -uo pipefail
 
@@ -40,7 +44,15 @@ fi
 MODEL_FLAG=()
 [[ -z "$MODEL_PIN" ]] || MODEL_FLAG=(--model "$MODEL_PIN")
 
-# 阶段超时 seam：claude -p 卡死时不得拖死整条 hourly 链（09-06 实证同类挂死模式）
+# board 切换（T6 实机验证 PASS 后启用）：contrib 域全部 kanban 调用（建卡+flight 查询+digest/
+# deepcheck 查询）pin 到 contrib 专用 board——并发预算与 default board 隔离。回退=删除本 export
+# 或外部 export KANBAN_BOARD=""（`${KANBAN_BOARD-contrib}` 只对 unset 取缺省——显式空串=显式回退，
+# 沙箱测试依赖此语义）。kanban_card/run-watch/notify/deepcheck_card 四处 seam 均「env 空=不 pin」。
+# 实机验证证据见 .autopilot/project/tasks/T6-*.handoff.md
+export KANBAN_BOARD="${KANBAN_BOARD-contrib}"
+
+# 阶段超时 seam：只裹 claude 兜底路与 flight 查询（建卡是本地快操作，重入锁已防并发；
+# 卡研判的执行预算归 dispatcher/worker 管，编排层不越权兜底）
 WATCH_PHASE_TIMEOUT="${WATCH_PHASE_TIMEOUT:-2700}"
 run_phase() {
   local secs="$1"; shift
@@ -66,9 +78,15 @@ fi
 SKILL_MD="$MARTIN/.claude/skills/contrib-watch/SKILL.md"
 STALE_SECS=21600   # flight 陈旧守卫 6h：防 dispatcher 停机使 flight 永非终态 → 跳过放大停摆
 FLIGHT_TIMEOUT="${FLIGHT_TIMEOUT:-30}"   # flight 查询挂死守卫（B4）：hermes list/show 超时秒数
-# flight 终态查询用：run_phase 包裹（timeout→perl→直跑三级退化）——hermes 挂死不再拖死整轮
+# flight 终态查询用：run_phase 包裹（timeout→perl→直跑三级退化）——hermes 挂死不再拖死整轮。
+# board seam（T6）：KANBAN_BOARD 非空时 kanban 调用统一 pin 到该 board——--board 是 kanban
+# 父级 flag，必须插在子命令前（hermes kanban --board X list/show）；空=不 pin（default board
+# 回退态）。查询与 kanban_card.sh（同一 env）建卡同源，flight 查询才看得到卡所在 board 的卡。
 hermes_call() {
-  run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY "$HERMES_BIN" "$@"
+  local -a board_args=()
+  [[ -n "${KANBAN_BOARD:-}" ]] && board_args=(--board "$KANBAN_BOARD")
+  run_phase "$FLIGHT_TIMEOUT" env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY \
+    "$HERMES_BIN" kanban "${board_args[@]}" "$@"
 }
 
 # 防重入（上一轮 LLM 还没跑完时跳过本轮）；锁滞留 >2h 视为残留 → 告警并强清
@@ -90,13 +108,11 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 cd "$MARTIN"
 
 # 配额断路器（09-06 八连 429 空烧沉淀；T2 语义收窄）：QC 只管 claude 兜底路（GLM 配额）——
-# radar / mail 研判 / fallback_scan 等 claude 调用受 QC 挡；建卡路（deepseek 卡，零 GLM 成本）
-# 不受限。QC_OPEN 变量仍计算（radar/mail 分支消费）；scan 建卡分支不消费它。
+# 这里只做开闸可见性日志；真实消费在各 fallback 函数内自查（zsh $QC check），建卡路不受限。
+# （T6 清理：原配额开闸标记变量在 T3 卡化后已无读者，删除——语义等价保留 check 本身。）
 QC="$MARTIN/scripts/contrib/quota_circuit.sh"
-QC_OPEN=0
 if [[ -x "$QC" ]]; then
   if ! qc_remain="$(zsh "$QC" check)"; then
-    QC_OPEN=1
     echo "[$(ts)] 配额断路器打开（冷却剩余 ${qc_remain}s，仅挡 claude 兜底路）" >>"$LOG"
   fi
 fi
@@ -211,7 +227,7 @@ if (( rc == 10 )); then
     create_scan_card
   else
     card_status=""
-    if list_json="$(hermes_call kanban list --json 2>>"$LOG")"; then
+    if list_json="$(hermes_call list --json 2>>"$LOG")"; then
       card_status="$(printf '%s' "$list_json" | jq -r --arg id "$flight_card_id" \
         '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
     fi
@@ -223,7 +239,7 @@ if (( rc == 10 )); then
         ;;
       blocked)
         run_outcome=""
-        if show_json="$(hermes_call kanban show "$flight_card_id" --json 2>>"$LOG")"; then
+        if show_json="$(hermes_call show "$flight_card_id" --json 2>>"$LOG")"; then
           run_outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
         fi
         case "$run_outcome" in
@@ -346,7 +362,10 @@ create_mail_card() {
     card_fallback_mail "建卡输出缺 id"
     return 0
   fi
-  # 登记第五键 pending_max_id = 建卡时 pending 最大 id 快照（cursor 本轮不动）
+  # 登记第五键 pending_max_id = 建卡时 pending 最大 id 快照（cursor 本轮不动）。
+  # batch_file 为空串占位（T6 契约补句）：mail 数据源=mail-pending.json 本体，无批次文件概念；
+  # radar 同（产出=briefs/radar 报告，无输入批次）。flight 的 batch_file 键仅 scan/deepcheck 为实路径
+  # （deepcheck 亦空串——其数据源是 ready-queue 项，T4 起空串为合法值）。
   pmax="$(mail_pending_max_id "$MAIL_PENDING")"
   jq -n --arg kind mail --arg id "$card_id" --arg bf "" --argjson e "$(date +%s)" --argjson p "$pmax" \
     '{kind: $kind, card_id: $id, batch_file: $bf, created_epoch: $e, pending_max_id: $p}' \
@@ -365,7 +384,7 @@ if [[ -x "$MARTIN/scripts/contrib/mail_gate.sh" ]]; then
     if [[ -n "$mail_flight_card" ]]; then
       # 终态检查嵌在 mrc==10 门内（设计注 I5：登记在飞 ⇒ pending 非空 ⇒ mrc==10）
       card_status=""
-      if list_json="$(hermes_call kanban list --json 2>>"$LOG")"; then
+      if list_json="$(hermes_call list --json 2>>"$LOG")"; then
         card_status="$(printf '%s' "$list_json" | jq -r --arg id "$mail_flight_card" \
           '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
       fi
@@ -389,7 +408,7 @@ if [[ -x "$MARTIN/scripts/contrib/mail_gate.sh" ]]; then
           ;;
         blocked)
           run_outcome=""
-          if show_json="$(hermes_call kanban show "$mail_flight_card" --json 2>>"$LOG")"; then
+          if show_json="$(hermes_call show "$mail_flight_card" --json 2>>"$LOG")"; then
             run_outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
           fi
           case "$run_outcome" in
@@ -514,7 +533,7 @@ maybe_radar() {
   fi
   if [[ -n "$radar_card" ]]; then
     card_status=""
-    if list_json="$(hermes_call kanban list --json 2>>"$LOG")"; then
+    if list_json="$(hermes_call list --json 2>>"$LOG")"; then
       card_status="$(printf '%s' "$list_json" | jq -r --arg id "$radar_card" \
         '[.[] | select(.id == $id)][0].status // empty' 2>>"$LOG" || true)"
     fi
@@ -532,7 +551,7 @@ maybe_radar() {
         ;;
       blocked)
         run_outcome=""
-        if show_json="$(hermes_call kanban show "$radar_card" --json 2>>"$LOG")"; then
+        if show_json="$(hermes_call show "$radar_card" --json 2>>"$LOG")"; then
           run_outcome="$(printf '%s' "$show_json" | jq -r '[.runs[]? | select(.outcome != null)][-1].outcome // empty' 2>>"$LOG" || true)"
         fi
         case "$run_outcome" in

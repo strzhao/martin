@@ -78,8 +78,18 @@ if [[ "${STUB_HERMES_SUCCESS_FALSE:-}" == "1" ]]; then
 fi
 
 # kanban 子命令可控终态旋钮（fail 类旋钮已优先处理，保持既有用例语义）
+# T6：--board <slug> 是 kanban 父级 flag（hermes kanban --board X <sub>）——stub 先剥掉该
+# flag 再匹配子命令，id 等位置参数同步左移（与真实 CLI 一致：--board 只路由不改语义）
 if [[ "${1:-}" == "kanban" ]]; then
-  case "${2:-}" in
+  _sub="${2:-}"
+  _id="t_stub"
+  if [[ "$_sub" == "--board" ]]; then
+    _sub="${4:-}"     # --board 带值：kanban --board <slug> <sub> → 子命令在 $4
+    _id="${6:-t_stub}"  # kanban --board <slug> show <id> --json → id 在 $6
+  else
+    _id="${3:-t_stub}"  # kanban show <id> --json → id 在 $3
+  fi
+  case "$_sub" in
     create)
       cid="t_stub_$n"
       cstatus="${STUB_KANBAN_CREATE_STATUS:-ready}"
@@ -89,6 +99,11 @@ if [[ "${1:-}" == "kanban" ]]; then
       exit 0
       ;;
     list)
+      # T6 挂账用例旋钮：rc=0 但输出非 JSON 数组（healthcheck「输出非数组」失败分支驱动）
+      if [[ -n "${STUB_KANBAN_LIST_RAW:-}" ]]; then
+        printf '%s\n' "$STUB_KANBAN_LIST_RAW"
+        exit 0
+      fi
       if [[ "${STUB_KANBAN_LIST_EMPTY:-}" == "1" || ! -s "$LOG_DIR/kanban-cards.jsonl" ]]; then
         printf '[]\n'
         exit 0
@@ -105,10 +120,10 @@ if [[ "${1:-}" == "kanban" ]]; then
     show)
       stub_status="${STUB_KANBAN_CARD_STATUS:-blocked}"
       if [[ -n "${STUB_KANBAN_STATUS_MAP:-}" ]]; then
-        mapped="$(jq -n -r --arg id "${3:-t_stub}" --argjson m "$STUB_KANBAN_STATUS_MAP" '$m[$id] // empty' 2>/dev/null)"
+        mapped="$(jq -n -r --arg id "$_id" --argjson m "$STUB_KANBAN_STATUS_MAP" '$m[$id] // empty' 2>/dev/null)"
         [[ -n "$mapped" ]] && stub_status="$mapped"
       fi
-      jq -cn --arg id "${3:-t_stub}" --arg s "$stub_status" \
+      jq -cn --arg id "$_id" --arg s "$stub_status" \
         --arg o "${STUB_KANBAN_RUN_OUTCOME:-gave_up}" \
         --argjson ch "${STUB_KANBAN_CHILDREN:-[]}" \
         '{task: {id: $id, status: $s}, runs: [{outcome: $o}], children: $ch}'

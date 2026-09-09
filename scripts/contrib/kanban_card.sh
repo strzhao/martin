@@ -1,10 +1,10 @@
 #!/bin/bash
-# kanban_card.sh — contrib 域建卡薄封装（T1 契约钉死，T3/T4/T5 复用地基）
+# kanban_card.sh — contrib 域建卡薄封装（T1 契约钉死，T3/T4/T5 复用地基；T6 加 board seam）
 #
 # 用法:
 #   kanban_card.sh create --kind <scan|mail|radar|deepcheck|digest>
 #                 --title <t> --body-file <path> [--priority N] [--json-out <path>]
-#                 [--idempotency-key <k>]
+#                 [--idempotency-key <k>] [--board <slug>]
 #   kanban_card.sh healthcheck
 #
 # 输出: stdout 一行归一化 JSON {"id":"...","status":"..."}（两键，jq -c 生成）；
@@ -26,14 +26,21 @@
 #   - create 前置 gate（读法 a）：先 healthcheck 探测（计数由探测驱动，create 自身失败
 #     不写计数）——exit 0/1 继续建卡，exit 3 跳过（调用方走 fallback）；gate 的 stdout
 #     一律路由 stderr，保住「create stdout 恒一行 {id,status}」契约
+#   - board seam（T6）：--board 参数 > KANBAN_BOARD env > 空（不 pin）。非空时 --board
+#     <slug> 插在 kanban 父级 flag 位置（hermes kanban --board X create …）——**必须**在
+#     子命令前，尾部追加=上游 unrecognized arguments 硬失败。空=回落 current-board 解析
+#     （=default board，回退态语义零变化）
 # seam:
 #   HERMES_BIN        缺省 hermes（PATH 前置 $HOME/.local/bin:/opt/homebrew/bin，launchd 极简 PATH 兼容）
 #   HERMES_TIMEOUT    hermes 调用超时秒数（缺省 60；healthcheck 缺省 10）
+#   KANBAN_BOARD      board pin（空=不 pin；入口 export 本 env 即完成 contrib board 切换，
+#                     清空/删除即回退 default board——回退成本一个 env）
 #   CONTRIB_DATA_DIR  --json-out 相对路径的落盘基准感知由调用方负责；healthcheck 的
 #                     .hermes-down 计数文件与 -hermes-down 事件落在此目录
 set -euo pipefail
 
 HERMES_BIN="${HERMES_BIN:-hermes}"
+KANBAN_BOARD="${KANBAN_BOARD:-}"
 MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 DOWN_FILE="$CONTRIB/.hermes-down"
@@ -67,6 +74,17 @@ hermes_call() {
     ${pre[@]+"${pre[@]}"} "$HERMES_BIN" "$@"
 }
 
+# board_args [<显式slug>] → 填充全局 BOARD_ARGS（kanban 父级 flag；参数优先于 env）。
+# 空 slug（两处都空）=不 pin，BOARD_ARGS 为空数组。调用形态：kanban ${BOARD_ARGS[@]} <sub> …
+BOARD_ARGS=()
+board_args() {
+  BOARD_ARGS=()
+  local b="${1:-$KANBAN_BOARD}"
+  if [[ -n "$b" ]]; then
+    BOARD_ARGS=(--board "$b")
+  fi
+}
+
 # down_count → $DOWN_FILE 中的整数（缺失/损坏按 0，自愈）
 down_count() {
   local c
@@ -91,7 +109,8 @@ run_healthcheck() {
   local secs="${HERMES_TIMEOUT:-10}"
   local resp rc=0 err_file reason=""
   err_file="$(mktemp "${TMPDIR:-/tmp}/kbc-hc.XXXXXX" 2>/dev/null)" || err_file="${TMPDIR:-/tmp}/kbc-hc.$$"
-  resp="$(hermes_call "$secs" kanban list --json 2>"$err_file")" || rc=$?
+  board_args
+  resp="$(hermes_call "$secs" kanban ${BOARD_ARGS[@]+"${BOARD_ARGS[@]}"} list --json 2>"$err_file")" || rc=$?
   reason="$(tail -c 160 "$err_file" 2>/dev/null | tr '\n' ' ')"
   rm -f "$err_file"
   # 热修 09-09：grep -q 提前退出 × pipefail → 大输出（>64KB 管道缓冲）时 printf SIGPIPE
@@ -126,7 +145,7 @@ run_healthcheck() {
 }
 
 create_card() {
-  local kind="" title="" body_file="" priority="" json_out="" idem_override=""
+  local kind="" title="" body_file="" priority="" json_out="" idem_override="" board=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --kind) kind="${2:-}"; shift 2 ;;
@@ -136,6 +155,8 @@ create_card() {
       --json-out) json_out="${2:-}"; shift 2 ;;
       # T4：可选覆盖（attempt 级 key，防同 rq-id 重试循环拿回既有卡死锁）；缺省现行为不变
       --idempotency-key) idem_override="${2:-}"; shift 2 ;;
+      # T6：board pin（显式参数优先于 KANBAN_BOARD env）
+      --board) board="${2:-}"; shift 2 ;;
       *) usage ;;
     esac
   done
@@ -163,7 +184,8 @@ create_card() {
   local idem_key resp rc=0 normalized err_file err_tail
   idem_key="${idem_override:-${kind}-$(date +%Y%m%d-%H%M%S)}"
   err_file="$(mktemp "${TMPDIR:-/tmp}/kbc-create.XXXXXX" 2>/dev/null)" || err_file="${TMPDIR:-/tmp}/kbc-create.$$"
-  resp="$(hermes_call "${HERMES_TIMEOUT:-60}" kanban create "$title" \
+  board_args "$board"   # --board 必须插在 kanban 与子命令之间（父级 flag 位置，重审 I1）
+  resp="$(hermes_call "${HERMES_TIMEOUT:-60}" kanban ${BOARD_ARGS[@]+"${BOARD_ARGS[@]}"} create "$title" \
       --body "$(cat "$body_file")" \
       --assignee contrib \
       --idempotency-key "$idem_key" \

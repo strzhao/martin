@@ -190,7 +190,6 @@ fi
 if sb_new >/dev/null 2>&1; then
   printf '[]\n' >"$SB_ROOT/gh-issues.json"
   printf '{"last_issue":9000}\n' >"$SB_ROOT/contrib-data/scan-cursor.json"
-  printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
   mkdir -p "$SB_ROOT/mailstub"
   printf '{"last_id":8000,"initialized":"t"}\n' >"$SB_ROOT/contrib-data/mail-cursor.json"
   jq -cn '{id:"8001",flags:[],subject:"Re: [NousResearch/hermes-agent] e2e",from:{name:"T",addr:"notifications@github.com"},to:{name:"x",addr:"hermes-agent@noreply.github.com"},date:"d",has_attachment:false}' \
@@ -243,9 +242,11 @@ if sb_new >/dev/null 2>&1; then
     || dc_fail="$dc_fail F:主路调了 claude"
   DC_CARD_1="$(jq -r '.card_id // empty' "$DC_FLIGHT" 2>/dev/null)"
   # G: worker 模拟收尾（卡内职责）→ preflight 卡 done
+  # （09-10 drift 修：并行 goods-gate 升级（2e36e2c）后 auto-gate 硬条件 5 要求 verdict 必带
+  #   goods.status——沙箱种子同步补 goods=none，否则 auto-gate fail-closed 桥接不 approved）
   sb_rq set "$DC2_ID" deep-check --note "worker 模拟" >/dev/null 2>&1
   mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/$DC2_ID"
-  printf '{"decision":"auto","confidence":"high","risk_level":"low","reasons":[]}\n' \
+  printf '{"decision":"auto","confidence":"high","risk_level":"low","reasons":[],"goods":{"status":"none"}}\n' \
     >"$SB_ROOT/contrib-data/runs/deep-check/$DC2_ID/verdict.json"
   sb_rq set "$DC2_ID" awaiting-approval --note "worker 模拟 final" >/dev/null 2>&1
   printf '{"id":"%s","status":"done","assignee":"contrib","priority":0}\n' "$DC_CARD_1" \

@@ -16,6 +16,10 @@ DEEPCHECK_CARD="$MARTIN/scripts/contrib/deepcheck_card.sh"
 # （.claude/skills/），不 cd 会在 preflight 直接 Unknown command（09-05 实证）
 cd "$MARTIN" || exit 1
 
+# board 切换（T6）：深检卡与查询 pin contrib 专用 board（同 run-watch 一个开关；回退=删除本行
+# 或外部 export KANBAN_BOARD=""——`${KANBAN_BOARD-contrib}` 只对 unset 取缺省，显式空串=显式回退）
+export KANBAN_BOARD="${KANBAN_BOARD-contrib}"
+
 echo "[$(date '+%F %T')] ===== run-deepcheck start =====" >>"$LOG"
 
 # fallback claude 编排壳（建卡失败才走；原样保留——整壳超时 seam：deep-check.sh 自身挂死时

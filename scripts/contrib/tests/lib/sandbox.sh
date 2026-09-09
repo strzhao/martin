@@ -133,6 +133,8 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
   # 4) seam 全量导出（默认值与生产硬编码逐字符一致，仅指向沙箱）
   export MARTIN_DIR="$SB_ROOT"
   export CONTRIB_DATA_DIR="$SB_ROOT/contrib-data"
+  # board seam（T6）：沙箱缺省空=回退态（零 --board）；SB_KANBAN_BOARD=<slug> 可整体注入 pin 态
+  export KANBAN_BOARD="${SB_KANBAN_BOARD:-}"
   export NOTIFY_LOCK="$SB_ROOT/locks/notify.lock"
   export NOTIFY_SEND_LAST="$SB_STUBLOG/hermes-send-last.json"
   export RQ_LOCKDIR="$SB_ROOT/locks/rq.lock"
@@ -179,6 +181,7 @@ sb_run() {
       PATH="$SB_STRICT_PATH" \
       MARTIN_DIR="$SB_ROOT" \
       CONTRIB_DATA_DIR="$SB_ROOT/contrib-data" \
+      KANBAN_BOARD="${SB_KANBAN_BOARD:-}" \
       NOTIFY_LOCK="$SB_ROOT/locks/notify.lock" \
       NOTIFY_SEND_LAST="$SB_STUBLOG/hermes-send-last.json" \
       RQ_LOCKDIR="$SB_ROOT/locks/rq.lock" \

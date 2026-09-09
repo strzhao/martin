@@ -143,7 +143,7 @@ t_case "healthcheck: 超时注入（stub delay 2s + HERMES_TIMEOUT=1）→ 视�
 sb_new >/dev/null 2>&1
 out="$(run_hc STUB_HERMES_DELAY=2 HERMES_TIMEOUT=1)"
 assert_exit 1 $?
-case "$out" in FAIL*) _pass "超时归入失败面（{out}）" ;; *) _fail "超时归入失败面" "实得 [$out]" ;; esac
+case "$out" in FAIL*) _pass "超时归入失败面（${out}）" ;; *) _fail "超时归入失败面" "实得 [$out]" ;; esac
 assert_eq "$(cat "$SB_ROOT/contrib-data/$DOWN_FILE_NAME" 2>/dev/null)" "1" "超时失败也驱动 down 计数"
 
 t_case "create 前置 gate（读法 a）：down>=2 → exit≠0 + 零 kanban create + stdout 零泄漏"
@@ -244,6 +244,13 @@ case "$trip_val" in
   ''|*[!0-9]*) _fail "trip 写单整数 epoch" "实得 [$trip_val]" ;;
   *) _pass "trip 写单整数 epoch（${trip_val}）" ;;
 esac
+
+t_case "healthcheck: rc=0 但输出非 JSON 数组 → 失败分支（T6 挂账补用例：down=1 + FAIL 输出非数组）"
+sb_new >/dev/null 2>&1
+out="$(run_hc 'STUB_KANBAN_LIST_RAW={"success":true,"id":"not-an-array"}')"
+assert_exit 1 $?
+case "$out" in FAIL*) _pass "非数组输出归入失败面（${out}）" ;; *) _fail "非数组输出归入失败面" "实得 [$out]" ;; esac
+assert_eq "$(cat "$SB_ROOT/contrib-data/$DOWN_FILE_NAME" 2>/dev/null)" "1" "非数组失败驱动 down 计数"
 
 t_case "healthcheck: 大输出（>64KB 管道缓冲）SIGPIPE 回归——grep -q 提前退出不得误判（09-09 生产实锤）"
 sb_new >/dev/null 2>&1

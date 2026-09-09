@@ -159,6 +159,26 @@ assert_eq "$(batch_sent_field "$BATCH")" "false" "sent:false"
 assert_eq "$(batch_reason "$BATCH")" "send" "reason=send"
 assert_eq "$(jq -r 'select(.key == "sd-fail") | .attempts' "$SB_ROOT/contrib-data/events.jsonl")" "0" "attempts 不计（防卡重试×flush 重试双计数）"
 
+t_case "send-digest: B-2 佐证新鲜度守卫——_send_result_fresh（陈旧/缺失 → 空佐证，新鲜 → 放行）"
+sb_new >/dev/null 2>&1
+# 集成路无法构造真陈旧（stub 失败也会经 > 重写 NOTIFY_SEND_LAST）——直测守卫函数：
+# source 模式（NOTIFY_SOURCE_ONLY=1，notify.sh 既有 source guard）只装载纯函数
+out="$(sb_run '
+NOTIFY_SOURCE_ONLY=1
+source "$MARTIN_DIR/scripts/contrib/notify.sh" >/dev/null 2>&1
+started="$(date +%s)"
+r1="$(_send_result_fresh "$started")"
+printf "{\"success\":true,\"id\":\"leftover\"}\n" >"$NOTIFY_SEND_LAST"
+touch -t 202001010000 "$NOTIFY_SEND_LAST"
+r2="$(_send_result_fresh "$started")"
+touch "$NOTIFY_SEND_LAST"
+r3="$(_send_result_fresh "$started")"
+printf "r1=[%s]|r2=[%s]|r3=[%s]" "$r1" "$r2" "$r3"
+')"
+assert_contains "$out" "r1=[]" "文件缺失 → 空佐证"
+assert_contains "$out" "r2=[]" "陈旧残留（mtime < 调用起点）→ 空佐证（不得冒充本次 send_result）"
+assert_contains "$out" "r3=[$NOTIFY_SEND_LAST" "本次新鲜回写 → 放行佐证"
+
 t_case "send-digest: 空卡守卫 → FAIL empty-card exit1 + sent:false reason=empty-card"
 sb_new >/dev/null 2>&1
 BATCH="$SB_ROOT/contrib-data/pending/digest-empty.json"
@@ -359,6 +379,19 @@ assert_exit 0 $?
 assert_eq "$(pushed_count)" "$before_pushed" "消费轮零新增 pushed（不重）"
 [[ ! -f "$FLIGHT" ]] && _pass "flight 清" || _fail "flight 清" "残留"
 [[ ! -f "$SNAP" ]] && _pass "快照清" || _fail "快照清" "残留"
+[[ ! -f "${SNAP%.json}.body.md" ]] && _pass "B-3 卡 body 清" || _fail "B-3 卡 body 清" "残留 ${SNAP%.json}.body.md"
+[[ ! -f "${SNAP%.json}.card.json" ]] && _pass "B-3 卡 json 清" || _fail "B-3 卡 json 清" "残留 ${SNAP%.json}.card.json"
+[[ ! -f "${SNAP%.json}.digest.md" ]] && _pass "B-3 摘要文件清" || _fail "B-3 摘要文件清" "残留"
+
+sb_cleanup
+
+t_case "B-3 建卡失败即清——digest 建卡失败后 pending/ 零该轮派生残留"
+sb_new >/dev/null 2>&1
+sb_notify event pipeline-failure --key b3-fail --summary "建卡失败清理用例" >/dev/null
+before_bodies="$(ls "$SB_ROOT"/contrib-data/pending/ 2>/dev/null | wc -l | tr -d ' ')"
+sb_run -e "STUB_HERMES_FAIL=1" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
+after_bodies="$(ls "$SB_ROOT"/contrib-data/pending/ 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "$after_bodies" "$before_bodies" "建卡失败 → 派生文件（快照/摘要/body/json）零残留（B-3）"
 
 sb_cleanup
 t_finish
