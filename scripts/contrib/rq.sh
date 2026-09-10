@@ -144,9 +144,11 @@ cmd_add() {
     esac
   done
   [[ -n "$issue" && -n "$disp" && -n "$score" ]] || die "add 必须 --issue/--disposition/--score"
+  # release-gate（2026-09-09，hm release 发版批准门）：issue 为合成数字（appId 后 6 位），
+  # 不对应真实 GitHub issue；批准 = execute.sh release-gate 分支调 hm release approve
   case "$disp" in
-    own-PR|review-evidence|probe-salvage) ;;
-    *) die "disposition 必须是 own-PR|review-evidence|probe-salvage" ;;
+    own-PR|review-evidence|probe-salvage|release-gate) ;;
+    *) die "disposition 必须是 own-PR|review-evidence|probe-salvage|release-gate" ;;
   esac
   [[ "$score" =~ ^[0-9]+$ ]] || die "score 必须是整数"
   # lane 缺省规则：probe-salvage→probe；其余→deep
@@ -255,7 +257,7 @@ cmd_amend() {
   [[ -n "$id" ]] || die "amend 用法: rq.sh amend <id> [--disposition D] [--pr N] [--note N]"
   [[ -n "$disp" || -n "$pr" ]] || die "amend 至少要给一个待改字段（--disposition/--pr）"
   if [[ -n "$disp" ]]; then
-    case "$disp" in own-PR|review-evidence|probe-salvage) ;; *) die "disposition 必须是 own-PR|review-evidence|probe-salvage" ;; esac
+    case "$disp" in own-PR|review-evidence|probe-salvage|release-gate) ;; *) die "disposition 必须是 own-PR|review-evidence|probe-salvage|release-gate" ;; esac
   fi
   if [[ -n "$pr" ]]; then [[ "$pr" =~ ^[0-9]+$ ]] || die "pr 必须是数字"; fi
   assert_no_secret "$disp|$pr|$note"
@@ -560,13 +562,26 @@ case "$cmd" in
     ;;
   set-draft)
     # set-draft <id> <path> —— deep-check/演练登记成稿路径（draft 非空是审批推送前置）
+    # 同步注入 goods 摘要（09-10 用户要求：审批卡必答「有没有我方 PR/commit」——
+    # 数据源 = runs/deep-check/<id>/verdict.json 的 goods 节；probe/人工立项路无 verdict
+    # 时读草稿头部「goods:」注释行，都没有则标「未判定」由 notify 卡片显示占位提示）
     id="${1:-}"; dpath="${2:-}"
     [[ -n "$id" && -n "$dpath" ]] || die "set-draft 用法: set-draft <id> <path>"
     [[ -f "$dpath" ]] || die "草稿文件不存在: $dpath"
+    goods_note=""
+    vjson="$CONTRIB/runs/deep-check/$id/verdict.json"
+    if [[ -f "$vjson" ]]; then
+      goods_note="$(jq -r 'if .goods then ("我方货: " + (.goods.status // "?") + " — " + ((.goods.note // "") | .[0:160])) else empty end' "$vjson" 2>/dev/null)"
+    fi
+    if [[ -z "$goods_note" ]]; then
+      goods_note="$(grep -m1 '^    *.*goods[:：]' "$dpath" 2>/dev/null | sed 's/^ *//' | head -c 200)"
+      [[ -n "$goods_note" ]] || goods_note="我方货: 未判定（probe/人工立项路无 verdict.goods；审批前请确认是否应有我方 commit/offer）"
+    fi
     acquire_lock; ts="$(now_iso)"
-    jq --arg id "$id" --arg d "$dpath" --arg ts "$ts" '
+    jq --arg id "$id" --arg d "$dpath" --arg ts "$ts" --arg g "$goods_note" '
       .items |= map(if .id == $id then
         .draft = $d
+        | .goods_note = $g
         | .history += [{ts: $ts, event: "draft-set", note: $d}]
         else . end)' "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
     echo "OK"

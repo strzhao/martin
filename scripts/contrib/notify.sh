@@ -814,7 +814,7 @@ cmd_flush() {
 _build_approval_card() { # <id> → stdout 卡片文本（旧模板；approval_interactive 非 true 或降级时用）
   local id="$1"
   jq -r --arg id "$id" '.items[] | select(.id == $id) |
-    "🟡【L2 审批 #\(.id)】\(if .disposition == "release-gate" then "发版提审门（批准 = 提审 hm release）" else "\(.disposition) 评论" end)\n类型: \(if .disposition == "release-gate" then "release-gate（AGC 发版批准门，issue 为合成号）" else "\(.disposition)（lane=\(.lane)）" end)\n目标: \(if .disposition == "release-gate" then "AGC 提审 · \(.title)" else "NousResearch/hermes-agent#\(.issue)" end)\n概要: \(.title[0:80])\n质量: \(.score)/15（prio \(.priority)）；\(if .lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过\n审阅: \(.tunnel.url // "见全文")\n全文: ~/workspace/martin/contrib-data/pending/\(.id).md\n回复「批 #\(.id)」/「改 #\(.id): 意见」/「否 #\(.id)」；48h 无回复自动搁置"' "$QUEUE"
+    "🟡【L2 审批 #\(.id)】\(if .disposition == "release-gate" then "发版提审门（批准 = 提审 hm release）" else "\(.disposition) 评论" end)\n类型: \(if .disposition == "release-gate" then "release-gate（AGC 发版批准门，issue 为合成号）" else "\(.disposition)（lane=\(.lane)）" end)\n目标: \(if .disposition == "release-gate" then "AGC 提审 · \(.title)" else "NousResearch/hermes-agent#\(.issue)" end)\n概要: \(.title[0:80])\n我方货: \(if (.goods_note // "") | length > 0 then .goods_note else "未判定（批前请确认是否涉及我方 PR/commit）" end)\n质量: \(.score)/15（prio \(.priority)）；\(if .lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过\n审阅: \(.tunnel.url // "见全文")\n全文: ~/workspace/martin/contrib-data/pending/\(.id).md\n回复「批 #\(.id)」/「改 #\(.id): 意见」/「否 #\(.id)」；48h 无回复自动搁置"' "$QUEUE"
 }
 
 # ---- 交互路（approval_interactive=true）：slug/短码/人读页/卡 v2 ----
@@ -867,6 +867,9 @@ _build_approval_card_v2() { # <id> <page-url> <code> <deadline> <ttl> → stdout
      then "目标: AGC 发版提审 · \($it.title)（issue 为合成号，非 GitHub）"
      else "目标: NousResearch/hermes-agent#\($it.issue) · \($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)" end),
     "概要: \($it.title[0:80])",
+    (if (($it.goods_note // "") | length) > 0
+     then "\($it.goods_note)"
+     else "我方货: 未判定（批前请确认本次是否涉及我方 PR/commit）" end),
     # 升级路专属：微信卡直接带出首个卡点（完整清单在页面顶部）
     (if (($it.escalate_reasons // []) | length) > 0
      then "🤔 我定不了: \($it.escalate_reasons[0][0:60])"
