@@ -15,9 +15,16 @@
 #   C8  stale（DEEPCHECK_STALE_SECS=60，epoch-120）→ 清 + refund + rq set failed + stale 事件
 #   C9  stale 下界守卫窗（SECS=3600，epoch-3595）→ 非终态未超时 → 保留登记跳过
 #   C10 stale 上界（SECS=3600，epoch-3605）→ 触发 stale 清理
+#   C11 done + awaiting-approval + 队列 .draft 未登记 + pending 稿缺失 + verdict 在 →
+#       -deepcheck-draft-missing 事件（不静默）+ 维持人工路（零补注册零 approved）+
+#       清登记 + 继续为候选建新卡（09-10 harvest 自愈补丁缺稿分支）
+#   C12 done + awaiting-approval + 队列 .draft 未登记 + pending 稿在（rq-20260910-106667
+#       事故形态）→ 自愈补注册（draft-set 入 history）→ auto-gate rc0 → approved + execute
+#       桥接 + 零 draft-missing 事件 + 清登记 + 继续建新卡（自愈正例）
 # 依据：state.md「## 设计文档」§2（deepcheck flight 终态分支——链式完成判定）+ §契约规约：
-#   「stale 阈值=独立 DEEPCHECK_STALE_SECS（缺省 86400，不复用 6h）；事件 key 三族
-#    -deepcheck-card-fallback / -deepcheck-stale / -deepcheck-orphan；全局单深检（任一
+#   「stale 阈值=独立 DEEPCHECK_STALE_SECS（缺省 86400，不复用 6h）；事件 key
+#    -deepcheck-card-fallback / -deepcheck-stale / -deepcheck-orphan 三族（09-10 增第四族
+#    -deepcheck-draft-missing：链 done 但草稿未登记且约定位置无稿）；全局单深检（任一
 #    deepcheck 登记在飞→跳过）」
 # CONTRACT_AMBIGUOUS：
 #  - C7 失败终态分支的事件 key：任务矩阵钉 -deepcheck-card-fallback，设计 §1 事件清单把该 key
@@ -29,7 +36,8 @@
 # 红队纪律：黑盒；每断言硬失败；无 skip。Mental Mutation：链完成判定退化为单卡判定（done 即
 #   清）→ C3 保留断言挂；auto-gate 桥接删除 → C1 approved 挂；refund 删除 → C4/C5/C7/C8
 #   预算返还断言挂；children 查询删除 → C4 子卡失败不触发 failed 挂；stale 守卫删除 → C9 挂；
-#   orphan 事件删除 → C6 挂。
+#   orphan 事件删除 → C6 挂；draft 自愈块删除 → C12 draft-set/approved 挂、C11 事件断言挂；
+#   自愈误放行（缺稿仍走 auto-gate）→ C11 approved/state 断言挂。
 # =============================================================================
 set -u
 REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel 2>/dev/null || echo /Users/stringzhao/workspace/martin)"
@@ -82,10 +90,14 @@ seed_card_store() { # <status>：flight 卡终态前置态（卡库 1 张 t_old�
 }
 
 seed_verdict() { # <id> <decision> <confidence> <risk_level> — auto-gate 输入（结构契约零改动）
+  # 前置失真修正（09-10）：65c0202 给 auto-gate 加 goods fail-closed 闸（缺合法 goods.status
+  # 一律 ESCALATE）晚于本文件最后一次改动，fixture 未跟进 → C1 auto 路实际 rc1（approved 永不入
+  # history）。补合法 goods.status 让 verdict 结构对齐现行生产契约（深检卡 body 钉死必填）。
   local d="$SB_ROOT/contrib-data/runs/deep-check/$1"
   mkdir -p "$d"
   jq -n --arg dec "$2" --arg conf "$3" --arg risk "$4" \
-    '{decision:$dec,confidence:$conf,risk_level:$risk,reasons:[]}' > "$d/verdict.json"
+    '{decision:$dec,confidence:$conf,risk_level:$risk,
+      goods:{status:"forge-lane",note:"fixture（对齐 09-09 goods 三态契约）"},reasons:[]}' > "$d/verdict.json"
 }
 
 seed_deep_budget_used() { # <id>：预置 deep 预算占用（refund 效果可观测，防 refund No-op 突变）
@@ -293,6 +305,36 @@ assert_ge1 "$(history_events "$A_ID" | grep -c '^failed$')" "C10 超时 → rq s
 assert_eq "$(budget_deep_used)" "0" "C10 refund 已返还"
 assert_eq "$(events_with "-deepcheck-stale")" "1" "C10 stale 事件入账"
 assert_ne "$(flight_field '.card_id')" "t_old" "C10 登记已清换新"
+sb_cleanup
+
+# =============================================================================
+t_case "C11 done+awaiting-approval+.draft 未登记+pending 稿缺失+verdict 在 → -deepcheck-draft-missing 事件 + 维持人工路 + 清登记 + 继续建新卡"
+chain_setup "awaiting-approval" "done"
+seed_verdict "$A_ID" "auto" "high" "low"
+# 刻意不 seed_draft：真实事故的对偶形态——worker 成稿也丢了（约定位置无稿），补注册无从谈起
+run_deepcheck_entry >/dev/null; RC=$?
+assert_exit 0 $RC "C11 run-deepcheck exit"
+assert_eq "$(history_events "$A_ID" | grep -c '^draft-set$')" "0" "C11 pending 缺失 → 零补注册"
+assert_eq "$(history_events "$A_ID" | grep -c '^approved$')" "0" "C11 不放行 auto-gate → 零 approved（缺稿绝不进执行链）"
+assert_eq "$(rq_state_of "$A_ID")" "awaiting-approval" "C11 维持 awaiting-approval 人工路（不 failed 不重排队）"
+assert_ge1 "$(events_with "-deepcheck-draft-missing")" "C11 -deepcheck-draft-missing 事件入账（不静默）"
+assert_harvest_continues "C11"
+assert_eq "$(claude_calls claude)" "0" "C11 主路零 claude"
+sb_cleanup
+
+# =============================================================================
+t_case "C12 done+awaiting-approval+.draft 未登记+pending 稿在（rq-20260910-106667 事故形态）→ 自愈补注册 → approved + execute 桥接 + 清登记 + 继续建新卡"
+chain_setup "awaiting-approval" "done"
+seed_verdict "$A_ID" "auto" "high" "low"
+# 真实事故形态：worker 写出了约定位置成稿、但漏 rq.sh set-draft（.draft 仍 null）
+printf '# 深检成稿（fixture）%s\n' "$A_ID" > "$SB_ROOT/contrib-data/pending/$A_ID.md"
+run_deepcheck_entry >/dev/null; RC=$?
+assert_exit 0 $RC "C12 run-deepcheck exit"
+assert_ge1 "$(history_events "$A_ID" | grep -c '^draft-set$')" "C12 自愈补注册（draft-set 入 history）"
+assert_ge1 "$(history_events "$A_ID" | grep -c '^approved$')" "C12 补注册后 auto-gate rc0 → approved"
+assert_ge1 "$(events_with "execute-fail-$A_ID")" "C12 execute.sh 拿到草稿进执行链（沙箱 gh stub TTL 失败属预期）"
+assert_eq "$(events_with "-deepcheck-draft-missing")" "0" "C12 有稿自愈 → 零 draft-missing 事件"
+assert_harvest_continues "C12"
 sb_cleanup
 
 t_finish

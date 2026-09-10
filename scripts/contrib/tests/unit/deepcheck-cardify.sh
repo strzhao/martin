@@ -7,6 +7,7 @@
 #   ③ 全局单深检：任一登记在飞 → 两入口一律跳过（零第二张卡 / 零 fallback claude / 零双 reserve）
 #   ④ 建卡失败 → fallback deep-check.sh（claude 被调 + -deepcheck-card-fallback + refund 先行）
 #   ⑤ 终态收割四态矩阵（done 链判定 / blocked 闭集 / stale / orphan）+ 子卡补查 + auto-gate 桥接
+#     + 队列 .draft 自愈（pending 稿在即补 set-draft；缺稿发 -deepcheck-draft-missing 维持人工路）
 #   ⑥ probe 分叉（免红队不建子卡，body 无 --parent 模板）
 # 全部经 CONTRIB_DATA_DIR/HERMES_BIN/DEEPCHECK_TARGET_FILE stub 沙箱隔离，零真实调用。
 set -uo pipefail
@@ -229,17 +230,25 @@ fi
 
 # ================= ⑤ 终态收割矩阵（direct helper）=================
 
-t_case "harvest: done+awaiting-approval+verdict auto → 编排层 auto-gate rc0 → approved（L2-auto 桥接保留，复刻 deep-check.sh:177-182）"
+t_case "harvest: done+awaiting-approval+.draft 未登记但 pending 稿在 → 自愈补注册 → auto-gate rc0 → approved（rq-20260910-106667 事故形态自愈正例）"
 quiet_sb
 sb_seed_queue_item "rq-20260909-5101" 5101 deep awaiting-approval 40
 mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5101"
 printf '{"decision":"auto","confidence":"high","risk_level":"low","goods":{"status":"forge-lane","note":"fixture"},"reasons":[]}\n' \
   >"$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5101/verdict.json"
+# fixture 真实链序（09-10 前置失真修正）：worker 已写出约定位置成稿、但漏 rq.sh set-draft
+# （sb_seed_queue_item 落 .draft: null）——正面钉死卡路 draft 自愈：补注册后再放行 auto-gate
+printf '# 深检成稿（fixture）rq-20260909-5101\n' >"$SB_ROOT/contrib-data/pending/rq-20260909-5101.md"
 seed_flight_dc "t_old" "rq-20260909-5101" "deep" "$(date +%s)"
 seed_card_store "t_old" "done"
 run_helper harvest
 assert_exit 0 $?
+assert_contains "$(rq_history_events "rq-20260909-5101")" "draft-set" ".draft 自愈补注册（draft-set 入 history）"
 assert_contains "$(rq_history_events "rq-20260909-5101")" "approved" "rq set approved（auto-gate rc0）"
+assert_eq "$(ev_key_count '-deepcheck-draft-missing')" "0" "约定位置有稿 → 零 draft-missing 事件"
+assert_eq "$(jq -r --arg id "rq-20260909-5101" '.items[] | select(.id == $id) | .draft' \
+  "$SB_ROOT/contrib-data/ready-queue.json" 2>/dev/null)" \
+  "$SB_ROOT/contrib-data/pending/rq-20260909-5101.md" "队列 .draft 已登记约定路径（execute.sh 取得到）"
 [[ ! -f "$(dc_flight)" ]] && _pass "链收尾完成登记已清" || _fail "登记已清" "残留"
 # state 断言：execute.sh 确定性执行链在沙箱内经 gh stub TTL 复验失败转 failed 属合法下游行为；
 # 桥接本身由 history 的 approved 事件钉住（awaiting-approval 停滞 = 桥接缺失）
@@ -248,18 +257,56 @@ case "$(rq_state_of "rq-20260909-5101")" in
   *) _fail "state 已离开 awaiting-approval" "actual=$(rq_state_of rq-20260909-5101)" ;;
 esac
 
-t_case "harvest: done+awaiting-approval+verdict escalate → 维持人工路（不 approved）+ 登记清"
+t_case "harvest: done+awaiting-approval+pending 缺失+verdict 在 → 不放行 auto-gate：-deepcheck-draft-missing + 维持人工路 + 登记清"
 quiet_sb
 sb_seed_queue_item "rq-20260909-5102" 5102 deep awaiting-approval 40
 mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5102"
 printf '{"decision":"escalate","confidence":"medium","risk_level":"medium","reasons":["拿不准"]}\n' \
   >"$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5102/verdict.json"
+# 负例：约定位置无稿且 .draft 为 null → 补不来，事件告警 + 维持人工路（绝不静默放行）
 seed_flight_dc "t_old" "rq-20260909-5102" "deep" "$(date +%s)"
 seed_card_store "t_old" "done"
 run_helper harvest
 assert_exit 0 $?
-assert_not_contains "$(rq_history_events "rq-20260909-5102")" "approved" "非 0 → 维持 awaiting-approval"
+assert_not_contains "$(rq_history_events "rq-20260909-5102")" "draft-set" "pending 缺失 → 零补注册"
+assert_not_contains "$(rq_history_events "rq-20260909-5102")" "approved" "不放行 auto-gate → 零 approved"
+assert_eq "$(rq_state_of "rq-20260909-5102")" "awaiting-approval" "维持 awaiting-approval（交人工复核，不重排队不 refund）"
+assert_eq "$(ev_key_count '-deepcheck-draft-missing')" "1" "-deepcheck-draft-missing 入账（不静默）"
 [[ ! -f "$(dc_flight)" ]] && _pass "登记已清（人工路照常走审批推送链）" || _fail "登记已清" "残留"
+
+t_case "harvest: done+awaiting-approval+escalate+pending 稿在 → 自愈补注册 → auto-gate rc1 → 维持人工（自愈不越过 verdict 判定）"
+quiet_sb
+sb_seed_queue_item "rq-20260909-5112" 5112 deep awaiting-approval 40
+mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5112"
+printf '{"decision":"escalate","confidence":"medium","risk_level":"medium","reasons":["拿不准"]}\n' \
+  >"$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5112/verdict.json"
+printf '# 深检成稿（fixture）rq-20260909-5112\n' >"$SB_ROOT/contrib-data/pending/rq-20260909-5112.md"
+seed_flight_dc "t_old" "rq-20260909-5112" "deep" "$(date +%s)"
+seed_card_store "t_old" "done"
+run_helper harvest
+assert_exit 0 $?
+assert_contains "$(rq_history_events "rq-20260909-5112")" "draft-set" "自愈补注册照常（与 verdict 判定正交）"
+assert_not_contains "$(rq_history_events "rq-20260909-5112")" "approved" "escalate → 零 approved（自愈不越权批准）"
+assert_eq "$(rq_state_of "rq-20260909-5112")" "awaiting-approval" "维持人工路"
+assert_eq "$(ev_key_count '-deepcheck-draft-missing')" "0" "有稿 → 零 draft-missing 事件"
+[[ ! -f "$(dc_flight)" ]] && _pass "登记已清" || _fail "登记已清" "残留"
+
+t_case "harvest: done+awaiting-approval+.draft 已登记且文件在 → 零重复 set-draft、直走下游（既有正确链序零扰动）"
+quiet_sb
+sb_seed_queue_item "rq-20260909-5113" 5113 deep awaiting-approval 40
+mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5113" "$SB_ROOT/contrib-data/pending"
+printf '{"decision":"auto","confidence":"high","risk_level":"low","goods":{"status":"offered","note":"fixture"},"reasons":[]}\n' \
+  >"$SB_ROOT/contrib-data/runs/deep-check/rq-20260909-5113/verdict.json"
+printf '# 深检成稿（fixture）rq-20260909-5113\n' >"$SB_ROOT/contrib-data/pending/rq-20260909-5113.md"
+sb_run "bash \"\$MARTIN_DIR/scripts/contrib/rq.sh\" set-draft rq-20260909-5113 \"$SB_ROOT/contrib-data/pending/rq-20260909-5113.md\"" >/dev/null
+seed_flight_dc "t_old" "rq-20260909-5113" "deep" "$(date +%s)"
+seed_card_store "t_old" "done"
+run_helper harvest
+assert_exit 0 $?
+assert_eq "$(rq_history_events "rq-20260909-5113" | tr ',' '\n' | grep -c '^draft-set$')" "1" "draft-set 恰 1 次（自愈不重复登记）"
+assert_contains "$(rq_history_events "rq-20260909-5113")" "approved" "已登记项直走下游（auto-gate rc0 → approved）"
+assert_eq "$(ev_key_count '-deepcheck-draft-missing')" "0" "草稿健在 → 零 draft-missing 事件"
+[[ ! -f "$(dc_flight)" ]] && _pass "登记已清" || _fail "登记已清" "残留"
 
 t_case "harvest: done+deep-check+子卡 blocked → rq failed + refund + -deepcheck-stale（链悬挂收口）"
 quiet_sb

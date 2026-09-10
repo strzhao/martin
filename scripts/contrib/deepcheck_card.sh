@@ -16,7 +16,10 @@
 #   - 互斥锁 $CONTRIB/locks/deepcheck-card.lock 覆盖 check→reserve→create→登记全程
 #     （>3h 残留强清，同 deep-check.sh:79 先例）；harvest 与 create 同锁，堵两入口 check-then-act 竞速
 #   - 链完成判定序: preflight 卡 done ≠ 链完成（redteam 子卡由 worker 自建，不在本登记）——
-#     done 分支: rq=awaiting-approval → 编排层 auto-gate.sh（rc0 → rq set approved + execute.sh，
+#     done 分支: rq=awaiting-approval → 队列 .draft 自愈（空/失联且约定位置 pending/<rq-id>.md
+#     有稿即补 set-draft；补不来 → -deepcheck-draft-missing + 维持人工路，绝不放行 auto-gate——
+#     否则 execute.sh 取不到草稿 → failed → 重排队死循环，rq-20260910-106667 实证）→
+#     编排层 auto-gate.sh（rc0 → rq set approved + execute.sh，
 #     复刻 deep-check.sh:177-182；非 0 → 维持 awaiting-approval 人工路）→ 清登记；
 #     rq=deep-check → 补查子卡终态（kanban show children → 逐个二次 show）；rq=failed → 清+refund；
 #     查无/异常 → 清 + -deepcheck-orphan（人工复核）
@@ -24,8 +27,9 @@
 #     不复用 scan/mail 的 6h）
 #   - budget reserve/refund 本脚本（编排层）专属；worker 卡内绝对禁碰（SKILL 卡模式段钉死）
 #   - refund 幂等：budget 账本查无该 id 的 reserve 记录时跳过（rq.sh refund 对 used 每调必减）
-# 事件族（新增三族，--key 日幂等）: <日期>-deepcheck-card-fallback（建卡失败/卡失败终态）/
-#   <日期>-deepcheck-stale（陈旧清/子卡失败）/ <日期>-deepcheck-orphan（终态查无）
+# 事件族（新增四族，--key 日幂等）: <日期>-deepcheck-card-fallback（建卡失败/卡失败终态）/
+#   <日期>-deepcheck-stale（陈旧清/子卡失败）/ <日期>-deepcheck-orphan（终态查无）/
+#   <日期>-deepcheck-draft-missing（链 done 但草稿未登记且约定位置无稿——维持人工路不静默）
 # seam: MARTIN_DIR / CONTRIB_DATA_DIR / DEEPCHECK_TARGET_FILE / DEEPCHECK_STALE_SECS /
 #       FLIGHT_TIMEOUT / HERMES_BIN（透传 kanban_card.sh）
 set -uo pipefail
@@ -137,6 +141,7 @@ acquire_lock() { # >3h 残留强清（deep-check.sh:79 先例）；成功 0 / �
 # 链式终态判定；return 0=登记已清/自愈  10=仍在飞（保留登记）
 harvest_locked() {
   local card_id rq_id lane card_status state age outcome cstatuses gate_out gate_rc=0
+  local draft_path pending_path verdict_path
   card_id="$(jq -r 'if .kind == "deepcheck" then (.card_id // empty) else empty end' "$FLIGHT" 2>/dev/null || true)"
   if [[ -z "$card_id" ]]; then
     log "flight-deepcheck 非法/缺 card_id → 清除（自愈）"
@@ -151,6 +156,35 @@ harvest_locked() {
       state="$(rq_state "$rq_id")"
       case "$state" in
         awaiting-approval)
+          # 队列 .draft 自愈（deep-check.sh:146-155 编排路同款缺口补齐）：worker 完成
+          # preflight+redteam、写出约定位置成稿却漏 rq.sh set-draft 时，队列项 .draft 为空 →
+          # auto-gate 放行后 execute.sh 取不到草稿 → failed → 重排队 → 无限循环
+          # （rq-20260910-106667 实证）。判定口径照抄编排路：空 or 文件失联；
+          # 补不来 → -deepcheck-draft-missing 事件 + 维持 awaiting-approval 人工路（不静默），
+          # 绝不 auto-gate / 绝不 set approved / 绝不 refund（refund 归编排层 failed 分支）。
+          draft_path="$(jq -r --arg id "$rq_id" '.items[] | select(.id == $id) | (.draft // "")' "$QUEUE" 2>/dev/null || true)"
+          pending_path="$CONTRIB/pending/$rq_id.md"
+          if [[ -z "$draft_path" || ! -f "$draft_path" ]] && [[ -s "$pending_path" ]]; then
+            if "$RQ" set-draft "$rq_id" "$pending_path" >>"$LOG" 2>&1; then
+              log "$rq_id 队列 .draft 缺失但 $pending_path 在 → 补注册（自愈）"
+            else
+              log "$rq_id 草稿补注册失败（set-draft rc≠0）→ 重读后按缺失判定"
+            fi
+            draft_path="$(jq -r --arg id "$rq_id" '.items[] | select(.id == $id) | (.draft // "")' "$QUEUE" 2>/dev/null || true)"
+          fi
+          if [[ -z "$draft_path" || ! -f "$draft_path" ]]; then
+            verdict_path="$CONTRIB/runs/deep-check/$rq_id/verdict.json"
+            if [[ -s "$verdict_path" ]]; then
+              emit_event "deepcheck-draft-missing" \
+                "深检链 ${rq_id} 卡已 done、verdict 已产出，但 contrib-data/pending/${rq_id}.md 缺失 → 草稿未登记，跳过自动执行链，维持人工路（人工复核）"
+            else
+              emit_event "deepcheck-draft-missing" \
+                "深检链 ${rq_id} 卡已 done，但 contrib-data/pending/${rq_id}.md 缺失且 verdict 亦缺 → 草稿未登记，跳过自动执行链，维持人工路（人工复核）"
+            fi
+            rm -f "$FLIGHT"
+            log "$rq_id 草稿缺失（约定位置无稿）→ 不放行 auto-gate，维持 awaiting-approval 人工路，登记已清"
+            return 0
+          fi
           # 链完成 → 编排层 auto-gate 桥接（审查 B2：主路保留 L2-auto，复刻 deep-check.sh:177-182；
           # verdict 缺失/低分/own-PR 由 auto-gate 内部硬条件升级人工——模型意见只是输入）
           gate_out="$(bash "$AUTO_GATE" "$rq_id" 2>>"$LOG")" || gate_rc=$?

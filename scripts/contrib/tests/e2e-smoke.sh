@@ -244,10 +244,15 @@ if sb_new >/dev/null 2>&1; then
   # G: worker 模拟收尾（卡内职责）→ preflight 卡 done
   # （09-10 drift 修：并行 goods-gate 升级（2e36e2c）后 auto-gate 硬条件 5 要求 verdict 必带
   #   goods.status——沙箱种子同步补 goods=none，否则 auto-gate fail-closed 桥接不 approved）
+  # （09-10 二次同步：harvest 新增 .draft 自愈契约（卡 t_f5468b33）——链完成判定前置草稿检查，
+  #   缺稿一律人工路不放行 auto-gate。worker 模拟补写约定位置成稿、交卡路自愈补注册：
+  #   生产链序中卡 body 产出契约本就钉死 pending/<rq-id>.md 必产，此段同时自证自愈正例）
   sb_rq set "$DC2_ID" deep-check --note "worker 模拟" >/dev/null 2>&1
   mkdir -p "$SB_ROOT/contrib-data/runs/deep-check/$DC2_ID"
   printf '{"decision":"auto","confidence":"high","risk_level":"low","reasons":[],"goods":{"status":"none"}}\n' \
     >"$SB_ROOT/contrib-data/runs/deep-check/$DC2_ID/verdict.json"
+  printf '# 深检成稿（worker 模拟）%s\n' "$DC2_ID" \
+    >"$SB_ROOT/contrib-data/pending/$DC2_ID.md"
   sb_rq set "$DC2_ID" awaiting-approval --note "worker 模拟 final" >/dev/null 2>&1
   printf '{"id":"%s","status":"done","assignee":"contrib","priority":0}\n' "$DC_CARD_1" \
     >"$SB_ROOT/stublog/kanban-cards.jsonl"
