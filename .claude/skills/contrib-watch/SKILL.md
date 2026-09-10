@@ -152,7 +152,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 
 **goods.status 必填且由 auto-gate 机械校验（fail-closed）**——缺字段/非法值一律升级人工。
 
-**auto 门槛（宁升勿放）**：仅当「断言全部核验通过 + 零必修残留 + 动作可逆（评论类）+ 你对发出内容无保留」时才判 auto/high/low。以下任一 → escalate 并写清 reasons：任何 premise 存疑或证据链有缺口；域外/不熟机制；语气、定位、与维护者关系的拿捏不准；offer 的措辞与署名排序拿不准（goods 三态判定**本身不是升级事由**——它是流程产出，由 preflight 的 Goods 判定 + 库存状态机械决定，不存在「提不提 offer 的取舍」：有货必带、可造就造、不可修才纯 review）。**reasons 是给用户看的决策点，不是给同行看的评审术语**——写成用户 30 秒能裁决的人话（例：「这条评论建议对方改 API 形状，但我拿不准维护者对 breaking change 的容忍度」）。
+**auto 门槛（宁升勿放）**：仅当「断言全部核验通过 + 零必修残留 + 动作可逆（评论类）+ 你对发出内容无保留」时才判 auto/high/low。以下任一 → escalate 并写清 reasons：任何 premise 存疑或证据链有缺口；域外/不熟机制；语气、定位、与维护者关系的拿捏不准；offer 的措辞与署名排序拿不准（goods 三态判定**本身不是升级事由**——它是流程产出，由 preflight 的 Goods 判定 + 库存状态机械决定，不存在「提不提 offer 的取舍」：域匹配带 offer、可造就造、不可修才纯 review（none 合法，09-11 口径修正））。**reasons 是给用户看的决策点，不是给同行看的评审术语**——写成用户 30 秒能裁决的人话（例：「这条评论建议对方改 API 形状，但我拿不准维护者对 breaking change 的容忍度」）。
 
 **失败处理**：任一阶段 exit≠0 → `rq.sh set <id> failed --note "<阶段>"`；预算按 `config.refund_failed_deep_check` 决定是否返还（默认不返还）；次日 gate 可自动重试（`failed → queued` 迁移由 gate 执行）。
 
