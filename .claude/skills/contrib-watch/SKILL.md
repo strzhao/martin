@@ -106,7 +106,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 3. **观察台账复检 + ready-queue premise 复验**：读 `ledger.md`，到期 watch 项逐个复查状态，状态变化则更新台账并写进简报。然后遍历 `$CONTRIB/ready-queue.json` 中 state ∈ {queued, awaiting-approval} 的活项，**逐条实查 premises**：issue 仍 OPEN？`gh pr list --search "<N> in:body" --state open` 无新占坑？**in-body 抓不到机制占坑（#103315 教训：PR 不引用 issue 号也能占坑，08:29 挂出、08:40 复验漏检）——还须按 issue 的机制关键词/触碰文件再搜一轮**：`gh pr list --search "<机制词1> OR <机制词2>" --state open` + 对照 touched paths；关键 file:line 在当前 origin/main 仍成立？——任一死亡 → `rq.sh set <id> expired` + `notify.sh event probe-premise-dead --key "<id>-<日期>"`（#102413 教训：过期 premise 的审批卡绝不能推）。
 3.4a. **竞品吸收台账巡检（09-11 用户拍板）**：读 `contrib-data/absorb-ledger.json`——A 路（absorb）项：对应 forge 件 register ready 了吗？未 ready 且超 48h → 简报催办；ready 后存续期内在竞品 PR 评论补 offer（走 L2）。`absorb-eval-pending` 超 48h 未裁决 → 简报提醒完成 A/B/C 判定。C 路（stand-down）项：确认我方件已 close（gh 实查）。
 
-3.5. **库存新鲜度 + 带货率巡检（09-09 commit 进仓优先升级）**：`bash scripts/contrib/forge.sh check` 列库存台账（id/status/kind/loc/base_sha/checked龄）——ready 的 forge-commit 项对 base_sha 实查落后量：`git -C ~/workspace/hermes-agent rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天（check 已标 STALE）→ `forge.sh set-status <id> stale`，简报列「需 rebase/复验」；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 形态报警**（回炉造货——用户 09-09 拍板：连续无 commit 产出的动作要占少数）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
+3.5. **库存新鲜度 + goods 形态巡检（09-09 上线；09-11 口径修正：goods-drought 复查的是选题与库存节奏，不是塞货）**：`bash scripts/contrib/forge.sh check` 列库存台账（id/status/kind/loc/base_sha/checked龄）——ready 的 forge-commit 项对 base_sha 实查落后量：`git -C ~/workspace/hermes-agent rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天（check 已标 STALE）→ `forge.sh set-status <id> stale`，简报列「需 rebase/复验」；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 选题面复查信号**（goods-drought 事件；09-11 用户拍板：复查选题质量与库存建设节奏，**不是往 review 里塞货**——none 是合法判定）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
 4. **自动构建**（本日仅当 `config.auto_build=true` 且当日 `runs/` 无已完成构建）：从今日 briefs 里挑分数最高且决策=own-PR 的 issue；≥`config.min_build_score` 则直接执行模式三（构建 1 个）；没有候选则跳过。
 5. 产出 `radar/$(date +%F).md`（两节：外部雷达 / 自有资产+台账+构建记录+ready-queue 复验结果），并在 `briefs/$(date +%F).md` 追加「⭐ 雷达摘要」节。（微信推送由 run-watch.sh 尾部统一 flush。）
 
@@ -126,7 +126,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
    - `forge-lane`：无库存货但缺口**可造**（单关注点 / 可剥离）→ **评审稿照常发（不等待造货）**，同刻 `forge.sh init` 立项造货入库存；成稿发出后 PR 存活期内以 follow-up 评论补 offer（**PR 开窗期 = offer 变现最优期**：可直接 cherry-pick 进在飞 PR；等合入后再 offer 就降级成新 PR 排队）——09-09 #106199 实证：深检发现双缺口但手无货，快合窗内只能眼睁睁
      - **工时基准（09-10 用户拍板：禁无测量先验）**：单关注点 forge 件默认 **≤20 分钟**（09-10 实测锚点：weixin 4 件连造 12min、kanban-retry-notify 单件含入库 2.6min）。判定「来不及造」必须附测量依据（真实设备依赖/多文件重构/难复现环境），无依据一律按 20 分钟基准判可造。
      - **时效窗与审批解耦（09-10 用户拍板，重点）**：深检 review 类（review-evidence，评论可逆动作）走 **L2-auto 高置信自动批准**，**审批不构成等待项**——「等用户批会错过窗口」不成立，以此为由放弃造货 = 判定错误。时间压力只来自 PR 本身的合并节奏（作者活跃度/在飞状态），与人工审批无关。escalate 仅限真不可逆/预算类。
-   - `none`：缺口不可修 / 域外 / 纯观察 → 纯 review（合法但计数进 `goods-metrics.json`，连续 ≥3 次 none 触发 radar 形态报警——回炉造货）
+   - `none`：缺口不可修 / 域外 / 纯观察 → 纯 review（**合法判定，如实记录**；连续 ≥3 次 none 触发的是选题面复查信号，不是塞货压力——09-11 口径修正）
 4. 对报告逐条「亲手核」：对当前 origin/main 实查（修行号、核事实），吸收成草稿 v2 写 `$CONTRIB/pending/<id>.md`（头部注释记版次与依据，**必须携带 Goods 判定结论**供 redteam 产出 verdict.goods）。
 5. `rq.sh set <id> deep-check`（阶段开始时）→ 阶段末不推进状态（等 redteam）。
 

@@ -198,7 +198,7 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
    - **不做低姿态动作**：不催、不哀求 review、不用感叹号堆热情、不写「谢谢分享学习了很多」式空话；承认对方更好时直说好在哪（file:line 级），不泛泛捧
    - **竞争姿态**：吸收 > 差异化 > 观望，**不免费优化对手**（见 §11.2 竞争口径）——发言永远服务「我方是可信赖的高质量贡献者」这个长期形象，不为单次收益折腰
 1. 主载荷 = **对维护者的验证价值**：file:line receipts + mutation 自证（#96437 评论格式为模板）
-2. 自己的 PR/commit 只在**缺口驱动**场合出现；没货就纯 review，不硬带
+2. 自己的 PR/commit 只在**缺口驱动**场合出现；库存没有域匹配的货就纯 review——**不为带而带**（反 slop：#103650 教训），也不为凑 KPI 现场造货；真缺口才立项 forge，货是缺口的自然产物（09-11 用户拍板：旧「有货必带、没货不硬带」口径作废——它隐含「带货=好动作」，会诱发硬凑）
 3. offer 措辞规范（**09-07 #103650 教训**：lift/absorb 对称措辞 → substance 被逐字采纳但作者默认走成本最低的 absorb 路径，我方 2 commits 署名归零）——**排序推荐，永不并列**：
    - ① **lift 保署名 = 显式首选**：「the filters and tests lift as one small commit keeping authorship」
    - ② absorb 须点名 credit：「if you'd rather rewrite it yourself, a Co-authored-by on the absorbing commit would be appreciated」
@@ -251,9 +251,9 @@ review → adoption（点被采纳）→ **pick（commit 被收编入 main，gra
 1. **goods-gate（fail-closed）**：deep-check preflight 阶段新增「Goods 判定」必答节（redteam 缺节打回）；verdict.json 增 `goods.status` 必填字段，`auto-gate.sh` 硬条件 5 机械校验——缺字段/非法值一律升级人工。三态：`offered`（库存域匹配→评审带 offer）/ `forge-lane`（可造→评审照发不等待+同刻造货，**PR 存活期内 follow-up 补 offer**——开窗期是 offer 变现最优期）/ `none`（纯 review，合法但计数）
    - **工时基准（09-10 用户拍板：禁无测量先验）**：单关注点 forge 件默认 **≤20 分钟**（实测锚点：weixin 4 件连造 12min、单件含入库 2.6min、自有 PR 开→合 3-39min）。判「来不及造」必须附测量依据（设备依赖/多文件/难复现），无依据按 20 分钟基准判可造。
    - **时效窗与审批解耦（09-10 用户拍板，重点）**：review-evidence 类走 L2-auto 高置信自动批准，**审批不是等待项**——「等用户批会错过窗口」不成立，以此为由放弃造货 = 判定错误。时间压力只来自 PR 合并节奏本身，与人工审批无关。
-2. **verdict escalate 规则修正**：goods 三态判定不再是升级事由（有货必带、可造就造、不可修才纯 review——不存在「提不提 offer 的取舍」）；只有 offer 措辞/署名排序拿不准才 escalate
+2. **verdict escalate 规则修正**：goods 三态判定不再是升级事由（域匹配带 offer、可造就造、不可修才纯 review——不存在「提不提 offer 的取舍」）；只有 offer 措辞/署名排序拿不准才 escalate（09-11 口径修正：三态是**如实记录**判定结果，不是「必带货」压力——none 合法，见 review 红线第 2 条）
 3. **造货引擎**：`scripts/contrib/forge.sh`（init=worktree 基于 origin/main 建 forge/<slug> 分支；register=成品入台账 status=ready；check=新鲜度巡检；set-status；list）。红线继承 build：只到本地为止，绝不 push
-4. **度量闭环**：`goods-metrics.json`（auto-gate 每次调用机械记账 missing/offered/forge-lane/none）；radar 3.5 步巡检——连续 ≥3 次 none = 形态报警（goods-drought 事件），库存 stale（checked>14d 或 base 落后>50 commit）进简报
+4. **度量闭环**：`goods-metrics.json`（auto-gate 每次调用机械记账 missing/offered/forge-lane/none）；radar 3.5 步巡检——连续 ≥3 次 none = 选题面复查信号（goods-drought 事件：复查的是选题质量与库存建设节奏，不是往 review 里塞货），库存 stale（checked>14d 或 base 落后>50 commit）进简报
 
 ## 相关记忆
 - `hermes-contribution-followups.md` —— 4 个 PR 的具体进度 + sweeper 反馈机制

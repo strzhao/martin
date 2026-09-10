@@ -311,7 +311,7 @@ write_body() { # <rq-id> <lane> — preflight 卡 body（stdout；契约见 T4 �
   printf '\n## verdict.json 契约（deep 车道 redteam 子卡 / probe 车道本卡 必须写出）\n\n'
   printf -- '- 路径: %s/runs/deep-check/%s/verdict.json\n' "$CONTRIB" "$id"
   printf -- '- 结构: {"decision": "auto | escalate", "confidence": "high | medium | low", "risk_level": "low | medium | high", "goods": {"status": "offered | forge-lane | none", "note": "三态判定依据一句（见 SKILL 模式四 Goods 判定）"}, "reasons": ["escalate 时必填：每条 = 一个具体的、你定不了的点"]}\n'
-  printf -- '- goods.status 必填（09-09 commit 进仓优先闸）：offered=库存带 offer / forge-lane=缺口可修已立项 / none=纯 review；缺失或非法 = auto-gate fail-closed 升级人工\n'
+  printf -- '- goods.status 必填（09-09 commit 进仓优先闸；09-11 口径修正：三态=如实记录判定结果，none 合法，不为带而带）：offered=库存域匹配带 offer / forge-lane=缺口可修已立项 / none=纯 review；缺失或非法 = auto-gate fail-closed 升级人工\n'
   printf -- '- auto 门槛（宁升勿放）与判定细则以 %s 模式四第 5 点原文为准\n' "$SKILL_MD"
   printf -- '- 审批卡推送由编排层 auto-gate/补推 sweep 承担：worker 不调 hermes send、不重复推\n'
   printf '\n## 红线（必须遵守）\n\n'
