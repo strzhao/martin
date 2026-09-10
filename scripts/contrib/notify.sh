@@ -895,11 +895,17 @@ _build_approval_page() {
     ($draftbody | sub("(?s)^\\s*(<!--.*?-->\\s*)+"; "") | split("## 内部备注")[0]
       | gsub("\\s+$"; "")) as $payload |
     # 中文摘要：藏在头部注释块内（投递随注释剥离，不外发）
-    (($draftbody | split("审批页中文摘要（L1，不随评论发出）：")) as $sp |
-      if ($sp | length) > 1 then ($sp[1] | split("-->")[0] | gsub("^\\s+|\\s+$"; ""))
+    # 分隔符容错（t_404ff5c1）：jq split 是**字面**匹配——原先写死「）＋全角冒号」，而既有稿件里
+    # 「）：」「）:」「）【注记】：」三种写法并存，任一不命中即 $summary 为空 → L0 回退成 $it.title、
+    # 要点层整段丢失（静默降级为「标题+premises」）。改为以**不含冒号/注记的段名**做不变量切分，
+    # 再吸掉可选【…】注记与可选半/全角冒号：两种冒号写法（及带注记变体）都命中，稿件零改动。
+    (($draftbody | split("审批页中文摘要（L1，不随评论发出）")) as $sp |
+      if ($sp | length) > 1 then ($sp[1] | sub("^[【\\[][^】\\]]*[】\\]]"; "") | sub("^\\s*[：:]"; "")
+        | split("-->")[0] | gsub("^\\s+|\\s+$"; ""))
       else "" end) as $summary |
     ($summary | split("\n") | map(gsub("^\\s+"; "") | select(test("\\S"))) ) as $slines |
-    (if ($slines | length) > 0 then ($slines[0] | sub("^一句话："; "")) else $it.title end) as $l0 |
+    # L0 标签剥除同属字面量坑：稿件既有「一句话：」也有「L0:」写法，写死一种即漏剥
+    (if ($slines | length) > 0 then ($slines[0] | sub("^(一句话|L0)\\s*[：:]\\s*"; "")) else $it.title end) as $l0 |
     (if $it.disposition == "own-PR" then "提交修复 PR（issue #\($it.issue)）"
      elif $it.disposition == "probe-salvage" then "在 issue #\($it.issue) 发一条取证评论"
      elif $it.disposition == "release-gate" then "批准 = 提审 hm release \($it.title | sub("^release "; ""))"
