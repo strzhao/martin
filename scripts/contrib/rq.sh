@@ -571,7 +571,7 @@ case "$cmd" in
     goods_note=""
     vjson="$CONTRIB/runs/deep-check/$id/verdict.json"
     if [[ -f "$vjson" ]]; then
-      goods_note="$(jq -r 'if .goods then ("我方货: " + (.goods.status // "?") + " — " + ((.goods.note // "") | .[0:160])) else empty end' "$vjson" 2>/dev/null)"
+      goods_note="$(jq -r 'if .goods then ((.goods.status // "?") + " — " + ((.goods.note // "") | .[0:160])) else empty end' "$vjson" 2>/dev/null)"
     fi
     if [[ -z "$goods_note" ]]; then
       goods_note="$(grep -m1 '^    *.*goods[:：]' "$dpath" 2>/dev/null | sed 's/^ *//' | head -c 200)"
