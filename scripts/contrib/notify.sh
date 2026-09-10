@@ -966,6 +966,10 @@ _build_approval_page() {
           + (if $it.pr then " · [PR #\($it.pr)](https://github.com/NousResearch/hermes-agent/pull/\($it.pr))" else "" end)
       end),
       "- 质量：\($it.score)/15 · \(if $it.lane == "probe" then "strategist 单轮" else "strategist+红队双审" end)已过 · 编号 \($it.id)（微信回「批/否 #\($it.id)」亦可）",
+      (if (($it.goods_note // "") | length) > 0
+       then "- 我方货：\($it.goods_note)"
+       else "- 我方货：未判定（批前请确认本次是否涉及我方 PR/commit）" end),
+
       "",
       "---",
       "",
