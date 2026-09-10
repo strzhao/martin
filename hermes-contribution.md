@@ -208,6 +208,19 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 4. **每周深检预算 1-3 个**（三轮验证 strategist→亲手核→fresh-context 红队成本高）；其余新 PR 只内部研判不发帖——不做全仓免费 QA（~~09-02 定 1-3/周~~ **09-04 用户拍板放宽为周 30/日 3——token 充裕，配额只做防突发节流；COI 防线移由 rubric 门槛 + premise 复验 + 每项微信审批承担**；由 `contrib-data/budget.json` 机械记账，散文预算状态以账本为准）
 5. 筛选 rubric：**域契合 × 合入临近度（CI 绿/review 收敛/mergeable）× 独家弹药 × 可收敛性 × 作者质量史**
 
+### §11.1a 竞品吸收口径（2026-09-11 用户拍板）
+
+**背景**：#103661/#103650 竞品复盘——旧路"见竞品→改判 review-evidence 帮它收口"是用我方 token 武装对手（帮对方提高合并概率），且对外姿态低（求署名）。用户拍板：**竞品是免费情报源 + 造货素材库，不是帮扶对象**。
+
+**A/B/C 决策树**（发现竞品 30 分钟内评估，产物 = absorb-plan + absorb-ledger 登记）：
+- **A absorb（对方有我缺的）**：拆可剥离要点 → forge 立项升级我方件（≤20min）；goods 注记吸收来源；对方好想法以我方 commit 形态回流上游
+- **B differentiate（对方有洞 + 我方有独家证据）**：我方件调成互补面，不发 review 帮修
+- **C stand-down（对方全面更好）**：高姿态一句话让路退场（#103661 模式），零成本离场
+
+**红线**：不发"帮竞品修洞"的 review；评估 gh 只读；吸收走 forge 红线（本地为止）；对外发声走 L2。
+
+**台账**：`contrib-data/absorb-ledger.json`（radar 巡检 A 路吸收件的存活期 follow-up）。
+
 ### §11.1 执行通道机械化（09-04 上线：ready-queue + L2-A 微信审批环）
 
 - **入队**：scan/radar 把「验证成本已付清、只差 L2 批准」的项写 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`；premises 逐条登记，radar 每日复验 + 执行前 TTL 复验双保险——#102413 教训制度化）

@@ -39,6 +39,20 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 
    查重纪律：空间状态必须实查 `gh pr list --search "<N> in:body"`；标题含竞品机制关键词再搜一轮 PR（substance 层）。时间紧张时可先按 labels/正文粗判，但 own-PR 候选必须实查后才能给。
 
+### 竞品吸收决策树（2026-09-11 用户拍板，替换"见竞品→发 review 帮改"旧路）
+
+发现竞品 PR（占坑/机制重叠）后 **30 分钟内**做吸收评估，三选一，产出 absorb-plan 落 `runs/deep-check/<id>/absorb-plan.md` 并登记 `contrib-data/absorb-ledger.json`：
+
+| 情形 | 判定 | 动作 | 产出 |
+|---|---|---|---|
+| **A 对方有我缺的**（更全覆盖/更好测试形状/更深根因） | absorb | 拆可剥离要点 → `forge.sh init` 升级我方库存件/own-PR（≤20min 基准）；goods 注记"吸收自竞品 X 的 Y" | 我方件升级，下次出手带更强货；对方好想法以我方 commit 形态回流 |
+| **B 对方有洞**（且我方有独家证据/互补面） | differentiate | 我方 PR/库存件调成互补面（覆盖对方没碰的 case）；**不发 review 帮它修** | 两车不撞，我方变唯一可行解 |
+| **C 对方全面更好且无我方利益** | stand-down | 高姿态一句话确认+关闭/让路我方件（#103661 模式：Nice work + better landing spot，零索取零条件），退场 | 不烧 token 不丢姿态 |
+
+**红线**：绝不发"帮竞品修洞让它更易被合"的 review——那是用我方 token 武装对手。评估全程 gh 只读；吸收动作（改我方件）走 forge 正常红线（本地为止）；对外发声走 L2。
+
+**台账**：`contrib-data/absorb-ledger.json`（`{competing_pr, our_asset, verdict: absorb|differentiate|stand-down, absorbed_points[], flowed_into, decided_at}`）——radar 巡检存活期 follow-up（A 路吸收件 register ready 后补 offer）。
+
 ### 部署前提（2026-09-09 刷新，独家证据/自利评分必读）
 
 本机**多 profile + kanban 重度生产部署**（不是单 profile；09-08 曾记「profiles=[]」系实查方法错误——判断部署面看 `~/.hermes/profiles/` 目录与各 profile 的 gateway/cron 运行，不是看 config.yaml 顶层 profiles key）：
@@ -90,6 +104,8 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 2. **自有资产盘点**：`gh pr list --author strzhao --state open` 逐个看 updatedAt/mergeable/reviews/comments——**写 `$CONTRIB/assets-snapshot.json`（PR→{updatedAt, mergeable, reviewDecision, 最新评论作者}）并与上份快照 diff**：新增维护者/sweeper/collaborator 评论、mergeable 翻转、MERGED、>7 天停滞标黄 → `notify.sh event own-pr-activity --key "<PR>-<事件>-<日期>"`。停滞 >7 天的在简报给 ping/再 rebase/关停建议（ping 是对外动作，只建议不执行）。
    - **事件产出移交（09-10）**：own-pr-activity 的 event 产出已移交 `own_pr_watch.sh`（小时级机械盯梢，watcher 是唯一生产者）——radar 盘点/assets-snapshot/简报语义不变，但**不再直接发 own-pr-activity 事件**（防 08 窗与 watcher 同日双报 + 挤占子上限计数）。
 3. **观察台账复检 + ready-queue premise 复验**：读 `ledger.md`，到期 watch 项逐个复查状态，状态变化则更新台账并写进简报。然后遍历 `$CONTRIB/ready-queue.json` 中 state ∈ {queued, awaiting-approval} 的活项，**逐条实查 premises**：issue 仍 OPEN？`gh pr list --search "<N> in:body" --state open` 无新占坑？**in-body 抓不到机制占坑（#103315 教训：PR 不引用 issue 号也能占坑，08:29 挂出、08:40 复验漏检）——还须按 issue 的机制关键词/触碰文件再搜一轮**：`gh pr list --search "<机制词1> OR <机制词2>" --state open` + 对照 touched paths；关键 file:line 在当前 origin/main 仍成立？——任一死亡 → `rq.sh set <id> expired` + `notify.sh event probe-premise-dead --key "<id>-<日期>"`（#102413 教训：过期 premise 的审批卡绝不能推）。
+3.4a. **竞品吸收台账巡检（09-11 用户拍板）**：读 `contrib-data/absorb-ledger.json`——A 路（absorb）项：对应 forge 件 register ready 了吗？未 ready 且超 48h → 简报催办；ready 后存续期内在竞品 PR 评论补 offer（走 L2）。`absorb-eval-pending` 超 48h 未裁决 → 简报提醒完成 A/B/C 判定。C 路（stand-down）项：确认我方件已 close（gh 实查）。
+
 3.5. **库存新鲜度 + 带货率巡检（09-09 commit 进仓优先升级）**：`bash scripts/contrib/forge.sh check` 列库存台账（id/status/kind/loc/base_sha/checked龄）——ready 的 forge-commit 项对 base_sha 实查落后量：`git -C ~/workspace/hermes-agent rev-list --count <base_sha>..origin/main`，>50 commit 或 checked 超 14 天（check 已标 STALE）→ `forge.sh set-status <id> stale`，简报列「需 rebase/复验」；`in-flight` 超 7 天 → 简报报警。读 `$CONTRIB/goods-metrics.json` 近 5 条 deep-check 的 goods 状态：**连续 ≥3 次 `none` = 形态报警**（回炉造货——用户 09-09 拍板：连续无 commit 产出的动作要占少数）→ `notify.sh event goods-drought --key "goods-<日期>"` 进简报置顶。
 4. **自动构建**（本日仅当 `config.auto_build=true` 且当日 `runs/` 无已完成构建）：从今日 briefs 里挑分数最高且决策=own-PR 的 issue；≥`config.min_build_score` 则直接执行模式三（构建 1 个）；没有候选则跳过。
 5. 产出 `radar/$(date +%F).md`（两节：外部雷达 / 自有资产+台账+构建记录+ready-queue 复验结果），并在 `briefs/$(date +%F).md` 追加「⭐ 雷达摘要」节。（微信推送由 run-watch.sh 尾部统一 flush。）
@@ -168,7 +184,7 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 
 0. **前置核查（任一不过→放弃并写明原因进 runs 记录）**：
    - `gh issue view <N>` 仍 open
-   - `gh pr list --search "<N> in:body" --state open` 无占坑 PR（出现竞品→改判 review-evidence，停）；**另按机制关键词搜一轮**（in-body 抓不到机制占坑，#103315 教训）
+   - `gh pr list --search "<N> in:body" --state open` 出现占坑 PR → **进竞品吸收评估（09-11 用户拍板，替换旧"改判 review-evidence 帮改"路）**：30 分钟内按 A/B/C 决策树处置（详见下方「竞品吸收决策树」），产出 absorb-plan 落 runs；**另按机制关键词搜一轮**（in-body 抓不到机制占坑，#103315 教训）
    - substance 查重：按机制关键词 `gh search prs` 一轮，无活跃竞品
    - **premise 四问**（strategist agent §5）：intentional design？确切行为行？原本在保护什么？复活被否决方向？——答不全→停在「补证据」建议
 1. **worktree**：`git -C ~/workspace/hermes-agent fetch origin main` → `git worktree add ~/workspace/hermes-contrib-<N> -b fix/<slug> origin/main`（slug 从标题提炼，≤5 词）。
