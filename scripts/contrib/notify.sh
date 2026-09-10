@@ -149,7 +149,9 @@ _send() {
     log "网关探针落空（pgrep），仍尝试投递（可达性以 send 结果为准）"
   fi
   local rc=0
-  "$HERMES_BIN" send --to "$TARGET" --file "$msg_file" --subject "$subject" --json >"$NOTIFY_SEND_LAST" 2>>"$CONTRIB/logs/notify.log" || rc=$?
+  # 剥离 profile 定位 env：kanban worker 注入的 HERMES_HOME/HERMES_PROFILE 会使 hermes 在 contrib 作用域解析不到 weixin 目标（8/8 digest 卡 send-digest 全 FAIL 实证，t_f3876050）；env -u 对未设变量是 no-op，launchd 路零行为变化
+  env -u HERMES_HOME -u HERMES_PROFILE \
+    "$HERMES_BIN" send --to "$TARGET" --file "$msg_file" --subject "$subject" --json >"$NOTIFY_SEND_LAST" 2>>"$CONTRIB/logs/notify.log" || rc=$?
   if (( rc != 0 )); then
     log "hermes send 失败 rc=${rc}（$(head -c 200 "$NOTIFY_SEND_LAST" 2>/dev/null)）"
     return 1

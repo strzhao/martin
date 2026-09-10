@@ -59,6 +59,12 @@ a_key="absent"; [[ -n "${ANTHROPIC_API_KEY:-}" ]] && a_key="present"
 printf 'hermes|base_url=%s|auth_token=%s|api_key=%s\n' "$a_base" "$a_auth" "$a_key" \
   >>"$LOG_DIR/anthropic-env.log"
 
+# HERMES_HOME/HERMES_PROFILE 存在性记录（子进程 env 视角；t_f3876050 _send env 剥离断言——
+# notify.sh send 路剥离后两变量应为 absent）
+h_home="absent"; [[ -n "${HERMES_HOME:-}" ]] && h_home="present"
+h_prof="absent"; [[ -n "${HERMES_PROFILE:-}" ]] && h_prof="present"
+printf 'hermes_home=%s hermes_profile=%s\n' "$h_home" "$h_prof" >>"$LOG_DIR/hermes-env.log"
+
 # T2：delay 旋钮（挂死后仍走下方 fail/成功分支，可组合）
 if [[ -n "${STUB_HERMES_DELAY:-}" ]]; then
   sleep "$STUB_HERMES_DELAY"
