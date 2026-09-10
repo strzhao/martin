@@ -105,7 +105,9 @@ launchd 每小时粗滤后有域内命中时调用（主路 = contrib 研判卡 
 2. **必须**用 Agent 工具调 `hermes-contrib-strategist` 子代理出 preflight 审视报告 → `$CONTRIB/runs/deep-check/<id>/preflight.md`（红旗清单/形态裁决/数字修正/发不发结论）。
 3. **Goods 判定（commit 进仓优先硬闸，09-09 用户拍板升级：机制层强制）**：三态必答，结论写入 preflight.md 的「Goods 判定」节，并**必须随阶段 4 写进 v2 草稿头部注释块**（redteam 只读 `$CONTRIB/pending/<id>.md`，verdict.goods 以 v2 头部携带的 Goods 结论为准——缺该节 = 阶段 4 不得成稿；机械兜底在 auto-gate：goods.status 缺失/非法一律升级人工）。判定序：
    - `offered`：`bash scripts/contrib/forge.sh check` 输出的 ready 库存与本缺口**域匹配** → 评审稿直接带 cherry-pick offer（#86062 模式；offer 措辞按 hermes-contribution.md §11 署名排序规范，lift 保署名=显式首选）
-   - `forge-lane`：无库存货但缺口**可造**（单关注点 / 可剥离 / ≤半日工作量）→ **评审稿照常发（不等待造货）**，同刻 `forge.sh init` 立项造货入库存；成稿发出后 PR 存活期内以 follow-up 评论补 offer（**PR 开窗期 = offer 变现最优期**：可直接 cherry-pick 进在飞 PR；等合入后再 offer 就降级成新 PR 排队）——09-09 #106199 实证：深检发现双缺口但手无货，快合窗内只能眼睁睁
+   - `forge-lane`：无库存货但缺口**可造**（单关注点 / 可剥离）→ **评审稿照常发（不等待造货）**，同刻 `forge.sh init` 立项造货入库存；成稿发出后 PR 存活期内以 follow-up 评论补 offer（**PR 开窗期 = offer 变现最优期**：可直接 cherry-pick 进在飞 PR；等合入后再 offer 就降级成新 PR 排队）——09-09 #106199 实证：深检发现双缺口但手无货，快合窗内只能眼睁睁
+     - **工时基准（09-10 用户拍板：禁无测量先验）**：单关注点 forge 件默认 **15-30 分钟**（09-10 实测锚点：weixin 4 件连造 12min、kanban-retry-notify 单件含入库 2.6min）。判定「来不及造」必须附测量依据（真实设备依赖/多文件重构/难复现环境），无依据一律按 30 分钟基准判可造。
+     - **时效窗与审批解耦（09-10 用户拍板，重点）**：深检 review 类（review-evidence，评论可逆动作）走 **L2-auto 高置信自动批准**，**审批不构成等待项**——「等用户批会错过窗口」不成立，以此为由放弃造货 = 判定错误。时间压力只来自 PR 本身的合并节奏（作者活跃度/在飞状态），与人工审批无关。escalate 仅限真不可逆/预算类。
    - `none`：缺口不可修 / 域外 / 纯观察 → 纯 review（合法但计数进 `goods-metrics.json`，连续 ≥3 次 none 触发 radar 形态报警——回炉造货）
 4. 对报告逐条「亲手核」：对当前 origin/main 实查（修行号、核事实），吸收成草稿 v2 写 `$CONTRIB/pending/<id>.md`（头部注释记版次与依据，**必须携带 Goods 判定结论**供 redteam 产出 verdict.goods）。
 5. `rq.sh set <id> deep-check`（阶段开始时）→ 阶段末不推进状态（等 redteam）。

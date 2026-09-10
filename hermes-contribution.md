@@ -231,6 +231,8 @@ review → adoption（点被采纳）→ **pick（commit 被收编入 main，gra
 > 背景：09-09 #106199 深检发现双缺口但手无货，快合窗内只能裸 review（用户复盘：09-05 拍板的 commit 进仓优先原则是 prompt 教义、流水线无强制点，效果一般）。诊断出**机器层根因**：verdict 指南把「提不提 cherry-pick offer」列为 escalate 事由，制度性把 offer 决策推给人工且全流程无查库存/造货步骤。升级四件：
 
 1. **goods-gate（fail-closed）**：deep-check preflight 阶段新增「Goods 判定」必答节（redteam 缺节打回）；verdict.json 增 `goods.status` 必填字段，`auto-gate.sh` 硬条件 5 机械校验——缺字段/非法值一律升级人工。三态：`offered`（库存域匹配→评审带 offer）/ `forge-lane`（可造→评审照发不等待+同刻造货，**PR 存活期内 follow-up 补 offer**——开窗期是 offer 变现最优期）/ `none`（纯 review，合法但计数）
+   - **工时基准（09-10 用户拍板：禁无测量先验）**：单关注点 forge 件默认 **15-30 分钟**（实测锚点：weixin 4 件连造 12min、单件含入库 2.6min、自有 PR 开→合 3-39min）。判「来不及造」必须附测量依据（设备依赖/多文件/难复现），无依据按 30 分钟基准判可造。
+   - **时效窗与审批解耦（09-10 用户拍板，重点）**：review-evidence 类走 L2-auto 高置信自动批准，**审批不是等待项**——「等用户批会错过窗口」不成立，以此为由放弃造货 = 判定错误。时间压力只来自 PR 合并节奏本身，与人工审批无关。
 2. **verdict escalate 规则修正**：goods 三态判定不再是升级事由（有货必带、可造就造、不可修才纯 review——不存在「提不提 offer 的取舍」）；只有 offer 措辞/署名排序拿不准才 escalate
 3. **造货引擎**：`scripts/contrib/forge.sh`（init=worktree 基于 origin/main 建 forge/<slug> 分支；register=成品入台账 status=ready；check=新鲜度巡检；set-status；list）。红线继承 build：只到本地为止，绝不 push
 4. **度量闭环**：`goods-metrics.json`（auto-gate 每次调用机械记账 missing/offered/forge-lane/none）；radar 3.5 步巡检——连续 ≥3 次 none = 形态报警（goods-drought 事件），库存 stale（checked>14d 或 base 落后>50 commit）进简报
