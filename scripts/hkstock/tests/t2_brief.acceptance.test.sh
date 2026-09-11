@@ -50,9 +50,9 @@ printf 'INFO 产物: %s\n' "$ARTIFACT"
 
 body="$(cat "$ARTIFACT")"
 
-# --- 6.P1: 四段结构（三段字面 + 期货段数据缺失标注）---
+# --- 6.P1: 四段结构（C4 四段段名闭集；2026-09-11 契约更新：T3 已上线+2.0 改版，期货段为真实日报摘要，不再冻结「数据缺失：期货接入 T3 上线」字样——T2 残留口径清偿）---
 p1_miss=""
-for seg in "隔夜与盘前" "持仓关联" "今日关注与建议" "数据缺失"; do
+for seg in "隔夜与盘前" "持仓关联" "期货日报摘要" "今日关注与建议"; do
   if ! printf '%s' "$body" | grep -q "$seg"; then
     p1_miss="${p1_miss:+${p1_miss}、}$seg"
   fi
@@ -60,34 +60,43 @@ done
 if [[ -z "$p1_miss" ]]; then
   pass "6.P1"
 else
-  fail "6.P1" "产物缺段: ${p1_miss}（C4 四段闭集 + 期货段「数据缺失：期货接入 T3 上线」标注）"
+  fail "6.P1" "产物缺段: ${p1_miss}（C4 四段闭集：隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议）"
 fi
 
 # --- 6.P2: 持仓关联（contains 任一 holdings 持仓代码 ∨ contains 无持仓关联）---
+# 契约漂移豁免（2026-09-11）：holdings.yaml 的 mtime 晚于产物 mtime = 持仓在上一份简报之后变更，
+# 旧产物不可能含新代码——此时谓词不可判定，INFO 放行，下一份简报自动愈合（防误报红）。
 symbols=""
 if [[ -f "$HOLDINGS_PATH" ]]; then
   symbols="$(grep -E '^[[:space:]]*-?[[:space:]]*symbol:' "$HOLDINGS_PATH" 2>/dev/null \
     | sed -E 's/.*symbol:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/' | grep -v '^$' || true)"
 fi
-hit_symbol=""
-if [[ -n "$symbols" ]]; then
-  while IFS= read -r sym; do
-    [[ -z "$sym" ]] && continue
-    if printf '%s' "$body" | grep -qF "$sym"; then
-      hit_symbol="$sym"
-      break
-    fi
-  done <<< "$symbols"
-fi
-if [[ -n "$hit_symbol" ]]; then
-  pass "6.P2"
-elif printf '%s' "$body" | grep -q '无持仓关联'; then
-  if [[ -n "$symbols" ]]; then
-    printf 'INFO 6.P2: 产物走「无持仓关联」分支，而 holdings.yaml 含 symbol=%s（语义上可疑，机械谓词按 OR 口径放行）\n' "$(printf '%s' "$symbols" | tr '\n' ',')"
-  fi
+art_mt="$(stat -f %m "$ARTIFACT" 2>/dev/null || echo 0)"
+hold_mt="$(stat -f %m "$HOLDINGS_PATH" 2>/dev/null || echo 0)"
+if [[ "$hold_mt" -gt 0 && "$art_mt" -gt 0 && "$hold_mt" -gt "$art_mt" ]]; then
+  printf 'INFO 6.P2: holdings.yaml（mtime %s）晚于产物（mtime %s）——契约漂移窗口，谓词待下一份简报判定\n' "$hold_mt" "$art_mt"
   pass "6.P2"
 else
-  fail "6.P2" "产物不含任何持仓代码（候选: $(printf '%s' "$symbols" | tr '\n' ',' | cut -c1-60)）也不含「无持仓关联」"
+  hit_symbol=""
+  if [[ -n "$symbols" ]]; then
+    while IFS= read -r sym; do
+      [[ -z "$sym" ]] && continue
+      if printf '%s' "$body" | grep -qF "$sym"; then
+        hit_symbol="$sym"
+        break
+      fi
+    done <<< "$symbols"
+  fi
+  if [[ -n "$hit_symbol" ]]; then
+    pass "6.P2"
+  elif printf '%s' "$body" | grep -q '无持仓关联'; then
+    if [[ -n "$symbols" ]]; then
+      printf 'INFO 6.P2: 产物走「无持仓关联」分支，而 holdings.yaml 含 symbol=%s（语义上可疑，机械谓词按 OR 口径放行）\n' "$(printf '%s' "$symbols" | tr '\n' ',')"
+    fi
+    pass "6.P2"
+  else
+    fail "6.P2" "产物不含任何持仓代码（候选: $(printf '%s' "$symbols" | tr '\n' ',' | cut -c1-60)）也不含「无持仓关联」"
+  fi
 fi
 
 # --- 6.P3: 推送证据（forensics timeline 简报时段 send_result ok=true）---

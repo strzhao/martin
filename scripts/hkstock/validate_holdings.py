@@ -57,17 +57,25 @@ def validate(data) -> int:
             plabel = f"{label}.positions[{j}]"
             if not isinstance(pos, dict):
                 return fail(f"{plabel} 必须是映射")
-            for f in REQUIRED_POSITION_FIELDS:
+            for f in ("symbol", "name", "currency"):
                 if pos.get(f) is None:
                     return fail(f"{plabel} 缺 required 字段: {f}")
-            if not isinstance(pos["qty"], (int, float)) or isinstance(pos["qty"], bool):
-                return fail(f"{plabel}.qty 必须是数值")
-            if pos["qty"] <= 0:
-                return fail(f"{plabel}.qty 必须大于 0，实际 {pos['qty']!r}")
-            if not isinstance(pos["cost"], (int, float)) or isinstance(pos["cost"], bool):
-                return fail(f"{plabel}.cost 必须是数值")
-            if pos["cost"] < 0:
-                return fail(f"{plabel}.cost 不得为负，实际 {pos['cost']!r}")
+            # pending: true = 真实标的已确认、数量/成本待用户补齐——此时 qty/cost 允许为 null；
+            # 无 pending 标记的仓位仍要求 qty/cost 为数值（防假数据占位混充真实持仓）
+            if pos.get("pending") is True:
+                if pos.get("qty") is not None or pos.get("cost") is not None:
+                    return fail(f"{plabel} 标记 pending 但 qty/cost 非 null（要么补齐要么去掉 pending）")
+            else:
+                if pos.get("qty") is None or pos.get("cost") is None:
+                    return fail(f"{plabel} 缺 required 字段: qty/cost（或标 pending: true）")
+                if not isinstance(pos["qty"], (int, float)) or isinstance(pos["qty"], bool):
+                    return fail(f"{plabel}.qty 必须是数值")
+                if pos["qty"] <= 0:
+                    return fail(f"{plabel}.qty 必须大于 0，实际 {pos['qty']!r}")
+                if not isinstance(pos["cost"], (int, float)) or isinstance(pos["cost"], bool):
+                    return fail(f"{plabel}.cost 必须是数值")
+                if pos["cost"] < 0:
+                    return fail(f"{plabel}.cost 不得为负，实际 {pos['cost']!r}")
             if pos["currency"] not in CURRENCIES:
                 return fail(
                     f"{plabel}.currency 非法值: {pos['currency']!r}（允许 {sorted(CURRENCIES)}）"
