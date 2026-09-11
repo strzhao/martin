@@ -38,9 +38,9 @@
 
 **⭐ commit 进仓优先原则（2026-09-05 用户拍板，优先级高于三腿分工的任何单腿惯性）**：一切贡献动作的**第一 KPI = 我方 authored commit 进入上游 main**（直接 merge 或被 pick，署名保留）。执行含义：
 - 每个贡献动作立项时先回答「这次动作产出/推进哪个可进仓的 commit」；答不出就调整形态，直到答得出
-- evidence review **有货必带 cherry-pick offer**（#86062 模式）；「没货就不硬带」是对单次动作的纪律，不是长期借口——没货时下一步必须是**造出货来**（repro→修复 commit→mutation 自证→入库存）
+- evidence review **有货必带 offer；没货默认造货**（forge 立项 ≤20min 基准）——第一 KPI=commit 进仓，review 里提供我方 commit 是高姿态的合理做法，因没货错失合并窗=颗粒无收（#106199 教训）。**质量靠建设能力，不靠硬凑**（反 slop：#103650 教训）——造不出合格件就发纯 review 并记欠账，不塞劣质 offer；`none` 仅限真不可造（需维护者拍板/schema 级/域外），note 写硬理由（09-11 用户二次拍板定稿）
 - 本地库存持续按「单关注点 + 可剥离 + mutation 自证 + 基于 current main」标准锻造，保持随时可 offer 状态
-- 纯观察/纯评论且不推进任何 commit 的动作要占少数；连续多个无 commit 产出的动作 = 形态报警，回炉重选
+- 纯观察/纯评论且不推进任何 commit 的动作要占少数；连续多个无 commit 产出的动作 = 形态报警（goods-drought 置顶复检：none 硬理由可翻案的补造）
 
 三腿分工：
 1. **evidence authority** —— 生产取证型 review/评论，只在域内+有独家证据时出手（weixin TTL/取证、state.db/FTS、cron 投递）
@@ -55,19 +55,25 @@
 
 **lane 模式接入（2026-09-07 实施；09-08 lane 改造，详见 [`hermes-lane-protocol.md`](hermes-lane-protocol.md) §8）**：contrib 域 lane 现状——①`contrib` profile（hermes worker，只读研判专家：premise 复验/状态核查/报告解读；gh 只读红线，SOUL.md 含 hermes-contribution.md 知识源路由）；②own-PR 执行走 **coder lane 全自动**（09-08 起，`contrib-cc` lane 已下线：execute.sh own-PR 已批分支自动建 coder 卡，dispatcher spawn worker 驱动 claude -p 完成 push fork + gh pr create，rq set executed 由 worker 收尾）。escalate 审批项**不建卡**（消费者是用户非 worker，防双消费）。流水线主链与三路 L2 审批全部原样保留。
 
-### 机会流水线 contrib-watch（09-02 上线，试点 local-only）
+### 机会流水线 contrib-watch（09-02 上线；09-09 起卡化架构，T1-T6 交付）
 
-主轴 2.0 的执行层：launchd `com.stringzhao.contrib-watch`（每小时 :07）跑 `scripts/contrib/run-watch.sh`——廉价闸门粗滤新 issue（`scan_gate.sh`，零命中不开 LLM）→ 有命中才 `claude -p "/contrib-watch scan"` 研判（15 分 rubric → own-PR / probe-salvage / review-evidence / watch / skip 五分类）；每日 08 窗口 radar（停滞 PR 雷达 = salvage 供给线 + 自有 PR 资产盘点 + 台账复检 + 至多 1 个自动构建）。产物全落 `contrib-data/`（gitignore）：briefs（每日简报）/ radar / runs（构建记录）/ ledger.md（观察台账）。手动入口：`/contrib-watch scan|radar|build <issue#>`。
+主轴 2.0 的执行层，**卡化架构**：launchd `com.stringzhao.contrib-watch`（每小时 :07）跑 `scripts/contrib/run-watch.sh` 五段骨架（scan 闸门→mail 闸门→radar→notify flush→深检快车道），**每段=廉价闸门（零 LLM）→ 建 hermes contrib 研判卡（`kanban_card.sh` 唯一建卡口，卡 on contrib 专用 board，`export KANBAN_BOARD` 切换/回退一个开关）→ flight 登记终态跟踪 → flush**；批量研判由 contrib profile worker 按 `.claude/skills/contrib-watch/SKILL.md` 六模式执行（scan/radar/build/deep-check/mail/digest），**claude -p 降级为兜底路**（建卡失败/QC 开闸时才走）。待研判唯一数据源=`contrib-data/pending-batches/` 批次文件（pending-hits.json 兼容写已于 09-10 撤销，旧 77 条中 39 条独有条目一次性迁移并入批次，双写重复项自然收敛）。产物全落 `contrib-data/`（gitignore）：briefs / radar / runs / ledger.md / pending-batches。手动入口：`/contrib-watch scan|radar|build|deep-check|mail|digest`。
+
+**gateway 存活哨兵（09-10 新增，未装载）**：`scripts/contrib/gateway_sentinel.sh` + `com.stringzhao.contrib-gateway-sentinel.plist`（每 15min；pgrep 死→event `<日期>-gateway-down` 日级幂等，探针异常只日志；检测≠送达，恢复后随 flush 送达）。**装载是人工步骤**：`launchctl bootstrap gui/$(id -u) ~/workspace/martin/scripts/contrib/com.stringzhao.contrib-gateway-sentinel.plist`（命令在脚本头注释）。何时用：怀疑「消息没发/cron 全败」时先查哨兵日志 `contrib-data/logs/sentinel.log`。
+
+**own-PR 小时级机械盯梢（09-10 新增，随 run-watch 自动生效）**：`scripts/contrib/own_pr_watch.sh`（run-watch 段 2.5 每小时，零 LLM 机械 diff）——strzhao 名下 open PR 对快照 `contrib-data/own-pr-watch-snapshot.json` 比对：高级事件（外部评论/merged/closed→微信，子上限 `config.own_pr_alert_per_day`=2/日）/低级 `own-pr-info`（mergeable 翻转/停滞→简报）/静默（含 UNKNOWN 翻转、本人评论）；gh 失败连败 2 断路 `pipeline-failure`（`-ownpr-watch-down` 日级幂等）、快照损坏自动重建基线。own-pr-activity 唯一生产者（radar 事件产出已移交，见 SKILL.md 模式二）。何时用：问「我的 PR 有没有新动静/为什么没收到 PR 告警」→ 看脚本头注释 + `contrib-data/logs/own-pr-watch.log`。
 
 **边界**：scan/radar 严格 L1 只读（gh 读+本地写）；build 产出本地 worktree 分支 + PR-DRAFT 草稿，**绝不 push / 绝不 gh pr create**——提交永远人工，L2 闸门不豁免；自动构建旋钮在 `contrib-data/config.json`（auto_build / min_build_score=12 / 每日上限 1）。观察真实运转质量后再评估是否放开自动提交。
 
 **入库验收门（2026-09-07 上线）**：`scripts/contrib/**.sh` ∪ `scripts/approval/**.sh` 的变更在 pre-commit 由 `scripts/contrib/tests/gate.sh` 统一验收（bash -n/zsh -n 语法 + shellcheck -S warning + 全角 regex 门，聚合不短路；exit 0/1/2=全绿/有发现/依赖缺失）；装载：`bash scripts/contrib/tests/install-hooks.sh`；逃生阀 `MARTIN_GATE_SKIP=1`（台账 `.autopilot/runtime/gate-skip.log`，不静默）。口径与豁免见 `scripts/contrib/tests/README.md`。
 
+**goods-gate 与造货引擎（2026-09-09 升级，机制层强制 commit 进仓优先）**：深检 preflight 新增「Goods 判定」必答节（三态：offered=库存带 offer / forge-lane=可造就造、评审照发+存活期内补 offer / none=纯 review 计数）；verdict.json `goods.status` 必填、`auto-gate.sh` fail-closed 校验（09-09 前的旧指南把 offer 取舍列为 escalate 事由=根因已修）。造货入口 `scripts/contrib/forge.sh`（worktree 建单关注点分支→mutation 自证→入 `contrib-data/inventory.json` 机读台账，绝不 push）；`goods-metrics.json` 记账 + radar 巡检（连续 3 次 none=goods-drought 报警回炉造货；库存 stale 进简报）。设计全文见 hermes-contribution.md §11.2。
+
 **commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
 
 ### 快车道与 L2-A 微信审批环（09-04 上线）
 
-及时性数据实证（#102413 probe 7h 作废 / #102700 建议 build 后 2h 被占）后，contrib-watch 加了快车道：**闸门已反转为黑名单**（只排除 desktop/kanban/dashboard 等零契合域，其余 issue 全部进 LLM 研判——09-04 用户拍板扩大范围+token 充裕；PR 仍走每日 08:07 停滞雷达，不做小时级全量分析）。scan/radar 把「验证成本已付清、只差 L2 批准」的项写入 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`，含 premises/ammo/score/状态机）。**深检触发双通道：run-watch 每小时尾部快车道（候选即出即检，nohup 后台）+ launchd 09:37 兜底窗口**，对预算内 top1 自动跑三轮审（strategist preflight + fresh-context 红队，两次独立 `claude -p`，文件版次传递），成稿落 `contrib-data/pending/` → tunnel 只读 URL → `hermes send` 推微信 🟡 审批卡（深检配额周/日均 30，09-04 用户拍板放宽——token 充裕，配额已非节流而是**告警线：候选项因配额不足排队时微信通知用户**；账本 `budget.json`；probe 车道单轮 strategist 免红队、不占深检预算）。告警（自有 PR 获维护者互动/merge 灯、probe premise 死亡、流水线故障、配额告罄）走 `events.jsonl` 聚合推送，非审批类日 ≤3（**09-05 起推送载荷必须过 AI 整理层，见「hermes 外发消息规范」——notify.sh 脚本直推属待改造存量**）。用户微信回「批/改/否 #rq-id」由 hermes 侧 `~/.hermes/skills/github/hermes-contrib-l2/` skill 处理：TTL 复验（issue 存活/占坑/premises 抽验/近 5 评论信号）→ gh 落弹 → approved.log（L2-A）→ 回执；48h 无回复由 hermes cron（09:17 no-agent）搁置+晨间对账。
+及时性数据实证（#102413 probe 7h 作废 / #102700 建议 build 后 2h 被占）后，contrib-watch 加了快车道：**闸门已反转为黑名单**（09-04；09-09 修订：kanban 移出黑名单——用户 kanban 重度使用，只排除 desktop/dashboard 等零契合域，其余 issue 全部进 LLM 研判——token 充裕；PR 仍走每日 08:07 停滞雷达，不做小时级全量分析）。scan/radar 把「验证成本已付清、只差 L2 批准」的项写入 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`，含 premises/ammo/score/状态机）。**深检触发双通道：run-watch 每小时尾部快车道（候选即出即检，nohup 后台）+ launchd 09:37 兜底窗口**，对预算内 top1 自动跑三轮审（strategist preflight + fresh-context 红队，两次独立 `claude -p`，文件版次传递），成稿落 `contrib-data/pending/` → tunnel 只读 URL → `hermes send` 推微信 🟡 审批卡（深检配额周/日均 30，09-04 用户拍板放宽——token 充裕，配额已非节流而是**告警线：候选项因配额不足排队时微信通知用户**；账本 `budget.json`；probe 车道单轮 strategist 免红队、不占深检预算）。告警（自有 PR 获维护者互动/merge 灯、probe premise 死亡、流水线故障、配额告罄）走 `events.jsonl` 聚合推送，非审批类日 ≤3（**09-05 起推送载荷必须过 AI 整理层，见「hermes 外发消息规范」——notify.sh 脚本直推属待改造存量**）。用户微信回「批/改/否 #rq-id」由 hermes 侧 `~/.hermes/skills/github/hermes-contrib-l2/` skill 处理：TTL 复验（issue 存活/占坑/premises 抽验/近 5 评论信号）→ gh 落弹 → approved.log（L2-A）→ 回执；48h 无回复由 hermes cron（09:17 no-agent）搁置+晨间对账。
 
 **纪律守恒（升级不降级）**：①草稿与微信推送是 L1（本地渠道），**发出（gh 写）永远过 L2**——微信批准（L2-A）与会话内明示（L2-B）等效，执行前都查 approved.log 去重；②**所有对外草稿必须过 strategist preflight** 才能进 awaiting-approval；③own-PR 的 push/gh pr create 由执行方执行需 `allow_own_pr_push=true`（09-08 lane 改造起已置 true、语义=急停总开关：true=已批后建 coder 卡全自动执行，false=不建卡只发事件退回人工路）。会话内随时 `scripts/contrib/rq.sh list` / `budget status` 查看队列与预算。首周 `notify_dry_run=true`（只打印不真发），演练闭环确认后再关。
 
@@ -75,7 +81,7 @@
 
 ## hermes 多域 COO 架构（kanban + profiles，2026-09-06 立项）
 
-用户拍板方向：四域各一个 profile（**面向场景设计专家，能力组合走 skill 层**——task 行有独立 skills 列可按任务挂载；拆 profile 的唯一正当理由是权限/身份/爆炸半径边界，不是能力复用）。四域 = contrib（开源共建，暂维持脚本流水线）/ ops（产品运营）/ life（生活助理，dogfood 首选）/ hkstock（理财专家，**09-08 立项落地**：盘前简报/持仓问答/市场信号，只做信息与信号不做交易执行；数据层 `hkstock-data/holdings.yaml`（gitignore）+ 校验器 `scripts/hkstock/validate_holdings.py`；单 profile 无 cc lane，见 `hermes-lane-protocol.md` §7.1）。微信单入口 `/kanban create` → triage → 人工路由（dogfood 期 `auto_decompose: false`）→ dispatcher 按 assignee=profile spawn 隔离 worker → 终态事件自动推回微信。第五 profile **coder**（2026-09-08 立项）：复杂编码任务（实现/重构/修 bug/补测试）→ 建 coder 卡，worker 在 kanban 物化 worktree 里多轮接力陪跑 `claude -p "/autopilot <目标> --fast"` 无头驾驶（spike 实证：单条 -p 不自续到 done，须循环重调直到 phase=done），验收后交付——只 commit 不 push，同刻限 1 张卡（详见 `hermes-lane-protocol.md` §10）。
+用户拍板方向：四域各一个 profile（**面向场景设计专家，能力组合走 skill 层**——task 行有独立 skills 列可按任务挂载；拆 profile 的唯一正当理由是权限/身份/爆炸半径边界，不是能力复用）。四域 = contrib（开源共建，暂维持脚本流水线）/ ops（产品运营）/ life（生活助理，dogfood 首选）/ hkstock（理财专家，**09-08 立项落地**：盘前简报/持仓问答/市场信号，只做信息与信号不做交易执行；数据层 `hkstock-data/holdings.yaml`（gitignore）+ 校验器 `scripts/hkstock/validate_holdings.py`；单 profile 无 cc lane，见 `hermes-lane-protocol.md` §7.1）。微信单入口 `/kanban create` → triage → 人工路由（dogfood 期 `auto_decompose: false`）→ dispatcher 按 assignee=profile spawn 隔离 worker → 终态事件自动推回微信。第五 profile **coder**（2026-09-08 立项）：复杂编码任务（实现/重构/修 bug/补测试）→ 建 coder 卡，worker 在 kanban 物化 worktree 里多轮接力陪跑 `claude -p "/autopilot --headless <目标>"` 无头驾驶（09-10 v1.2.0：引擎 zcode 优先失败降级 claude、autopilot `--headless` 档位、档位 fast/standard 不传走 AI 探针自适应、孤儿收养前置、限额只做极限兜底——轮级 alarm 废/卡死判据看 state.md mtime 90min/max_runtime 270m；spike 实证：单条 -p 不自续到 done，须循环重调直到 phase=done），验收后交付——只 commit 不 push，per-profile 并发上限 10（09-11 拍板承认并行，全局 `max_in_progress: 3` 兜底总量；各卡独立 worktree 物化无文件竞争，详见 `hermes-lane-protocol.md` §10）。
 
 **已落地（第 0 步加固）**：`~/.hermes/config.yaml` kanban 段已显式设 `auto_decompose: false`（#49638 事故路径，每 tick 重读即时生效）、`max_in_progress: 2`（macOS 无 MemTotal 内存推导回落无界，必须显式封顶；watcher 启动时读取，需 gateway 重启生效）、`default_assignee: "default"`。实态：dispatcher 在跑（60s tick 单例锁）、kanban.db 全空零历史、微信 `/kanban` 无平台限制可用、`kanban-worker`/`kanban-orchestrator` skill 已装。v1 成熟度中高（孤儿卡 reconcile/僵尸回收/per-profile 并发上限齐备）。
 

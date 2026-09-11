@@ -133,7 +133,8 @@ NEOF
       echo "bookkeeping-quota-limit-removed.sh" ;;
     bk-dedup-key-check-removed)
       cat >"$TMP_ANCHOR" <<'AEOF'
-  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null; then
+  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null \
+     || grep -qF "\"key\": \"$key\"" "$EVENTS" 2>/dev/null; then
     log "event $key 已在账（幂等跳过）"
     return 0
   fi
@@ -226,7 +227,7 @@ import os
 base = os.environ["STRIP_CD"]
 CD_ANCHORS = ('cd "$MARTIN" || exit 1', 'cd "$MARTIN"')
 NL = chr(10)
-for f in ("deep-check.sh", "run-watch.sh"):
+for f in ("deep-check.sh", "run-watch.sh", "run-deepcheck.sh"):
     fp = os.path.join(base, "scripts", "contrib", f)
     src = open(fp).read()
     out = NL.join(l for l in src.split(NL) if l.strip() not in CD_ANCHORS)

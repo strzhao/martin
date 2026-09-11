@@ -17,6 +17,21 @@ CONFIG="$CONTRIB/config.json"
 [[ $# -ge 1 ]] || { echo "用法: auto-gate.sh <rq-id>" >&2; exit 2; }
 ID="$1"
 
+# ── goods 度量（单写方：深检全局单飞；原子写；fail-soft 不影响闸门主路）──
+_goods_metrics() {
+  local f="$CONTRIB/goods-metrics.json" today
+  today="$(date -u +%F)"
+  if jq -c --arg s "$1" --arg d "$today" '
+      .history = ((.history // []) + [{status: $s, date: $d}])
+      | .history = (.history | if length > 100 then .[-100:] else . end)
+      | .counters = ((.counters // {}) + {($s): 1})
+    ' "$f" 2>/dev/null > "$f.tmp" && mv "$f.tmp" "$f"; then
+    return 0
+  fi
+  printf '{"counters":{"%s":1},"history":[{"status":"%s","date":"%s"}]}\n' "$1" "$1" "$today" > "$f.tmp" 2>/dev/null \
+    && mv "$f.tmp" "$f" || true
+}
+
 # ── 硬条件 0：总开关（缺省 true=09-06 拍板语义；显式 false 回到全人工） ──
 auto_cfg="$(jq -r 'if has("auto_approve") then .auto_approve else true end' "$CONFIG" 2>/dev/null)"
 if [[ "$auto_cfg" != "true" ]]; then
@@ -60,6 +75,10 @@ vj="$(jq -c '.' "$V" 2>/dev/null)" || { echo "ESCALATE|verdict.json 不是合法
 dec="$(jq -r '.decision // ""' <<<"$vj")"
 conf="$(jq -r '.confidence // ""' <<<"$vj")"
 risk="$(jq -r '.risk_level // ""' <<<"$vj")"
+goods="$(jq -r 'try (.goods.status) catch null
+  | if (. == "offered" or . == "forge-lane" or . == "none") then . else "missing" end' <<<"$vj" 2>/dev/null)"
+[[ -n "$goods" ]] || goods="missing"
+_goods_metrics "$goods"
 
 if [[ "$dec" != "auto" ]]; then
   reasons="$(jq -r '(.reasons // []) | join("；")' <<<"$vj")"
@@ -71,5 +90,13 @@ if [[ "$conf" != "high" || "$risk" != "low" ]]; then
   exit 1
 fi
 
-echo "AUTO|深检高置信低风险（score=${score}，${disp}，评论类可逆动作）"
+# ── 硬条件 5：goods 三态判定（commit 进仓优先闸，09-09 升级：fail-closed）──
+# offered=评审稿带库存 offer / forge-lane=缺口可修已立项造货（评审先发、存活期内 follow-up
+# offer）/ none=不可修纯 review。缺失 = 深检没走 Goods 判定 = 流程不完整，不自动。
+case "$goods" in
+  offered|forge-lane|none) ;;
+  *) echo "ESCALATE|verdict.json 缺合法 goods.status（commit 进仓优先闸：三态判定缺失不自动）"; exit 1 ;;
+esac
+
+echo "AUTO|深检高置信低风险（score=${score}，${disp}，评论类可逆动作，goods=${goods}）"
 exit 0

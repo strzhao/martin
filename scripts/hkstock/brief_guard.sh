@@ -139,8 +139,8 @@ payload = {
     "skill": "/Users/stringzhao/.hermes/profiles/hkstock/skills/morning-brief/SKILL.md",
     "brief_path": "/Users/stringzhao/workspace/martin/hkstock-data/briefs/"
     + sys.argv[1] + "-brief.md",
-    "instruction": "按 SKILL.md 产出 C4 四段盘前简报并落盘 brief_path，期货段固定标注"
-                   "「数据缺失：期货接入 T3 上线」，全段失败则 kanban_block 不产空简报",
+    "instruction": "按 SKILL.md 产出 C4 四段盘前简报并落盘 brief_path；期货日报摘要段按 SKILL.md "
+                   "执行 daily_report.py 摘要+固定小节「风险预警」，全段失败则 kanban_block 不产空简报",
 }
 print(json.dumps(payload, ensure_ascii=False))
 PY

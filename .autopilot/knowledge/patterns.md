@@ -389,3 +389,73 @@ launchd plist 无 `AbandonProcessGroup`（默认 false）时，job 主进程退�
 <!-- tags: hermes, anthropic, env-pollution, 401, cc-shell, hkstock -->
 ## [2026-09-08] CC shell 的 ANTHROPIC_* 劫持 hermes LLM 调用：CC 侧调 hermes 必须 env -u
 CC/claude shell 导出的 `ANTHROPIC_AUTH_TOKEN`（cc-switch 的 token）+ `ANTHROPIC_BASE_URL` 会被 hermes 的 anthropic_messages transport 优先采用 → 全部 LLM 调用打到 cc-switch 代理报 401（key 尾号 316K）。cron job 从 CC shell 触发（`hermes cron run`）会继承污染 → delivery_history 401 假败。修复：CC 侧任何 hermes 调用一律 `env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL -u ANTHROPIC_API_KEY`；gateway 内 cron scheduler/worker 进程环境干净不受累。
+
+<!-- tags: bash, dry-run, gate-scope, notify, contrib-watch, events-ledger -->
+## [2026-09-08] dry-run 门控只盖发送不盖账本：notify.sh event 干跑会真实入账、下轮 flush 真推
+notify.sh 的 `NOTIFY_DRY_RUN` 只门控 `_send`（:132 打印不发送）；`cmd_event`（:281）在 dry-run 下**仍真实 append events.jsonl**（pushed:false）——对 event 子命令做"干跑验证"会污染告警账本，下次 flush 按真事件聚合推送。教训：验证只读/入账类子命令（event/approve 记账）不能靠 env 干跑，要么用一次性 key 后手工清账（本次做法），要么根本不跑。同理推广：任何「gate 只盖副作用末端」的脚本，中间层写入类动作不在保护范围内，stub 验证前先核 gate 覆盖半径。
+
+<!-- tags: qa, false-positive, red-team, pattern, word-boundary, hkstock -->
+## [2026-09-08] 红线扫描 `\border\b` 会命中代码标识符：交易关键词用中文+显式英文短语
+negate 类红线扫描 pattern `\border\b` 把 mktd sources.py 的局部变量 `order = [...]`（基金源兜底顺序列表）误报为下单关键词。中文关键词（下单/委托/撤单）本身精确，英文侧必须用显式交易短语（`place[sd]?\s+order|submit[ _-]?order`），禁用裸词边界泛匹配——代码标识符空间里 order/limit/close 等全是常用变量名。
+
+<!-- tags: hermes, kanban, coder, worktree, merge-back, mktd -->
+## [2026-09-08] coder 卡交付物必须回 merge 主仓：worktree 残留 commit ≠ 持久交付
+kanban worktree 含未推 commit 会被保留（kanban_db.py:5956）但主仓 main 永不含代码——后续任何卡从 main 切 worktree 看不到交付物，worktree 一旦清理交付静默断链（全局 bin symlink 指向 worktree 内 venv 时尤甚）。验收后标准动作：CC 本地 `git merge wt/<task_id>` 回主仓 main + 从主仓 checkout 重装全局 bin。
+
+## [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言
+run-watch.sh（zsh）以 `zsh scan_gate.sh` 显式调用（绕过 shebang）→ 脚本内 bash-only 构造（compgen/shopt）在 zsh 下 command not found。若用在 `if` 条件里则**静默恒假**（不是报错）：scan_gate 积压聚合 guard 在生产 zsh 路径恒假=告警面从未生效。三重掩盖机制叠加：红队验收测试用 bash 调（全绿）、蓝队 unit 恰好阈值单源可达（侥幸绿）、shellcheck 按她bang 按 bash 检查（不报）。防御：①脚本头部按 `${ZSH_VERSION:-}` 分支处理（如 `setopt null_glob`）+ `[[ -e ]]` 守卫双路径；②**测试的调用方式必须镜像生产调用方式**（生产 zsh 调就测 zsh 调）；③验收测试与单元测试至少各用一种 shell 调同一脚本，制造双象性暴露面。
+
+<!-- tags: bash, zsh, shebang, compgen, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing -->
+
+## [2026-09-09] 账本写入方多形态 × 单格式 grep 幂等检查 = 同 key 重复入账
+notify.sh 的 events.jsonl 有两个写入方：`cmd_event` 追加（jq 紧凑形态 `"key":"..."`）与 flush 的 python `json.dumps` 账本重写（缺省分隔符形态 `"key": "..."` 带空格）。幂等去重 grep 按 jq 形态写 → flush 重写过的账本上同 key 事件重复入账。教训：**幂等检查的 grep 必须枚举所有写入方的真实序列化形态**（`-qF` 逐形态锚定，或读前先 jq 归一化）；「谁写账本」与「谁查账本」格式必须同源（同 [[dry-run 只盖发送不盖账本]] 家族：账面语义与账本物理形态脱节是重复事故源）。
+
+<!-- tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch -->
+
+## [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名）
+run-watch 的 radar 窗口逻辑依赖 `date +%H`，但实现内部 `export PATH` 前置系统目录使 PATH 注入 stub 失效，而给实现加 hour seam 又侵入生产代码。解法：沙箱 `$HOME/.local/bin/date` 影子 stub（run-watch 的 PATH 恰好前置 ~/.local/bin）——只劫持裸 `+%H` 调用、其余参数透传 `/bin/date`，黑盒且零实现耦合。启示：**时间/环境依赖的黑盒注入优先找「实现自己已经前置的路径」下钩，其次才要求实现开 seam**；stub 必须透传非目标调用形态（防误伤同脚本其他 date 用途）。
+
+<!-- tags: testing, black-box, date, stub, shadow-binary, hour-injection, sandbox, contrib-watch -->
+
+## [2026-09-09] grep -q 提前退出 × pipefail = 输入尺寸依赖的偶发误判（vacuous-PASS 第三例）
+`printf "$big" | grep -q pattern` 在匹配后立即退出 → 大输入（>64KB 管道缓冲）时上游 printf 收 SIGPIPE → pipefail 判整条管道 141 → if 条件误 false。**小输入沙箱测试必绿**（printf 先写完），输入涨过阈值后生产才开始偶发——healthcheck 据此连续误报 hermes down、建卡全停（16:07 好 转 17:07 坏的「漂移」即列表尺寸过阈）。防御：①健康判定类「读头字符」逻辑用参数展开（`${resp#"${resp%%[![:space:]]*}"}"`）替代 grep 管道；②回归测试必须用超过管道缓冲的输入（本例 70KB stub 卡 body）；③同族教训叠加：工具链遮蔽（双 shell）、账本格式漂移、本条 = 沙箱与生产的**输入规模**差异，三类差异都须在测试中显式复刻。
+
+<!-- tags: grep, sigpipe, pipefail, vacuous-pass, input-size, healthcheck, contrib-watch, incident -->
+
+## [2026-09-09] 共享基建文件的「零改动自证」必须锚定任务暂存集，而非工作树 vs HEAD
+长任务验收里的「本任务没碰 X 文件」断言若写成 `git diff HEAD -- X`，任何并行会话对 X 的合法未提交改动（如另一任务给 rq.sh 加 release-gate 车道）都会误伤成红。正确口径：`git diff --cached <任务基线锚> -- X`——任务问责边界=自己的暂存集，工作树是共享现场。附：回归测试的触发条件体量必须真达标（SIGPIPE 锚 400B 假绿 160 倍差距，qa-reviewer 抓获），突变自证是唯一可信的锚有效性证明。
+
+<!-- tags: git, staged-diff, zero-change-assertion, parallel-sessions, regression-test, mutation, vacuous-pass, contrib-watch -->
+
+## [2026-09-09] 同文件并行暂存污染：混合 commit 的「dormant 判定」决策法
+长任务与并行会话撞同一文件（notify.sh）时，暂存集必混对方 hunks。拆分 vs 整体提交的判定：**对方 hunks 在缺少其配套依赖（如 rq.sh 未提交）时是否可达**——不可达（dormant）则整体提交+message 显式标注混入内容安全；可达（激活路径存在）则必须拆分或等对方先落地。附：验收断言「工作树 vs HEAD 零 diff」类检查在并行活跃仓会随机红，一律锚定任务暂存集（见 09-09 暂存集条目）。
+
+<!-- tags: git, parallel-sessions, staged-pollution, dormant-code, commit-strategy, contrib-watch -->
+
+## [2026-09-10] 探活选型：探测必须走被监控对象的故障路径
+gateway 哨兵初版选 `hermes kanban list` 作探活——但它是本地 SQLite 读，不经 gateway，gateway 死时探活照样成功 → 哨兵在核心场景永不报警。选探测手段前先回答「被监控对象死时，这个探测会跟着失败吗」；答不出就是假探针。语义同时钉死两件事：唯一告警信号=进程存活探测（pgrep 死→event，key 含日期=日级幂等，检测≠送达——down 期间只入账、恢复后 flush 送达）；**探针自身异常只日志不告警**（探针故障不得伪装成被监控对象故障）。
+<!-- tags: monitoring, probe, sentinel, fail-path, launchd, contrib-watch -->
+
+## [2026-09-10] CLI 父级 flag 位置 trap：stub 不校验未知参数 = 沙箱全绿生产全红
+`--board` 是 `hermes kanban` 的父级 flag（必须 `kanban --board X create`）；尾部追加在生产=argparse unrecognized arguments 硬失败，但影子 stub 按 `$2` 匹配子命令、不校验未知参数 → 带错 argv 的调用在沙箱里静默走通用成功分支，全绿。防御：①给 CLI 加 seam 前，先读上游 parser 确认 flag 层级；②unit 必须断言 **argv 顺序形态**（正则锚 `kanban --board X <sub>`），不能只断言「调用发生过」；③stub 侧同步支持新形态时注意带值 flag 使后续位置参数整体左移（`show <id>` 的 id 从 $3 变 $6）。
+<!-- tags: cli, flag-position, stub, argv-order, vacuous-pass, sandbox-gap, contrib-watch -->
+
+## [2026-09-10] 开关型 seam 的 `-` vs `:-`：显式空串=显式回退态，测试缺省零改动
+入口脚本做「生产缺省开、测试缺省关」的开关时写 `export VAR="${VAR:-default}"`，空串也被 `:-` 吞成 default → 沙箱整个测试套件随机红。改用 `${VAR-default}`（仅 unset 取缺省）：沙箱显式注入 `VAR=""` 即整链回退，全部既有测试零改动；生产 unset=新缺省。配套：切换行锁进 seam-defaults（逐字符锚定），回退=删一行或外部 export 空串。同族：兼容写撤销三步=①消费证据检查（窗口从功能上线日起算，勿用固定 7 天——旧模式 drain 记录会误命中）②唯一数据源切换+零写入哨兵断言（seed 哨兵内容验「未被触碰」）③一次性无损迁移（旧源独有条目并入新源+旧文件改名留证）。
+<!-- tags: bash, parameter-expansion, feature-flag, rollback, seam, migration, compat-write, contrib-watch -->
+
+## [2026-09-10] 审计型「零 X」谓词的正反两向都要在真实产物形态上实测
+红线检测类 grep（如「零 gh 写」）有两个对称死法：①正则被自身合法查询的字段名命中（mergeable 命中 merge、comments 命中 comment）→ 合规实现必红（自败）；②token 锚定修正后未适配记账行格式（calls.log 整行=`gh|cwd|argv`，argv 前有 `|` 前缀，`(^| )` 锚失配）→ 写调用也零命中（空转恒绿）。防御：谓词定稿前对「应红样本（写调用）」与「应绿样本（真实只读 argv）」各实测一遍。另有不可满足类：观测面与被观测对象机制不相交（要求 production 代码把脚本名写进 stub 的 calls.log）→ 任何实现必红；处置=铁律例外 E1-E3 闭合 + 等价硬观测（被观测行为唯一发起方的调用行）+ 头注留痕 + 重锁。plan-reviewer 两轮各抓一个（先自败后空转），实测是唯一裁判。
+<!-- tags: testing, predicate, vacuous-pass, false-red, red-line, audit-regex, contrib-watch -->
+
+## [2026-09-10] fixture 数据形态漂移诱发假红：错误根因会三处固化（注释+补丁+台账）
+同一 stage-1 查询，unit 夹具 comments 用数组（镜像生产）、acceptance 夹具用标量 → 假红被误诊为真 bug，且「标量=真实 gh 形态」的错误定性写进修复注释、补丁逻辑与变更台账三处；qa-reviewer 用真实 gh 一次只读实测证伪（gh 2.92.0 `pr list --json comments` 返回数组含 author.login）。「测试镜像生产」完整口径=调用方式（shell/argv）+ **数据形态**（字段是数组还是标量）都要镜像；误诊勘误必须覆盖注释/逻辑/台账三处。顺带：真 fallback（行值合法即权威、非法才回落旧值）优于无条件覆盖——前者额外覆盖「外部计数被删后回退」边沿。
+<!-- tags: testing, fixture, data-shape, mirror-production, false-red, misdiagnosis, erratum, contrib-watch -->
+
+## [2026-09-10] 种子 config 隐式依赖：改共享种子值前 grep 全部读者，机制用例 pin 自己的前置
+沙箱种子 max_alert_pushes_per_day=3 被三个既有用例隐式依赖（限额满测试靠它触发机制）；改 30 后三处齐红（2 测试 + 1 detect 探针）。其中探针 pristine=1 属暗红——**detect 维度不计入 run.sh 总分 JSON 但影响退出码**，「全量绿」判定必须看 run.sh 的 exit code 而非总分。修复口径=机制类用例显式 pin 前置（sb_config_set），种子值保持镜像生产现值；改共享种子/夹具前先 grep 键的全部读者。
+<!-- tags: testing, shared-fixture, config-seed, implicit-dependency, exit-code, detect-dim, contrib-watch -->
+
+## [2026-09-10] autopilot 分级字段补判后必须重设 gate：AC-FIELD block 会清空 gate
+stop-hook 对 AC-FIELD-INVALID 的 block 会把 gate 清空（提示语「补判字段后重设 gate=review-accept」是流程步骤非客套）——只补字段不重设 gate → §5.5 自动推进不触发，陷入通用 qa 提示循环空转。同族：任何「重设 X 后继续」类 block 处置，重设动作本身就是完成条件的一半。
+<!-- tags: autopilot, stop-hook, gate, state-machine, field-validation -->

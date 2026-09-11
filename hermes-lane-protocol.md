@@ -157,16 +157,18 @@ contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 sc
 | profile 管理 | `hermes_cli/profiles.py` |
 | 用户文档 | `website/docs/user-guide/features/kanban.md` |
 
-## §10 coder lane（CC 内嵌 worker）（2026-09-08 立项）
+## §10 coder lane（CC 内嵌 worker）（2026-09-08 立项；09-10 v1.2.0 引擎降级链 + --headless + 限额兜底化）
 
-四域之外的第五 profile：**coder** = 复杂编码执行 worker。与其他 lane 的区别——它不是 CC 会话 claim 的 control-plane lane，而是真 profile：dispatcher spawn 后由 hermes worker 陪跑一次 Claude Code 无头驾驶。
+四域之外的第五 profile：**coder** = 复杂编码执行 worker。与其他 lane 的区别——它不是 CC 会话 claim 的 control-plane lane，而是真 profile：dispatcher spawn 后由 hermes worker 陪跑一次无头自动驾驶。
 
-**链路一行图**：微信 → default（AI 自判，coder-delegate skill）建 coder 卡 → dispatcher spawn coder worker → worker 用 terminal 工具在 kanban 物化的 git worktree 里**多轮接力**跑 `claude -p "/autopilot <目标> --fast"`（⚠️ Phase 0 spike 实证 09-08：单条 -p 进程退出后循环即停、不自续到 done，worker 必须循环重调直到 state.md `phase: done`；启动轮 slash prompt 输出常为空、续跑轮自然语言 prompt 输出完整可读）→ 每轮 `process(action=wait)` 分片等待 + heartbeat → done 后验收（commit/测试/diff）→ `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
+**链路一行图**：微信 → default（AI 自判，coder-delegate skill）建 coder 卡 → dispatcher spawn coder worker → worker 按 claude-run SKILL ⓪ 做引擎选择（**zcode 优先：事前探测→`$autopilot --headless` 配方；运行时失败签名命中→降级 claude 配方续跑**，state.md 接力介质引擎无关）→ 用 terminal 工具在 kanban 物化的 git worktree 里**多轮接力**跑 `claude -p "/autopilot --headless <目标>"`（⚠️ Phase 0 spike 实证 09-08：单条 -p 进程退出后循环即停、不自续到 done，worker 必须循环重调直到 state.md `phase: done`；09-10 起 autopilot `--headless` 档位上线——交互点确定性化、正交于 fast/standard 档位（档位不传，AI 探针自适应），单轮可一口气推进多 phase）→ 每轮 `process(action=wait)` 分片等待 + heartbeat → done 后验收（commit/测试/diff）→ `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
+
+**限额只做极限兜底（2026-09-10 按 16 张真实卡数据审视，原则=不做过强干预）**：轮级 alarm 废除（统一由内层 `TIMEOUT_BUDGET` 硬顶，实测 standard 设计轮 ~25min、headless 单轮可跑完整链）；卡死判据 = >90min **state.md mtime** 无增长（活性信号换源，claude stdout 本就稀疏不可判活）；编码卡 `max_runtime` 默认 210m→270m（对齐 timeout_budget 域上界 14400s+1800s 余量谓词）；`claude_attempts ≤2` 与 autopilot `max_iterations` 不动（数据零耗尽）。**孤儿收养为发车前置步骤**：worker 死而 executor 存活的 protocol_violation 已两卡实证，spawn 前先探遗留进程——活跃→监护收养（省 1-2h 重跑），死亡→清场防双跑。
 
 **worktree 归属决策**：worktree 由 kanban 物化（`hermes_cli/kanban_db.py:10237`），**不交给 autopilot 再建一层**——autopilot 的 SessionStart hook 在 worktree 内会自动进 worktree-session 模式（锚 `worktree-bootstrap.sh` 行为），worker 只需把 claude 的工作目录指向 `$HERMES_KANBAN_WORKSPACE`，两层机制天然兼容。
 
-**L2 红线互引（本文件 §5.3）**：coder 只 commit 不 push（`--disallowedTools` 硬禁 `git push`/`gh pr`/`gh api`/`gh release`，白名单 + 红线双闸）；一切 push/PR/release 需求走 L2 审批环，coder 卡的产出物是本地 worktree 分支 + 本地 commit，合并与发布是卡外的人工/审批动作。**唯一例外（09-08 lane 改造）：own-PR 执行卡**（body 带 `类型: own-PR 执行`，approval 流水线 L2 批准后由 execute.sh 建卡）——按卡 body 配方放开 `git push fork` + `gh pr create`（仍禁 `gh pr merge`/`gh release`/`gh api` 写/`git push origin`/force），执行手册见 claude-run SKILL §⑦。
+**L2 红线互引（本文件 §5.3）**：coder 只 commit 不 push（`--disallowedTools` 硬禁 `git push`/`gh pr`/`gh api`/`gh release`，白名单 + 红线双闸；zcode 路径按 ⓪ 映射表保持闸等价）；一切 push/PR/release 需求走 L2 审批环，coder 卡的产出物是本地 worktree 分支 + 本地 commit，合并与发布是卡外的人工/审批动作。**唯一例外（09-08 lane 改造）：own-PR 执行卡**（body 带 `类型: own-PR 执行`，approval 流水线 L2 批准后由 execute.sh 建卡）——按卡 body 配方放开 `git push fork` + `gh pr create`（仍禁 `gh pr merge`/`gh release`/`gh api` 写/`git push origin`/force），执行手册见 claude-run SKILL §⑦。
 
-**执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md`（CLI 探测、模型 pin、双层超时、启动配方、auto_approve 兜底、失败矩阵、own-PR 执行卡 §⑦）。
+**执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md` v1.2.0（⓪ 引擎选择：zcode 事前探测/配方映射/失败签名/降级记账、CLI 探测、模型 pin、双层超时、`--headless` 启动配方、auto_approve 兜底、孤儿收养、失败矩阵、own-PR 执行卡 §⑦、鸿蒙编码卡 §⑧、forge-lane 入库卡 §⑨）。
 
 **验收**：走本文件 §7 新 profile 创建 SOP 的 smoke 卡步骤（设计文档写 §9，实为 §7——§9 是源码锚点表）。

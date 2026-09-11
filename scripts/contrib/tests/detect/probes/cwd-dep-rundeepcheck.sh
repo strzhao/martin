@@ -9,7 +9,8 @@ jq -cn --arg id "rq-20260101-9002" '{id: $id, issue: 9002, pr: null, title: "t",
 jq --slurpfile s "$CONTRIB_DATA_DIR/seed-item.json" '.items += $s' "$CONTRIB_DATA_DIR/ready-queue.json" \
   >"$CONTRIB_DATA_DIR/ready-queue.json.tmp" && mv "$CONTRIB_DATA_DIR/ready-queue.json.tmp" "$CONTRIB_DATA_DIR/ready-queue.json"
 cd / || exit 99
-zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh" >/dev/null 2>&1
+# T4 卡化重锁：claude 只在 fallback 路被调——注入建卡失败令 claude 编排壳接管
+STUB_HERMES_FAIL_FIRST=2 zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh" >/dev/null 2>&1
 cwd_seen="$(awk -F'|' '$1 == "claude" { print $2; exit }' "$STUB_LOG_DIR/calls.log" 2>/dev/null)"
 if [[ "$cwd_seen" != "$MARTIN_DIR" ]]; then
   echo "probe: claude 子进程 cwd=[$cwd_seen] 期望 [$MARTIN_DIR]（缺 cd，launchd cwd=/ 下找不到项目 skill）"

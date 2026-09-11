@@ -506,11 +506,12 @@ gate_run() { # <id> → 全局 GATE_RC/GATE_OUT
   GATE_OUT="$(cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" MARTIN_DIR="$SB/martin" \
     bash "$GATE" "$1" 2>&1)"; GATE_RC=$?
 }
-write_verdict() { # <id> <decision> <confidence> <risk> [reasons-json]
+write_verdict() { # <id> <decision> <confidence> <risk> [reasons-json] [goods-status]
   local d="$SB/contrib-data/runs/deep-check/$1"
   mkdir -p "$d"
-  jq -n --arg dec "$2" --arg conf "$3" --arg risk "$4" --argjson reasons "${5:-[]}" \
-    '{decision:$dec, confidence:$conf, risk_level:$risk, reasons:$reasons}' > "$d/verdict.json"
+  jq -n --arg dec "$2" --arg conf "$3" --arg risk "$4" --argjson reasons "${5:-[]}" --arg goods "${6:-offered}" \
+    '{decision:$dec, confidence:$conf, risk_level:$risk, reasons:$reasons,
+      goods: (if $goods == "__missing__" then null else {status:$goods, note:"test"} end)}' > "$d/verdict.json"
 }
 
 # D1: verdict 缺失 → 升级（无意见不自动）
@@ -562,6 +563,32 @@ make_item review-evidence deep
 write_verdict "$ID" auto high low
 gate_run "$ID"
 check_eq "D7 auto_approve=false → rc=1" "1" "$GATE_RC"
+sb_done
+
+# D7b/D7c/D7d: goods 三态闸（09-09 commit 进仓优先升级：fail-closed）
+sb_new true
+# D7b: goods 字段缺失 → 升级（深检没走 Goods 判定 = 流程不完整）
+make_item review-evidence deep
+write_verdict "$ID" auto high low '[]' __missing__
+gate_run "$ID"
+check_eq "D7b goods 缺失 → rc=1" "1" "$GATE_RC"
+check_contains "$GATE_OUT" "goods.status" "D7b 升级原因点明 goods 闸"
+# D7c: goods=none（不可修纯 review）→ 仍可自动（none 合法，只计数）
+make_item review-evidence deep
+write_verdict "$ID" auto high low '[]' none
+gate_run "$ID"
+check_eq "D7c goods=none → rc=0（纯 review 合法）" "0" "$GATE_RC"
+check_contains "$GATE_OUT" "goods=none" "D7c 放行理由带 goods 状态"
+# D7d: goods=forge-lane → 仍可自动
+make_item review-evidence deep
+write_verdict "$ID" auto high low '[]' forge-lane
+gate_run "$ID"
+check_eq "D7d goods=forge-lane → rc=0" "0" "$GATE_RC"
+# D7e: goods 计数落账（三次调用各入一档；counters 总和=3 且 keys 正确）
+MET="$SB/contrib-data/goods-metrics.json"
+check_eq "D7e goods-metrics counters 总和=3" "3" "$(jq -r '[.counters[]] | add' "$MET")"
+check_eq "D7e counters 含 missing/none/forge-lane 三档" "missing none forge-lane" \
+  "$(jq -r '.counters | keys_unsorted | join(" ")' "$MET")"
 sb_done
 
 # D8/D9: 占坑语义分 disposition（104067b 误杀回归：review-evidence 的 PR 引用是评论对象，不是威胁）

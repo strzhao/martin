@@ -71,7 +71,20 @@ assert_grep_f 'pgrep -f' "claude-run 含 pgrep -f 进程探测" "$CR"
 assert_grep 'pgrep[[:space:]]+-f[[:space:]]+"?claude[[:space:]]+-p' "claude-run pgrep 目标为 claude -p" "$CR"
 assert_grep_f 'kanban_heartbeat' "claude-run 含 kanban_heartbeat" "$CR"
 assert_grep_f 'process(action=kill)' "claude-run 含 process(action=kill) 卡死处置（hermes 真实工具语法，process_registry.py:3228）" "$CR"
-assert_grep '45([[:space:]]*min|分钟)' "claude-run 含 45min 日志 mtime 无增长卡死判据" "$CR"
+assert_grep '90([[:space:]]*min|分钟)' "claude-run 含 90min state.md mtime 无增长卡死判据（v1.2.0：活性信号换源，45min 日志判据已废）" "$CR"
+assert_grep 'state\.md.*mtime|mtime.*state\.md' "claude-run 活性信号 = state.md mtime（非日志行数）" "$CR"
+
+# --- R3b: 引擎选择（v1.2.0 zcode 优先、claude 兜底）+ --headless + 孤儿收养 ---
+assert_grep_f '--headless' "claude-run 启动配方含 --headless（无人值守档位必传）" "$CR"
+assert_grep 'command[[:space:]]+-v[[:space:]]+zcode' "claude-run 含 zcode 事前探测（command -v zcode）" "$CR"
+assert_grep_f 'captcha verify failed' "claude-run 含 zcode 运行时失败签名（captcha）" "$CR"
+assert_grep_f 'Model config is missing' "claude-run 含 zcode 运行时失败签名（config missing）" "$CR"
+assert_grep_f '孤儿收养' "claude-run 含孤儿收养前置步骤（两卡实证）" "$CR"
+assert_grep_f '轮级不设 alarm' "claude-run 含轮级 alarm 废除语义（限额只做极限兜底）" "$CR"
+
+# --- R3c: autopilot 强制（2026-09-11 SOUL 红线 7；首日两卡直驱偏航封堵） ---
+assert_grep_any 'autopilot 强制|100% 走 autopilot|禁止 BRIEFING.md 自然语言直驱替代 autopilot|禁止 BRIEFING.md 直驱' "含 autopilot 强制/禁直驱语义（claude-run/delegate union）" "$CR" "$DG"
+assert_grep_any '红线 7' "SOUL/delegate 引用 autopilot 强制红线（union）" "$SOUL" "$DG"
 
 # --- R4: 退出码契约 / 失败矩阵 / 重试 ---
 assert_grep_f '重试' "claude-run 含退出码 != 0 重试语义" "$CR"
@@ -91,7 +104,8 @@ assert_grep_any '三级' "含 CLAUDE_BIN 三级探测语义（claude-run/delegat
 assert_grep_any '(^|[^0-9])10800([^0-9]|$)' "含 timeout_budget 缺省 10800" "$CR" "$DG"
 assert_grep_any '(^|[^0-9])14400([^0-9]|$)' "含 timeout_budget 合法域上界 14400" "$CR" "$DG"
 assert_grep_any '(^|[^0-9])1800([^0-9]|$)' "含 max_runtime > timeout_budget + 1800s 关系" "$CR" "$DG"
-assert_grep_any '(^|[^0-9])12600([^0-9]|$)' "含 max_runtime 下界 12600s（210m）" "$CR" "$DG"
+assert_grep_any '(^|[^0-9])12600([^0-9]|$)' "含 max_runtime 下界 12600s（缺省 timeout_budget 时谓词下界）" "$CR" "$DG"
+assert_grep_any '(^|[^0-9])16200([^0-9]|$)' "含 max_runtime 默认 16200s（270m，v1.2.0：覆盖 timeout_budget 域上界+余量）" "$CR" "$DG"
 assert_grep_any '(^|[^0-9])8192([^0-9]|$)' "含卡 body <= 8192 bytes 约束" "$CR" "$DG"
 assert_grep_any '绝对路径' "含目标仓库必为以 / 开头的绝对路径语义" "$CR" "$DG"
 
@@ -126,7 +140,7 @@ assert_grep_f 'timeout_budget' "coder-delegate 模板含尾行 timeout_budget: <
 # --- D4: 建卡参数 ---
 assert_grep 'workspace_kind[^[:alnum:]]*.*worktree' "coder-delegate 含 workspace_kind=worktree" "$DG"
 assert_grep 'assignee[^[:alnum:]]*.*coder' "coder-delegate 含 assignee=coder" "$DG"
-assert_grep 'max_runtime[^[:alnum:]]*.*210|210[[:space:]]*m' "coder-delegate 含 max_runtime=210m" "$DG"
+assert_grep 'max_runtime[^[:alnum:]]*.*270|270[[:space:]]*m' "coder-delegate 含 max_runtime=270m（v1.2.0：210m 已废）" "$DG"
 
 # --- D5: L2 边界 + 预期管理 ---
 assert_grep_f 'L2' "coder-delegate 含 L2 不走 coder 语义" "$DG"

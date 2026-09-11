@@ -1,0 +1,28 @@
+#!/bin/bash
+# 影子 stub：date —— 时间依赖黑盒注入（patterns 09-09 影子 date stub 先例的 tests/stubs 固化版）
+# 行为旋钮：
+#   STUB_DATE_TODAY=<YYYY-MM-DD> → 劫持裸 `+%F`（冻结同日 D，日级幂等 key/当日口径确定性）
+#                                   与裸 `+%H`（冻结小时，缺省 00——刻意避开 radar 08 窗）；
+#   STUB_DATE_HOUR=<HH>          → 覆盖 +%H 冻结值（radar 窗口用例才需要）
+# 其余一切参数形态透传 /bin/date（绝对路径，防 PATH 再遮蔽）；STUB_DATE_TODAY 未设时
+# 全量透传 = 整个既有套件零行为变化。不写 calls.log（调用面断言只锚 gh/hermes）。
+set -u
+
+LOG_DIR="${STUB_LOG_DIR:-}"
+if [[ -z "$LOG_DIR" ]]; then
+  echo "stub date: STUB_LOG_DIR 未设置（拒绝在沙箱外运行）" >&2
+  exit 97
+fi
+
+if [[ -n "${STUB_DATE_TODAY:-}" ]]; then
+  if [[ "${1:-}" == "+%F" ]]; then
+    printf '%s\n' "$STUB_DATE_TODAY"
+    exit 0
+  fi
+  if [[ "${1:-}" == "+%H" ]]; then
+    printf '%s\n' "${STUB_DATE_HOUR:-00}"
+    exit 0
+  fi
+fi
+
+exec /bin/date "$@"

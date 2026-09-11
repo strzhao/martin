@@ -1,5 +1,6 @@
 #!/bin/bash
 # e7-orchestration-resilience.sh — E7：编排层自愈三件套（09-06 深检挂死实证回归）
+# T4 卡化重锁：claude 编排壳现仅活在 fallback 路（STUB_HERMES_FAIL=1 令建卡失败进 fallback）
 #   a) 阶段超时：stub 挂死 + DEEPCHECK_PHASE_TIMEOUT → run_phase 击杀 → fail 路径（state=failed，不进红队）
 #   b) 整壳兜底：内层存活但超 DEEPCHECK_ORCH_TIMEOUT → 入口层击杀 + pipeline-failure 事件（响而不哑）
 #   c) 陈旧锁自愈：>3h 锁被清掉重拿（对齐 gate 同款阈值），流水线不再靠人工 rmdir 解锁
@@ -24,7 +25,7 @@ CALLS_LOG="$SB_STUBLOG/calls.log"
 
 t_case "E7a: 阶段超时 → run_phase 击杀 → failed + 不进红队"
 sb_seed_queue_item "rq-20260905-701" 701 deep queued 30
-sb_run -e "STUB_CLAUDE_SLEEP=30" -e "DEEPCHECK_PHASE_TIMEOUT=2" \
+sb_run -e "STUB_HERMES_FAIL=1" -e "STUB_CLAUDE_SLEEP=30" -e "DEEPCHECK_PHASE_TIMEOUT=2" \
   'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc "run-deepcheck 黑洞契约保持"
@@ -36,7 +37,7 @@ sb_rq set rq-20260905-701 rejected --note "终态化让位" >/dev/null
 
 t_case "E7b: 整壳兜底 → 入口层击杀 + pipeline-failure 事件"
 sb_seed_queue_item "rq-20260905-702" 702 deep queued 30
-sb_run -e "STUB_CLAUDE_SLEEP=30" -e "DEEPCHECK_PHASE_TIMEOUT=29" -e "DEEPCHECK_ORCH_TIMEOUT=2" \
+sb_run -e "STUB_HERMES_FAIL=1" -e "STUB_CLAUDE_SLEEP=30" -e "DEEPCHECK_PHASE_TIMEOUT=29" -e "DEEPCHECK_ORCH_TIMEOUT=2" \
   'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc "黑洞契约保持（兜底击杀也不上抛）"
@@ -56,7 +57,7 @@ assert_eq "$(jq -r '.items[] | select(.id == "rq-20260905-703") | .state' "$QUEU
 
 t_case "E7d: 模型 pin → 每次 claude 调用显式带 --model"
 sb_seed_queue_item "rq-20260905-704" 704 deep queued 30
-sb_run -e "CLAUDE_MODEL_PIN=glm-test-9" \
+sb_run -e "STUB_HERMES_FAIL=1" -e "CLAUDE_MODEL_PIN=glm-test-9" \
   'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc "黑洞契约保持"

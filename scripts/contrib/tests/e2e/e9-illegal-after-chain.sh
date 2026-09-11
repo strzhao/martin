@@ -17,7 +17,8 @@ QUEUE_FILE="$SB_ROOT/contrib-data/ready-queue.json"
 
 t_case "E9a: 真实链路到 awaiting-approval 后，非法迁移被拒且零写入"
 sb_seed_queue_item "rq-20260905-901" 901 deep queued 40
-sb_run -e "NOTIFY_DRY_RUN=false" 'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
+# T4 卡化重锁：经 fallback（建卡失败）走 claude 编排壳到 awaiting-approval
+sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL_FIRST=2" 'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
 assert_exit 0 $?
 state="$(jq -r '.items[] | select(.id == "rq-20260905-901") | .state' "$QUEUE_FILE")"
 assert_eq "$state" "awaiting-approval" "前置：链路推进到待批"

@@ -24,7 +24,14 @@ new_sb() {
   cat > "$STUB/himalaya" <<'STUBEOF'
 #!/bin/bash
 case "$1" in
-  envelope) cat "${MAIL_STUB_ENVELOPES:?}" ;;
+  envelope)
+    # unseen 语义仿真：查询带 flag unseen 时隐藏 flags 含 Seen 的信封（仿真真实服务端）
+    if [[ " $* " == *" flag unseen "* ]]; then
+      jq -c '[.[] | select((.flags // []) | index("Seen") | not)]' "${MAIL_STUB_ENVELOPES:?}"
+    else
+      cat "${MAIL_STUB_ENVELOPES:?}"
+    fi
+    ;;
   message)
     f="${MAIL_STUB_DIR:?}/read-$3.txt"
     if [[ -f "$f" ]]; then cat "$f"; else printf 'Message-ID: <default-%s@github.com>\n\n正文默认行。\n' "$3"; fi
@@ -44,9 +51,9 @@ run_gate() { # <可选参数> → stdout, RC 全局
   RC=$?
 }
 
-env_row() { # <id> <to-addr> <subject> → envelope JSON 行（jq -n 构造，自动处理转义）
-  jq -cn --arg id "$1" --arg to "$2" --arg subj "$3" \
-    '{"id":$id,"flags":[],"subject":$subj,"from":{"name":"Teknium","addr":"notifications@github.com"},"to":{"name":"x","addr":$to},"date":"2026-09-07 05:57-07:00","has_attachment":false}'
+env_row() { # <id> <to-addr> <subject> [flags-json] → envelope JSON 行（jq -n 构造，自动处理转义）
+  jq -cn --arg id "$1" --arg to "$2" --arg subj "$3" --argjson flags "${4:-[]}" \
+    '{"id":$id,"flags":$flags,"subject":$subj,"from":{"name":"Teknium","addr":"notifications@github.com"},"to":{"name":"x","addr":$to},"date":"2026-09-07 05:57-07:00","has_attachment":false}'
 }
 
 t_case "无未读 → exit 0，零 cursor"
@@ -104,6 +111,22 @@ t_case "commit 后重跑：同批邮件不再进 pending"
 run_gate
 assert_exit 0 $RC
 assert_eq "$(jq 'length' "$PENDING")" "0" "零重复消费"
+
+t_case "外部客户端置已读（flags Seen）→ 仍进 pending（游标=唯一采集权威；09-09 8750-8755 漏信回归）"
+new_sb
+printf '{"last_id":8000,"initialized":"t"}\n' > "$CURSOR"
+{
+  printf '['
+  env_row 8005 "hermes-agent@noreply.github.com" "Re: [NousResearch/hermes-agent] 被外部拉取置已读 (PR #105)" '["Seen"]'
+  printf ','
+  env_row 8006 "hermes-agent@noreply.github.com" "Re: [NousResearch/hermes-agent] 未读新邮件 (PR #106)"
+  printf ']\n'
+} > "$STUB/envelopes.json"
+printf 'Message-ID: <seen-8005@github.com>\n\n被外部客户端拉取置已读的邮件正文。\n' > "$STUB/read-8005.txt"
+printf 'Message-ID: <unseen-8006@github.com>\n\n未读新邮件正文。\n' > "$STUB/read-8006.txt"
+run_gate
+assert_exit 10 $RC
+assert_eq "$(jq -r '[.[].id] | join(",")' "$PENDING")" "8005,8006" "已读邮件不因 unseen 过滤漏采（gate 查询不带 flag unseen）"
 
 t_case "真实渲染形态：无 Message-ID 头，ID 只在正文页脚 → 仍 exit 10 + 页脚提取"
 new_sb

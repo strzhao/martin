@@ -17,7 +17,8 @@ sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
 
 t_case "E3: cwd=/ 下 run-deepcheck 全链 → claude 子进程 PWD == MARTIN"
 sb_seed_queue_item "rq-20260905-501" 501 probe queued 40
-sb_run -C / 'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
+# T4 卡化重锁：claude 只在 fallback 路被调（建卡失败）——cwd 契约锚在 fallback 编排壳
+sb_run -C / -e "STUB_HERMES_FAIL_FIRST=2" 'zsh "$MARTIN_DIR/scripts/contrib/run-deepcheck.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc "run-deepcheck 黑洞契约（恒 0）"
 assert_stub_called claude 1 "claude 被调"
