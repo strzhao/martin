@@ -63,6 +63,8 @@
 
 **own-PR 小时级机械盯梢（09-10 新增，随 run-watch 自动生效）**：`scripts/contrib/own_pr_watch.sh`（run-watch 段 2.5 每小时，零 LLM 机械 diff）——strzhao 名下 open PR 对快照 `contrib-data/own-pr-watch-snapshot.json` 比对：高级事件（外部评论/merged/closed→微信，子上限 `config.own_pr_alert_per_day`=2/日）/低级 `own-pr-info`（mergeable 翻转/停滞→简报）/静默（含 UNKNOWN 翻转、本人评论）；gh 失败连败 2 断路 `pipeline-failure`（`-ownpr-watch-down` 日级幂等）、快照损坏自动重建基线。own-pr-activity 唯一生产者（radar 事件产出已移交，见 SKILL.md 模式二）。何时用：问「我的 PR 有没有新动静/为什么没收到 PR 告警」→ 看脚本头注释 + `contrib-data/logs/own-pr-watch.log`。
 
+**coder 卡上游回馈评估闸门（09-11 新增，随 run-watch 自动生效；洞察6 dogfood 已实跑走通）**：`scripts/contrib/coder_upstream_gate.sh`（run-watch 段 2.6 每小时，零 LLM 机械回扫）——done coder 卡中 workspace_path 落 hermes-agent worktree 且本地领先 origin/main 的修复卡 → contrib board 建「上游回馈评估」卡（`kanban_card.sh` kind=upstream）+ `coder-upstream-candidate` 事件 + `contrib-data/coder-upstream-cursor.json` 游标增量；三层幂等（events key/建卡 idempotency-key/游标）+ fail-closed（任一步失败零推进，不拖死 hourly 链）。绝不自动 push：评估卡 verdict=值得才走既有 forge/L2 链（L2 闸门不豁免），不值得记理由终态 expired/shelved。何时用：问「本地修了的东西为什么没变成上游 PR」→ 看脚本头注释 + `contrib-data/logs/coder-upstream-gate.log`。
+
 **边界**：scan/radar 严格 L1 只读（gh 读+本地写）；build 产出本地 worktree 分支 + PR-DRAFT 草稿，**绝不 push / 绝不 gh pr create**——提交永远人工，L2 闸门不豁免；自动构建旋钮在 `contrib-data/config.json`（auto_build / min_build_score=12 / 每日上限 1）。观察真实运转质量后再评估是否放开自动提交。
 
 **入库验收门（2026-09-07 上线）**：`scripts/contrib/**.sh` ∪ `scripts/approval/**.sh` 的变更在 pre-commit 由 `scripts/contrib/tests/gate.sh` 统一验收（bash -n/zsh -n 语法 + shellcheck -S warning + 全角 regex 门，聚合不短路；exit 0/1/2=全绿/有发现/依赖缺失）；装载：`bash scripts/contrib/tests/install-hooks.sh`；逃生阀 `MARTIN_GATE_SKIP=1`（台账 `.autopilot/runtime/gate-skip.log`，不静默）。口径与豁免见 `scripts/contrib/tests/README.md`。
