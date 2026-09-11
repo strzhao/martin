@@ -258,3 +258,10 @@ placeholder: 选填，800 字内
 - [蚂小财 2025 新版解析](http://m.eeo.com.cn/2025/0623/733821.shtml) · [蚂小财 vs i问财 vs 妙想竞品分析](https://www.woshipm.com/evaluating/6125681.html) · [AI 智能投顾普惠实践](https://m.sgpjbg.com/labels/aizhinengtougupuhuihua.html)
 - [FinMem (arXiv 2311.13743)](https://arxiv.org/abs/2311.13743) · [FinAgent (arXiv 2507.22936)](https://www.arxiv.org/pdf/2507.22936) · [InvestorBench (ACL 2025)](https://www.alphaxiv.org/abs/2412.18174) · [Agentic Trading 综述 2026](https://arxiv.org/html/2605.19337v1)
 - 合规：[财联社·投顾新规](https://m.cls.cn/detail/2451503) · [江苏检察·无资质荐股案例](https://www.jsjc.gov.cn/shzs/fzzc/202604/t20260408_1320912.shtml) · [中基协·智能投顾国际监管经验](https://www.amac.org.cn/hyyj/hjtj/201912/P020231126399651565749.pdf)
+
+## 增补：2.2「列表化 + 教学式原因」（2026-09-11 深夜，用户三次反馈拍板）
+
+- 推送形态=**组合观点列表**：每仓一行（动不动+一句原因）+ 新买入候选行；免责套话/合规口径段全废（用户原话"把之前定的红线去掉，没意义，我个人用的，我要参考 AI 的建议结合我自己的判断"）
+- **原因行=教学式写法**（用户核心诉求："通过原因说明教会我，让我后续也能学习和掌握相关的判断能力"）：讲透判断方法、给可复用规则；用到的规则落「方法笔记」行
+- 简报五段：组合观点/隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议；验收测试同步翻转（6.P4 断「组合观点」在场+「不构成投资建议」缺席；契约漂移豁免=holdings 或 SKILL 晚于产物时谓词待下一份判定）
+- 演练卡 t_bf9687c4 PASS：列表形态+教学式理由链（分位语义/低估值≠错杀/利润增速双向看/结构纵向坐标）+3 条方法笔记

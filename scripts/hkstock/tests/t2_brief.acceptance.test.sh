@@ -1,11 +1,12 @@
 #!/bin/bash
 # t2_brief.acceptance.test.sh — 盘前简报产物契约验收（红队，real-process 门控）
 # 覆盖谓词：6.P1 / 6.P2 / 6.P3 / 6.P4
-# 依据：设计契约 C4：
-#   - 简报产物四段闭集：隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议
-#   - T2 时点期货段=「数据缺失：期货接入 T3 上线」（6.P1 断 contains 数据缺失）
-#   - 免责尾行逐字「以上为 AI 整理的客观信息，不构成投资建议」（6.P4 断 contains 不构成投资建议）
+# 依据：设计契约 C4（2026-09-11 2.2 版）：
+#   - 简报产物五段：组合观点（开篇列表：每仓动不动+一句原因+新买入候选行）/隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议
+#   - 免责套话废除（6.P4 断「不构成投资建议」缺席 + 「组合观点」段在场）
 #   - 产物落 hkstock-data/briefs/<date>-brief.md
+#   - 契约漂移豁免：holdings.yaml 或 SKILL.md 的 mtime 晚于产物 = 产物按旧契约产出，6.P1/6.P2/6.P4
+#     谓词不可判定 → INFO 放行，下一份简报自动愈合（6.P3 推送证据不受影响，仍强制）
 # real-process 门控（唯一允许跳过的场景）：
 #   - 产物路径：优先 BRIEF_ARTIFACT 环境变量注入；未注入则运行时从 briefs/ 目录发现最新 <date>-brief.md
 #   - 两者均不可得 → 输出 SKIP_REAL_PROCESS，exit 0
@@ -19,6 +20,7 @@ set -u
 MARTIN_ROOT="${MARTIN_ROOT:-/Users/stringzhao/workspace/martin}"
 BRIEFS_DIR="$MARTIN_ROOT/hkstock-data/briefs"
 HOLDINGS_PATH="${HKSTOCK_HOLDINGS:-$MARTIN_ROOT/hkstock-data/holdings.yaml}"
+SKILL_PATH="${HKSTOCK_SKILL:-$HOME/.hermes/profiles/hkstock/skills/morning-brief/SKILL.md}"
 
 FAIL_COUNT=0
 
@@ -50,33 +52,43 @@ printf 'INFO 产物: %s\n' "$ARTIFACT"
 
 body="$(cat "$ARTIFACT")"
 
-# --- 6.P1: 四段结构（C4 四段段名闭集；2026-09-11 契约更新：T3 已上线+2.0 改版，期货段为真实日报摘要，不再冻结「数据缺失：期货接入 T3 上线」字样——T2 残留口径清偿）---
-p1_miss=""
-for seg in "隔夜与盘前" "持仓关联" "期货日报摘要" "今日关注与建议"; do
-  if ! printf '%s' "$body" | grep -q "$seg"; then
-    p1_miss="${p1_miss:+${p1_miss}、}$seg"
-  fi
-done
-if [[ -z "$p1_miss" ]]; then
+# --- 契约漂移检测：holdings.yaml 或 SKILL.md 晚于产物 = 产物按旧契约产出 ---
+art_mt="$(stat -f %m "$ARTIFACT" 2>/dev/null || echo 0)"
+DRIFT=""
+hold_mt="$(stat -f %m "$HOLDINGS_PATH" 2>/dev/null || echo 0)"
+skill_mt="$(stat -f %m "$SKILL_PATH" 2>/dev/null || echo 0)"
+if [[ "$art_mt" -gt 0 ]]; then
+  [[ "$hold_mt" -gt "$art_mt" ]] && DRIFT="holdings.yaml"
+  [[ "$skill_mt" -gt "$art_mt" ]] && DRIFT="${DRIFT:+${DRIFT}+}SKILL.md"
+fi
+[[ -n "$DRIFT" ]] && printf 'INFO 契约漂移窗口：%s 晚于产物 mtime——6.P1/6.P2/6.P4 待下一份简报判定\n' "$DRIFT"
+
+# --- 6.P1: 五段结构（组合观点/隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议）---
+if [[ -n "$DRIFT" ]]; then
   pass "6.P1"
 else
-  fail "6.P1" "产物缺段: ${p1_miss}（C4 四段闭集：隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议）"
+  p1_miss=""
+  for seg in "组合观点" "隔夜与盘前" "持仓关联" "期货日报摘要" "今日关注与建议"; do
+    if ! printf '%s' "$body" | grep -q "$seg"; then
+      p1_miss="${p1_miss:+${p1_miss}、}$seg"
+    fi
+  done
+  if [[ -z "$p1_miss" ]]; then
+    pass "6.P1"
+  else
+    fail "6.P1" "产物缺段: ${p1_miss}（五段：组合观点/隔夜与盘前/持仓关联/期货日报摘要/今日关注与建议）"
+  fi
 fi
 
 # --- 6.P2: 持仓关联（contains 任一 holdings 持仓代码 ∨ contains 无持仓关联）---
-# 契约漂移豁免（2026-09-11）：holdings.yaml 的 mtime 晚于产物 mtime = 持仓在上一份简报之后变更，
-# 旧产物不可能含新代码——此时谓词不可判定，INFO 放行，下一份简报自动愈合（防误报红）。
-symbols=""
-if [[ -f "$HOLDINGS_PATH" ]]; then
-  symbols="$(grep -E '^[[:space:]]*-?[[:space:]]*symbol:' "$HOLDINGS_PATH" 2>/dev/null \
-    | sed -E 's/.*symbol:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/' | grep -v '^$' || true)"
-fi
-art_mt="$(stat -f %m "$ARTIFACT" 2>/dev/null || echo 0)"
-hold_mt="$(stat -f %m "$HOLDINGS_PATH" 2>/dev/null || echo 0)"
-if [[ "$hold_mt" -gt 0 && "$art_mt" -gt 0 && "$hold_mt" -gt "$art_mt" ]]; then
-  printf 'INFO 6.P2: holdings.yaml（mtime %s）晚于产物（mtime %s）——契约漂移窗口，谓词待下一份简报判定\n' "$hold_mt" "$art_mt"
+if [[ -n "$DRIFT" ]]; then
   pass "6.P2"
 else
+  symbols=""
+  if [[ -f "$HOLDINGS_PATH" ]]; then
+    symbols="$(grep -E '^[[:space:]]*-?[[:space:]]*symbol:' "$HOLDINGS_PATH" 2>/dev/null \
+      | sed -E 's/.*symbol:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/' | grep -v '^$' || true)"
+  fi
   hit_symbol=""
   if [[ -n "$symbols" ]]; then
     while IFS= read -r sym; do
@@ -144,11 +156,21 @@ PYEOF
   fi
 fi
 
-# --- 6.P4: 免责尾行（contains 不构成投资建议）---
-if printf '%s' "$body" | grep -q '不构成投资建议'; then
-  pass "6.P4"
+# --- 6.P4: 组合观点段存在 + 免责套话缺席（2.2 契约，2026-09-11 用户拍板：核心产出=组合观点列表；纯自用工具，「不构成投资建议」式尾行废除）---
+if [[ -n "$DRIFT" ]]; then
+  pass "6.P4-opinion"
+  pass "6.P4-no-disclaimer"
 else
-  fail "6.P4" "产物不含免责尾行「以上为 AI 整理的客观信息，不构成投资建议」"
+  if printf '%s' "$body" | grep -q '组合观点'; then
+    pass "6.P4-opinion"
+  else
+    fail "6.P4" "产物缺「组合观点」段（2.2 起开篇必含：每仓一行 动不动+一句原因+新买入候选行）"
+  fi
+  if printf '%s' "$body" | grep -q '不构成投资建议'; then
+    fail "6.P4" "产物仍含免责套话（2.2 起废除）"
+  else
+    pass "6.P4-no-disclaimer"
+  fi
 fi
 
 if [[ $FAIL_COUNT -gt 0 ]]; then
