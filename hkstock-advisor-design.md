@@ -239,6 +239,17 @@ placeholder: 选填，800 字内
 
 ---
 
+## 增补：2.1「组合观点」升级（2026-09-11 深夜，用户二次反馈拍板）
+
+2.0 演练简报仍被评"和 app 看没区别"——只报涨跌幅不够。用户原话定稿核心产出：**"告知我当前适合买什么、适合卖什么、或者什么都不动，以及原因是什么"**，并明确"价值投资，不做短线和量化"。
+
+落地变更：
+- **核心产出 = 组合观点**：每持仓落入 加仓/持有/减仓/清仓/观望 五态 + 理由链；开头一行组合总观点；
+- **理由只准来自基本面与估值**（PE-TTM 当前值+近十年分位 `ak.stock_hk_valuation_baidu`、财报 `ak.stock_financial_hk_report_em`、回购/分红、行业格局）；技术分析词汇只作背景不作论据；
+- **观点稀缺性纪律**：默认「不动」，观点变化须有基本面/估值新触发；
+- **投研档案** `hkstock-data/theses/<symbol>.md`（活体：当前观点+观点历史 append-only；买入逻辑栏待用户口述，AI 不代编）；
+- **合规边界重定义**：「不做买卖指令」细化为——不**执行**交易、不**对外**荐股不变；给本人的组合观点（加仓/持有/减仓+理由链）是本系统核心服务。免责尾行保留。
+
 ## 附：研究来源
 
 - [MSCI Wealth Trends 2026](https://www.msci.com/research-and-insights/research-reports/2026-wealth-trends) · [Oliver Wyman 10 Wealth Trends 2026](https://www.oliverwyman.com/our-expertise/insights/2025/dec/wealth-management-trends-2026.html) · [InvestSuite: Agentic AI 趋势](https://www.investsuite.com/insights/blogs/top-wealth-management-trends-in-2026-the-shift-to-agentic-ai-and-private-markets)
