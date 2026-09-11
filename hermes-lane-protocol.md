@@ -170,3 +170,9 @@ contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 sc
 **执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md`（CLI 探测、模型 pin、双层超时、启动配方、auto_approve 兜底、失败矩阵、own-PR 执行卡 §⑦）。
 
 **验收**：走本文件 §7 新 profile 创建 SOP 的 smoke 卡步骤（设计文档写 §9，实为 §7——§9 是源码锚点表）。
+
+### 10.1 鸿蒙编码卡（2026-09-08 新增卡型）
+
+- **卡型标记**：卡 body 带 `类型: 鸿蒙编码卡`，目标仓 = harmony-space。执行手册 = coder claude-run SKILL §⑧；**规范唯一真源 = harmony-space 仓 `docs/harmony-coding-brief.md`**（必填节闭集 / 机器门配方 / 远端动作边界 / 错误标记枚举），本侧只放薄壳配方，不复制全文。
+- **边界（SOUL 红线 1 第二例外）**：允许 `git push -u origin <功能分支>` + `gh pr create`（证据标记 `[contract:PASS]`/`[test:PASS]` 贴 PR body）；`gh pr merge` / main 直推 / force 仍全禁，merge 留人。双闸：SKILL §⑧ 细化 disallowedTools（工具级）+ push 前 refspec 机械自检（配方级）。
+- **建卡预检**：body 缺 `## 目标`/`## 约束`/`## 验收标准`/`## 机器门` 任一 → `kanban_block`（`harmony_card_blocked`），不烧配额。
