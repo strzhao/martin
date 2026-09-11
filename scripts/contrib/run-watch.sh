@@ -608,6 +608,17 @@ if [[ -x "$OWNPR_WATCH" ]]; then
   echo "[$(ts)] own_pr_watch own-PR 盯梢 exit=$ownpr_rc" >>"$LOG"
 fi
 
+# --- 2.6 coder 上游回馈评估闸门（09-11 洞察6）：零 LLM 回扫 done coder 卡——hermes-agent
+#     worktree 且领先 origin/main 的本地修复卡 → contrib board 上游回馈评估卡（contrib worker
+#     异步研判 verdict→forge/L2 或 justified-expired）。本段零 gh 零 push；失败 fail-closed
+#     不拖死 hourly 链。---
+UPSTREAM_GATE="$MARTIN/scripts/contrib/coder_upstream_gate.sh"
+if [[ -x "$UPSTREAM_GATE" ]]; then
+  upgate_rc=0
+  run_phase 120 zsh "$UPSTREAM_GATE" >>"$LOG" 2>&1 || upgate_rc=$?
+  echo "[$(ts)] coder_upstream_gate 上游回馈闸门 exit=$upgate_rc" >>"$LOG"
+fi
+
 # --- 3. 通知层：聚合推送本轮新增告警（失败不影响流水线退出码）---
 if [[ -x "$MARTIN/scripts/contrib/notify.sh" ]]; then
   "$MARTIN/scripts/contrib/notify.sh" flush >>"$LOG" 2>&1 \
