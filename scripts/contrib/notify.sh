@@ -180,7 +180,7 @@ state_set() { # state_set <表名> <键> <JSON值> → 置值并写回（--argjs
 # 机械事件 = 高频、语义固定，模板卡即可高效消费（不经 LLM）；其余一律走 AI 摘要
 is_mechanical() {
   case "$1" in
-    probe-premise-dead|own-pr-activity|deep-budget-exhausted) return 0 ;;
+    probe-premise-dead|own-pr-activity|deep-budget-exhausted|own-pr-unledgered) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -189,6 +189,7 @@ class_title() {
     probe-premise-dead)     echo "候选折损（占坑出局）" ;;
     own-pr-activity)        echo "自有 PR 动静" ;;
     deep-budget-exhausted)  echo "深检配额用尽" ;;
+    own-pr-unledgered)      echo "自有 PR 台账缺口（疑未获批就 push）" ;;
     *)                      echo "$1" ;;
   esac
 }
@@ -197,6 +198,7 @@ class_action() {
     probe-premise-dead)     echo "farm 占坑属正常损耗，无需动作；radar 每日自动补新候选" ;;
     own-pr-activity)        echo "建议动作见各条；涉及 push/评论的动作需你批准（L2）" ;;
     deep-budget-exhausted)  echo "候选已自动排队，明日 09:37 自动重试；无需动作" ;;
+    own-pr-unledgered)      echo "红线：该动作未落 approved.log。核对批准来源后用 scripts/contrib/l2_ledger.sh record 补记；今后发布一律走 l2_ledger.sh publish" ;;
     *)                      echo "" ;;
   esac
 }
@@ -208,7 +210,7 @@ _render_mechanical_card() {
   local batch_file="$1" cls n=0
   echo "🟠【contrib 速报】$(date +%m-%d)"
   echo ""
-  for cls in probe-premise-dead own-pr-activity deep-budget-exhausted; do
+  for cls in probe-premise-dead own-pr-activity deep-budget-exhausted own-pr-unledgered; do
     local batch
     batch="$(jq -r --arg cls "$cls" \
       'select(.class == $cls) | .summary | sub("^radar [0-9-]+ premise 复验："; "")' \
@@ -254,6 +256,7 @@ _ai_digest() {
 - own-pr-activity：我们自己的上游 PR 有新动静（维护者评论/mergeable 翻转/停滞超期）
 - pipeline-failure：contrib-watch 流水线自身某环节失败（scan/深检/推送等）
 - deep-budget-exhausted：当日深检配额用尽，候选自动排队明日重试
+- own-pr-unledgered：某次 fork push / 上游开 PR 没有对应的 approved.log 记录（红线：对外动作必须有批准台账）
 - mail-needs-user：GitHub 通知邮件里有需要他本人关注的事项（维护者点名/占坑竞争/资产状态变化）
 - rq-xxxxx：ready-queue 审批候选项编号；expired=已作废；awaiting-approval=等你审批
 
@@ -494,6 +497,7 @@ _digest_card_body() {
 - own-pr-activity：我们自己的上游 PR 有新动静（维护者评论/mergeable 翻转/停滞超期）
 - pipeline-failure：contrib-watch 流水线自身某环节失败（scan/深检/推送等）
 - deep-budget-exhausted：当日深检配额用尽，候选自动排队明日重试
+- own-pr-unledgered：某次 fork push / 上游开 PR 没有对应的 approved.log 记录（红线：对外动作必须有批准台账）
 - mail-needs-user：GitHub 通知邮件里有需要他本人关注的事项（维护者点名/占坑竞争/资产状态变化）
 - rq-xxxxx：ready-queue 审批候选项编号；expired=已作废；awaiting-approval=等你审批
 
@@ -762,7 +766,7 @@ cmd_flush() {
   # （分类逻辑必须在 bash/jq 侧完成——jq 里调不到 bash 函数）
   local narrative
   narrative="$(jq -s '[.[] | select((.channel // "contrib") == "contrib")
-    | select((.class == "probe-premise-dead" or .class == "own-pr-activity" or .class == "deep-budget-exhausted") | not)] | length' \
+    | select((.class == "probe-premise-dead" or .class == "own-pr-activity" or .class == "deep-budget-exhausted" or .class == "own-pr-unledgered") | not)] | length' \
     "$batch_file" 2>/dev/null)"
   narrative="${narrative:-0}"
 
