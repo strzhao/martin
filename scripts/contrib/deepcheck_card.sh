@@ -310,7 +310,7 @@ write_body() { # <rq-id> <lane> — preflight 卡 body（stdout；契约见 T4 �
   fi
   printf '\n## verdict.json 契约（deep 车道 redteam 子卡 / probe 车道本卡 必须写出）\n\n'
   printf -- '- 路径: %s/runs/deep-check/%s/verdict.json\n' "$CONTRIB" "$id"
-  printf -- '- 结构: {"decision": "auto | escalate", "confidence": "high | medium | low", "risk_level": "low | medium | high", "goods": {"status": "offered | forge-lane | none", "note": "三态判定依据一句（见 SKILL 模式四 Goods 判定）"}, "reasons": ["escalate 时必填：每条 = 一个具体的、你定不了的点"]}\n'
+  printf -- '- 结构: {"decision": "auto | escalate", "confidence": "high | medium | low", "risk_level": "low | medium | high", "goods": {"status": "offered | forge-lane | none", "note": "三态判定依据一句（见 SKILL 模式四 Goods 判定）"}, "reasons": ["09-11 起：auto 的自决取舍写「自决：按<原则>定了<X>」；escalate 仅限不可逆/预算/缺判断依据，写「我需要<什么>才能决策」，禁写「你选A还是B」"]}\n'
   printf -- '- goods.status 必填（09-09 commit 进仓优先闸）：offered=库存域匹配带 offer / forge-lane=缺口可修已立项（默认路：没货先造，评审照发+存活期内补 offer）/ none=真不可造才用（note 须写硬理由：需维护者拍板/schema 级/域外；「没有现成的」不算理由）；缺失或非法 = auto-gate fail-closed 升级人工\n'
   printf -- '- auto 门槛（宁升勿放）与判定细则以 %s 模式四第 5 点原文为准\n' "$SKILL_MD"
   printf -- '- 审批卡推送由编排层 auto-gate/补推 sweep 承担：worker 不调 hermes send、不重复推\n'
