@@ -19,6 +19,12 @@
 #   N   fail-closed：KANBAN_DB 指不存在路径 → exit 1 且零游标写/零建卡/零事件
 #   O   契约2 建卡失败（hermes 全挂）→ exit 1 本轮中止 + 游标不推进 + 零 coder-upstream 事件
 # 依据：kanban 卡 t_6827c2a4 契约规约 1-7 + body 内容契约 + 验收场景 P3/P4（SSOT）
+# 契约演进（2026-09-11 第二段：D1 patch-id 判重 / D2 board pin，契约 8-13）：
+#   git_spy_bad 白名单由「仅 log origin/main..HEAD --oneline」机械扩展为只读子命令闭集
+#   {log（须含 origin/main..HEAD）, show <oid>, patch-id --stable, for-each-ref
+#   refs/heads/contrib refs/remotes/fork}——D1 判重面强制新增只读 git 调用（契约 12 闭集），
+#   非红线放松：push 红线断言（git_spy_push_cnt）原样保留，db 只读/sha256 断言原样保留；
+#   断言行数 126 不变（本段零增删断言）。
 # CONTRACT_AMBIGUOUS（本文件内自裁口径，供人审复核）：
 #   1) P3 谓词「calls.log 含 --kind upstream」：既有 kanban_card.sh 只把 --kind 用于自身校验/
 #      默认 idem key（hermes argv 无 --kind 转发）。为让谓词字面可观测，本测试在沙箱内对
@@ -90,8 +96,10 @@ git_spy_cnt() {
   n="$(git_spy_lines | grep -c . || true)"
   printf '%s' "${n:-0}"
 }
-# git spy 全量形态校验：每行（剥可选 -C <path> 前缀后）子命令必为 log，且带
-# origin/main..HEAD 与 --oneline（契约5：git 只跑 log origin/main..HEAD --oneline）
+# git spy 全量形态校验：每行（剥可选 -C <path> 前缀后）子命令必为只读闭集——
+# log（须含 origin/main..HEAD）/ show <oid>（恰一参）/ patch-id --stable（恰一参）/
+# for-each-ref refs/heads/contrib refs/remotes/fork（恰两参）
+# （契约5 + 第二段契约12 D1 判重面只读闭集；演进留痕见文件头注释）
 git_spy_bad() {
   git_spy_lines | awk '
     {
@@ -99,9 +107,12 @@ git_spy_bad() {
       split(s, a, " ")
       i = 1
       if (a[1] == "-C") i = 3
-      if (a[i] != "log") bad = 1
-      if (index(s, "origin/main..HEAD") == 0) bad = 1
-      if (index(s, "--oneline") == 0) bad = 1
+      ok = 0
+      if (a[i] == "log" && index(s, "origin/main..HEAD") > 0) ok = 1
+      if (a[i] == "show" && a[i+1] != "" && a[i+2] == "") ok = 1
+      if (a[i] == "patch-id" && a[i+1] == "--stable" && a[i+2] == "") ok = 1
+      if (a[i] == "for-each-ref" && a[i+1] == "refs/heads/contrib" && a[i+2] == "refs/remotes/fork" && a[i+3] == "") ok = 1
+      if (ok == 0) bad = 1
     }
     END { print (bad ? 1 : 0) }'
 }

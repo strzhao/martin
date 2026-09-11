@@ -136,6 +136,70 @@ num_lt() { # <a> <b> — 双数值才比较（grep 落空 → 判 false 不炸�
   [ "$1" -lt "$2" ]
 }
 
+# ---------------- 新增夹具 helper（第二段 D1/D2 用例；并行新增，不改既有 helper） ----------------
+
+EHITD="1789000101"    # ① 已投递命中卡 completed_at
+EDEGA="1789000102"    # ③a 退化候选卡 completed_at（同用例两卡同值）
+EDEGB="1789000103"    # ③b 对象缺失候选卡 completed_at
+EEMP="1789000104"     # ③c 空 diff 候选卡 completed_at
+EEVENT="1789000105"   # ⑥ 事件失败候选卡 completed_at
+EPIN="1789000106"     # ④a board pin 候选卡 completed_at
+ENOHIT="1789000107"   # ② 未命中候选卡 completed_at
+
+mk_repo_change() { # <path> <filename> <content> — mk_repo 形态底座 + 1 个真实 diff 领先 commit
+  mk_repo "$1" 0
+  printf '%s\n' "$3" >"$1/$2"
+  git -C "$1" add -A
+  git -C "$1" -c user.email=t@example -c user.name=t commit -q -m "real-fix-$2"
+}
+
+mk_deliv_twin() { # <ws> <refname> — 同 tree 异 message 孪生 commit（异 sha 同 patch-id）挂 ref
+  local ws="$1" ref="$2" tree base twin
+  tree="$(git -C "$ws" rev-parse 'HEAD^{tree}')"
+  base="$(git -C "$ws" rev-parse refs/remotes/origin/main)"
+  twin="$(git -C "$ws" -c user.email=o@example -c user.name=other \
+    commit-tree "$tree" -p "$base" -m "twin-$ref")"
+  git -C "$ws" update-ref "$ref" "$twin"
+}
+
+mk_unrelated_ref() { # <ws> <refname> — 不同 diff 的无关 commit 挂 ref（判重未命中探针）
+  local ws="$1" ref="$2" orig base
+  orig="$(git -C "$ws" rev-parse HEAD)"
+  base="$(git -C "$ws" rev-parse refs/remotes/origin/main)"
+  git -C "$ws" checkout -q -b unrel-tmp "$base"
+  printf 'unrelated\n' >"$ws/unrelated.txt"
+  git -C "$ws" add -A
+  git -C "$ws" -c user.email=t@example -c user.name=t commit -q -m unrelated
+  git -C "$ws" update-ref "$ref" HEAD
+  git -C "$ws" checkout -q "$orig"
+  git -C "$ws" branch -q -D unrel-tmp
+}
+
+mk_git_shim_no_patchid() { # 沙箱 shim git 换包装器：仅 patch-id 子命令 exit 1，其余 exec 真身
+  local real
+  real="$(command -v git)"
+  rm -f "$SB_ROOT/shim/git"   # 先摘符号链接（rm 只断链不碰真身），再落包装器
+  cat >"$SB_ROOT/shim/git" <<EOF
+#!/bin/bash
+# 测试注入：patch-id 子命令一律失败（其余透传真身）——判重退化放行用例
+if [ "\${1:-}" = "patch-id" ]; then
+  exit 1
+fi
+exec "$real" "\$@"
+EOF
+  chmod +x "$SB_ROOT/shim/git"
+}
+
+del_tree_of() { # <ws> — 删 HEAD commit 的 tree 对象（log rc=0 而 git show rc=128 的陷阱注入）
+  local ws="$1" tree
+  tree="$(git -C "$ws" rev-parse 'HEAD^{tree}')"
+  rm -f "$ws/.git/objects/${tree:0:2}/${tree:2}"
+}
+
+event_row_by_key() { # <key> → 该 key 首行事件 JSON（无=空）
+  jq -c --arg k "$1" 'select(.key == $k)' "$EVENTS" 2>/dev/null | head -1
+}
+
 # ---------------- ①+②+⑥ 三条件过滤 + 命中建卡 + body 内容 ----------------
 
 t_case "过滤矩阵 + 命中建卡：恰 1 卡、事件入账、游标推进、card.json/body 落盘"
@@ -271,5 +335,119 @@ if num_lt "$ln_own" "$ln_gate" && num_lt "$ln_gate" "$ln_flush"; then
 else
   _fail "2.6 段位于 own-PR 段后、通知层前" "ln_own=$ln_own ln_gate=$ln_gate ln_flush=$ln_flush"
 fi
+
+# ---------------- 第二段增补用例（D1 patch-id 判重 + D2 board pin；契约 8-13） ----------------
+
+t_case "已投递命中：patch-id 命中 refs/heads/contrib 孪生 ⇒ 零建卡+delivered 事件+summary 已投递+ref 短名+游标收尾推进（D1①）"
+new_sb
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit" fix.txt "real change A"
+mk_deliv_twin "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit" refs/heads/contrib/pidhit
+add_row "$GATE_DB" t_pidhit "pid hit card" "$EHITD" "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit"
+out="$(run_gate "$GATE_DB")"
+assert_exit 0 $?
+assert_eq "$(create_calls)" "0" "命中已投递零建卡（删条件 d 则红）"
+assert_contains "$out" "delivered=1" "stdout 摘要含 delivered=1 计数"
+DELIV_ROW="$(event_row_by_key coder-upstream-t_pidhit)"
+assert_eq "$(jq -r '.class // ""' <<<"$DELIV_ROW" 2>/dev/null)" "coder-upstream-delivered" "事件 class=coder-upstream-delivered"
+assert_contains "$DELIV_ROW" "已投递" "事件 summary 明示已投递"
+assert_contains "$DELIV_ROW" "contrib/pidhit" "事件 summary 含命中 ref 短名（剥 refs/heads/）"
+assert_eq "$(jq -s '[.[] | select(.key == "coder-upstream-t_pidhit")] | length' "$EVENTS" 2>/dev/null)" "1" "同 key 事件恰 1 行（与建卡同 key 幂等锚）"
+assert_eq "$(cursor_val)" "$EHITD" "零建卡行游标经收尾 max_seen 推进"
+assert_file_contains "$GLOG" "已投递跳过建卡: task=t_pidhit" "命中留痕可定位"
+
+t_case "判重未命中：refs/remotes/fork ref 指不同 diff ⇒ 照常建卡 hits 语义不变（D1②回归）"
+new_sb
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_nohit" fix.txt "real change B"
+mk_unrelated_ref "$SB_ROOT/ws/hermes-agent/.worktrees/t_nohit" refs/remotes/fork/contrib/other
+add_row "$GATE_DB" t_nohit "no hit card" "$ENOHIT" "$SB_ROOT/ws/hermes-agent/.worktrees/t_nohit"
+out="$(run_gate "$GATE_DB")"
+assert_exit 0 $?
+assert_contains "$out" "hits=1" "未命中照常建卡（hits=1 语义不变）"
+assert_contains "$out" "delivered=0" "未命中零 delivered 计数"
+assert_eq "$(create_calls)" "1" "未命中恰 1 次建卡"
+NOHIT_ROW="$(event_row_by_key coder-upstream-t_nohit)"
+assert_eq "$(jq -r '.class // ""' <<<"$NOHIT_ROW" 2>/dev/null)" "coder-upstream-candidate" "事件 class 仍 coder-upstream-candidate"
+assert_eq "$(cursor_val)" "$ENOHIT" "游标推进=命中卡 completed_at"
+
+t_case "判重退化：git patch-id 不可用 ⇒ 留痕整轮恰一次、两候选保守放行照常建卡（D1③a）"
+new_sb
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_deg_a1" fix.txt "real change C1"
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_deg_a2" fix.txt "real change C2"
+add_row "$GATE_DB" t_deg_a1 "deg a1" "$EDEGA" "$SB_ROOT/ws/hermes-agent/.worktrees/t_deg_a1"
+add_row "$GATE_DB" t_deg_a2 "deg a2" "$EDEGA" "$SB_ROOT/ws/hermes-agent/.worktrees/t_deg_a2"
+mk_git_shim_no_patchid
+run_gate "$GATE_DB" >/dev/null
+assert_exit 0 $?
+assert_eq "$(create_calls)" "2" "退化放行：两候选照常建卡"
+assert_eq "$(grep -cF '判重退化放行' "$GLOG" 2>/dev/null || true)" "1" "退化留痕整轮恰一次（探测一次性）"
+assert_eq "$(cursor_val)" "$EDEGA" "退化轮游标照常收尾推进"
+
+t_case "判重单项对象缺失：删 tree 后 git show 失败 ⇒ 该项跳过留痕、保守放行照常建卡（D1③b）"
+new_sb
+WS_B="$SB_ROOT/ws/hermes-agent/.worktrees/t_deg_b"
+mk_repo_change "$WS_B" fix.txt "real change D"
+del_tree_of "$WS_B"
+add_row "$GATE_DB" t_deg_b "deg b" "$EDEGB" "$WS_B"
+run_gate "$GATE_DB" >/dev/null
+assert_exit 0 $?
+assert_eq "$(create_calls)" "1" "单项不可得仍保守放行建卡"
+assert_file_contains "$GLOG" "判重单项跳过" "跳过留痕存在"
+assert_file_contains "$GLOG" "task=t_deg_b" "留痕可定位到该卡（含 sha）"
+assert_eq "$(cursor_val)" "$EDEGB" "放行轮游标照常推进"
+
+t_case "空 diff commit + 孪生空 ref：双侧空 patch-id 跳过 ⇒ 照常建卡（D1③c，既有 mk_repo 形态不误伤）"
+new_sb
+WS_C="$SB_ROOT/ws/hermes-agent/.worktrees/t_empty"
+mk_repo "$WS_C" 1                                   # 空 diff ahead commit（既有形态；HEAD=空 commit）
+mk_deliv_twin "$WS_C" refs/remotes/fork/contrib/emptytwin   # 孪生空 ref（异 sha 同空 diff）
+printf 'real change\n' >"$WS_C/fix.txt"             # 再叠 1 个真实 diff ahead commit：
+git -C "$WS_C" add -A                               # 候选集非空 ⇒ ref 侧空 diff 跳过路径可达
+git -C "$WS_C" -c user.email=t@example -c user.name=t commit -q -m real-fix
+add_row "$GATE_DB" t_empty "empty diff card" "$EEMP" "$WS_C"
+run_gate "$GATE_DB" >/dev/null
+assert_exit 0 $?
+assert_eq "$(create_calls)" "1" "空 patch-id 不误伤：照常建卡"
+assert_file_contains "$GLOG" "判重单项跳过" "候选侧空 diff 跳过留痕"
+assert_file_contains "$GLOG" "判重 ref 头跳过" "ref 侧空 diff 跳过留痕"
+
+t_case "board pin 对照（④b）：直调 kanban_card.sh create 携 HERMES_KANBAN_DB 注入 ⇒ stub 观测 present"
+new_sb
+printf '# board pin probe\n' >"$SB_ROOT/kcdb-body.md"
+sb_run -e "HERMES_KANBAN_DB=$SB_ROOT/decoy/injected.db" \
+  'bash "$MARTIN_DIR/scripts/contrib/kanban_card.sh" create --kind upstream --title t --body-file "$MARTIN_DIR/kcdb-body.md"' >/dev/null 2>&1
+assert_exit 0 $?
+assert_file_contains "$SB_ROOT/stublog/kanban-db-env.log" "hermes|present" \
+  "对照运行 stub 观测 HERMES_KANBAN_DB present（观测面有效，使 ④a 非平凡）"
+
+t_case "board pin 闸门注入（④a）：HERMES_KANBAN_DB 注入下 create 仍 --board contrib 且 stub env 观测 absent（D2 核心 kill）"
+new_sb
+WS_P="$SB_ROOT/ws/hermes-agent/.worktrees/t_pin4"
+mk_repo_change "$WS_P" fix.txt "real change E"
+add_row "$GATE_DB" t_pin4 "pin card" "$EPIN" "$WS_P"
+run_gate "$GATE_DB" "HERMES_KANBAN_DB=$SB_ROOT/decoy/injected.db" >/dev/null
+assert_exit 0 $?
+assert_eq "$(create_calls)" "1" "注入下照常建卡（走建卡路）"
+assert_file_contains "$CALLS" "--board contrib" "注入存在 create argv 仍含 --board contrib"
+assert_file_contains "$SB_ROOT/stublog/kanban-db-env.log" "hermes|absent" \
+  "闸门路 stub 观测 HERMES_KANBAN_DB absent（env -u 剥离生效，删则红）"
+assert_not_contains "$(cat "$CALLS" 2>/dev/null)" "decoy" "建卡链不触碰注入 decoy 路径"
+assert_eq "$(cursor_val)" "$EPIN" "注入下建卡游标照常推进"
+
+t_case "delivered 事件入账失败 ⇒ exit 1 零游标推进（⑥ fail-closed 补齐）"
+new_sb
+WS_F="$SB_ROOT/ws/hermes-agent/.worktrees/t_evfail"
+mk_repo_change "$WS_F" fix.txt "real change F"
+mk_deliv_twin "$WS_F" refs/heads/contrib/evfail
+add_row "$GATE_DB" t_evfail "event fail card" "$EEVENT" "$WS_F"
+mkdir "$DATA/logs/notify.log"   # 实测选定注入：notify.log 置目录 ⇒ notify.sh event 末行 log 失败 rc=1
+run_gate "$GATE_DB" >/dev/null
+assert_exit 1 $?
+assert_eq "$(create_calls)" "0" "delivered 路径零建卡（事件失败也不建卡，契约 9）"
+if [[ -f "$CURSOR" ]]; then
+  _fail "事件失败零游标推进" "游标文件不应存在: $CURSOR"
+else
+  _pass "事件失败零游标推进"
+fi
+assert_file_contains "$GLOG" "事件入账失败" "fail-closed 留痕"
 
 t_finish
