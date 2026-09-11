@@ -25,6 +25,12 @@
 #   refs/heads/contrib refs/remotes/fork}——D1 判重面强制新增只读 git 调用（契约 12 闭集），
 #   非红线放松：push 红线断言（git_spy_push_cnt）原样保留，db 只读/sha256 断言原样保留；
 #   断言行数 126 不变（本段零增删断言）。
+# 契约演进（2026-09-12 第三段：D4 判重面收窄为 own-PR snapshot 面，契约 12'）：for-each-ref
+#   白名单由「恰两参 refs/heads/contrib refs/remotes/fork」演进为「参数 >= 1 且全部形如
+#   refs/heads/<name> / refs/remotes/fork/<name>」——家族裸参数 refs/heads/contrib、
+#   refs/remotes/fork（for-each-ref 前缀族语义 ⇒ 全量扫）与 *?[ 通配不再合法；本沙箱无
+#   snapshot ⇒ 闸门零 for-each-ref 调用，演进只收紧不放松；push 红线/db 只读断言原样；
+#   断言行数 126 不变（本段零增删断言）。
 # CONTRACT_AMBIGUOUS（本文件内自裁口径，供人审复核）：
 #   1) P3 谓词「calls.log 含 --kind upstream」：既有 kanban_card.sh 只把 --kind 用于自身校验/
 #      默认 idem key（hermes argv 无 --kind 转发）。为让谓词字面可观测，本测试在沙箱内对
@@ -98,20 +104,33 @@ git_spy_cnt() {
 }
 # git spy 全量形态校验：每行（剥可选 -C <path> 前缀后）子命令必为只读闭集——
 # log（须含 origin/main..HEAD）/ show <oid>（恰一参）/ patch-id --stable（恰一参）/
-# for-each-ref refs/heads/contrib refs/remotes/fork（恰两参）
-# （契约5 + 第二段契约12 D1 判重面只读闭集；演进留痕见文件头注释）
+# for-each-ref（参数 >= 1 且全部为 snapshot 派生精确 refname refs/heads/<name> /
+# refs/remotes/fork/<name>；家族裸参数 refs/heads/contrib、refs/remotes/fork 不再合法——
+# for-each-ref 模式按前缀族匹配，裸家族参数即全量扫；*?[ 通配拒绝）
+# （契约5 + 第三段契约12' D4 判重面只读闭集；演进留痕见文件头注释）
 git_spy_bad() {
   git_spy_lines | awk '
     {
       s = substr($0, 5)
-      split(s, a, " ")
+      n = split(s, a, " ")
       i = 1
       if (a[1] == "-C") i = 3
       ok = 0
       if (a[i] == "log" && index(s, "origin/main..HEAD") > 0) ok = 1
       if (a[i] == "show" && a[i+1] != "" && a[i+2] == "") ok = 1
       if (a[i] == "patch-id" && a[i+1] == "--stable" && a[i+2] == "") ok = 1
-      if (a[i] == "for-each-ref" && a[i+1] == "refs/heads/contrib" && a[i+2] == "refs/remotes/fork" && a[i+3] == "") ok = 1
+      if (a[i] == "for-each-ref") {
+        fe_ok = (i + 1 <= n) ? 1 : 0
+        for (j = i + 1; j <= n; j++) {
+          r = a[j]
+          if (index(r, "*") > 0 || index(r, "?") > 0 || index(r, "[") > 0) fe_ok = 0
+          if (r == "refs/heads/contrib" || r == "refs/remotes/fork") fe_ok = 0
+          if (substr(r, 1, 11) == "refs/heads/" && length(r) > 11) continue
+          if (substr(r, 1, 18) == "refs/remotes/fork/" && length(r) > 18) continue
+          fe_ok = 0
+        }
+        if (fe_ok) ok = 1
+      }
       if (ok == 0) bad = 1
     }
     END { print (bad ? 1 : 0) }'

@@ -157,6 +157,12 @@ assert_contains "$rec" '"mergeable"' "记录含 mergeable"
 assert_contains "$rec" '"reviewDecision"' "记录含 reviewDecision"
 assert_contains "$rec" '"comments"' "记录含 comments"
 assert_eq "$(jq -r '.prs["103202"].external_comments' "$SNAPF")" "1" "external_comments=作者≠strzhao 计数"
+# D4 加性：快照条目含 headRefOid/headRefName 字段（pr_row 夹具未提供 ⇒ 缺省空串也算字段存在）
+jq -e '.prs["103201"] | has("headRefOid") and has("headRefName")' "$SNAPF" >/dev/null 2>&1
+assert_exit 0 $? "快照记录含 headRefOid/headRefName 字段（D4 加性映射）"
+assert_eq "$(jq -r '.prs["103202"] | has("headRefOid") and has("headRefName")' "$SNAPF")" "true" "双条目均含 headRef 两字段"
+assert_eq "$(jq -r '.prs["103201"].headRefOid // ""' "$SNAPF")" "" "headRefOid 缺省空串（夹具未提供）"
+assert_eq "$(jq -r '.prs["103201"].headRefName // ""' "$SNAPF")" "" "headRefName 缺省空串（夹具未提供）"
 assert_eq "$(ev_n)" "0" "首跑零事件"
 assert_eq "$(jq -r '.prs | length' "$SNAPF")" "2" "快照 PR 数"
 
@@ -276,6 +282,9 @@ newline="$(tail -1 "$EVENTS")"
 assert_contains "$newline" '"class":"own-pr-info"' "class 精确串 own-pr-info"
 assert_contains "$newline" "103201" "行含 103201"
 assert_contains "$newline" "$D" "行含当日 D"
+# D4 加性：absorb 轮（非基线）条目合并语义——headRef 两字段存续（下轮自然再生新形态，不整条替换）
+jq -e '.prs["103201"] | has("headRefOid") and has("headRefName")' "$SNAPF" >/dev/null 2>&1
+assert_exit 0 $? "absorb 轮快照条目 headRef 两字段存续（对象合并不冲掉加性字段）"
 
 t_case "mergeable 含 UNKNOWN 的翻转 → 静默吸收（双向）"
 new_sb

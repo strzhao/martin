@@ -44,6 +44,10 @@
 #   create 丢 --board contrib ⇒ S2.P3/S3.P4 红；create 链触碰 decoy 路径 ⇒ S3.P5 红；
 #   删事件 key/幂等键双保险 ⇒ S5.P2/S5.P3 红；游标回退 ⇒ S5.P4 红；
 #   未命中误拦（判重假阳性）⇒ S2.P2 红（零建卡则红）。
+# 契约演进（2026-09-12 第三段 D4 判重面收窄，契约 12'）：判重集改为 own-PR snapshot 面——
+#   仅 S1/S5/S6 夹具加性补 snapshot 种子（headRefName=命中分支名、headRefOid=命中 commit
+#   全 sha，写 $SB_ROOT/contrib-data/own-pr-watch-snapshot.json），65 条断言文本零改动；
+#   S2/S3/S4 不动（无 snapshot ⇒ 闸门逐候选 fail-open 放行，断言原样成立）。
 # 约定：$SB_ROOT=mktemp 沙箱根；CALLS=stublog/calls.log；EVENTS=contrib-data/events.jsonl；
 #   CURSOR=contrib-data/coder-upstream-cursor.json；GLOG=contrib-data/logs/
 #   coder-upstream-gate.log；KDBENV=stublog/kanban-db-env.log。events key 断言一律 jq -s
@@ -261,6 +265,8 @@ WT_S1="$WT_BASE/$ID_S1"
 make_repo "$WT_S1" 1
 C1_S1="$(git -C "$WT_S1" rev-parse HEAD)"
 git -C "$WT_S1" update-ref refs/heads/contrib/pidhit "$C1_S1"
+# D4 加性种子（第三段）：snapshot own-PR 面 = 命中 ref（headRefName=contrib/pidhit、headRefOid=命中 commit 全 sha）
+jq -n --arg oid "$C1_S1" '{generated_at: "2026-09-12T00:00:00Z", prs: {"103201": {updatedAt: "2026-09-12T00:00:00Z", mergeable: "MERGEABLE", reviewDecision: "", comments: 0, external_comments: 0, headRefOid: $oid, headRefName: "contrib/pidhit"}}}' >"$SB_ROOT/contrib-data/own-pr-watch-snapshot.json"
 card_row "$ID_S1" "fix: 上游已有同款修复" "$WT_S1"   # 标题避开「已投递」字面：防泄漏污染 P4 summary 断言
 make_db
 seed_cursor 0                      # 游标 epoch=0；events 空（sb 底座）；env 无 HERMES_KANBAN_DB（sb_run env -i 白名单天然无）
@@ -375,6 +381,8 @@ WT_S5="$WT_BASE/$ID_S5"
 make_repo "$WT_S5" 1
 C1_S5="$(git -C "$WT_S5" rev-parse HEAD)"
 git -C "$WT_S5" update-ref refs/heads/contrib/pidhit5 "$C1_S5"   # 场景1 形态命中态
+# D4 加性种子（第三段）：snapshot own-PR 面 = 命中 ref（headRefName=contrib/pidhit5、headRefOid=命中 commit 全 sha）
+jq -n --arg oid "$C1_S5" '{generated_at: "2026-09-12T00:00:00Z", prs: {"103201": {updatedAt: "2026-09-12T00:00:00Z", mergeable: "MERGEABLE", reviewDecision: "", comments: 0, external_comments: 0, headRefOid: $oid, headRefName: "contrib/pidhit5"}}}' >"$SB_ROOT/contrib-data/own-pr-watch-snapshot.json"
 card_row "$ID_S5" "fix: 命中态幂等回扫" "$WT_S5"
 make_db
 seed_cursor 0
@@ -405,6 +413,8 @@ WT_S6="$WT_BASE/$ID_S6"
 make_repo "$WT_S6" 2                # 两个领先 commit C1/C2
 C1_S6="$(git -C "$WT_S6" rev-parse HEAD~1)"
 git -C "$WT_S6" update-ref refs/remotes/fork/pidmix "$C1_S6"
+# D4 加性种子（第三段）：snapshot own-PR 面 = fork 命中 ref（headRefName=pidmix、headRefOid=命中 commit 全 sha）
+jq -n --arg oid "$C1_S6" '{generated_at: "2026-09-12T00:00:00Z", prs: {"103201": {updatedAt: "2026-09-12T00:00:00Z", mergeable: "MERGEABLE", reviewDecision: "", comments: 0, external_comments: 0, headRefOid: $oid, headRefName: "pidmix"}}}' >"$SB_ROOT/contrib-data/own-pr-watch-snapshot.json"
 card_row "$ID_S6" "fix: 混合领先任一同款改动" "$WT_S6"   # 标题避开「已投递」字面：防泄漏污染 P4 summary 断言
 make_db
 seed_cursor 0

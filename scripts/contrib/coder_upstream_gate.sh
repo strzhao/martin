@@ -7,12 +7,14 @@
 # 不动 scripts/approval/execute.sh 与 approve 链。
 #
 # 条件链（fail-closed）：a(workspace_path) → b(目录存在 ∧ 领先 origin/main) → c(events.jsonl
-# 无该 key) → d(未已投递：候选领先 commit 逐个 patch-id 与同仓 refs/heads/contrib/* ∪
-# refs/remotes/fork/* 各 ref 头 commit 的 patch-id 比对；命中 ⇒ 零建卡、记
-# coder-upstream-delivered 事件（与建卡同 key 保幂等）、游标由收尾统一推进；判重不可用/
-# 单项不可得/空 diff ⇒ 跳过留痕保守放行——唯一 fail-open 例外）。判重新增 git 子命令闭集：
-# {log --format=%H origin/main..HEAD, show <oid>, patch-id --stable, for-each-ref
-# refs/heads/contrib refs/remotes/fork}，全只读零网络。
+# 无该 key) → d(未已投递：候选领先 commit 逐个 patch-id 与 own-PR 判重面比对——面由
+# own_pr_watch snapshot 界定（D4，替代第二段全量 refs/heads/contrib ∪ refs/remotes/fork 扫描）：
+# headRefName 派生精确 refname（refs/heads/<name> ∪ refs/remotes/fork/<name>）本地解析命中项
+# + headRefOid 直项，面项 ≤ DEDUP_FACE_MAX_REFS=400；命中 ⇒ 零建卡、记 coder-upstream-delivered
+# 事件（与建卡同 key 保幂等）、游标由收尾统一推进；判重不可用/单项不可得/空 diff ⇒ 跳过留痕
+# 保守放行；snapshot 缺失/损坏/为空 ⇒ 逐候选留痕 fail-open 放行（绝不回退全量 fork refs 扫描））。
+# 判重 git 子命令闭集：{log --format=%H origin/main..HEAD, show <oid>, patch-id --stable,
+# for-each-ref <snapshot 派生精确 refname 闭集，禁裸家族参数/通配，硬上界 400>}，全只读零网络。
 # 建卡调用以 env -u HERMES_KANBAN_DB 发起（D2）：剥离 worker 会话上下文注入的
 # HERMES_KANBAN_DB（其解析优先级高于 --board），使 KANBAN_BOARD=contrib pin 在任何调用
 # 上下文落到 contrib board；kanban_card.sh 语义零改动。
@@ -80,14 +82,19 @@ advance_cursor() { # <epoch>
 CURSOR_EPOCH="$(read_cursor)"
 
 # ---------- stage-1：kanban.db 只读查询（唯一允许的 sqlite 形态；失败 fail-closed） ----------
-rows="$(python3 - "$KANBAN_DB" "$CURSOR_EPOCH" <<'PYEOF'
+# stderr 落自有日志（D4：db-open-failed/query-failed 附带 WAL 三件套诊断 hint，供排障）
+rows="$(python3 - "$KANBAN_DB" "$CURSOR_EPOCH" 2>>"$LOG" <<'PYEOF'
 import json, sqlite3, sys
 
 db_path, cursor = sys.argv[1], int(sys.argv[2])
+RO_HINT = ("hint: kanban.db 为 WAL 模式，mode=ro 只读打开需 kanban.db-wal / kanban.db-shm"
+           " 在场（三件套齐拷）或 db 路径不可读")
 try:
     conn = sqlite3.connect("file:" + db_path + "?mode=ro", uri=True)
 except sqlite3.Error as exc:
     print("db-open-failed: %s" % exc, file=sys.stderr)
+    if "unable to open database file" in str(exc):
+        print(RO_HINT, file=sys.stderr)
     sys.exit(1)
 try:
     cur = conn.execute(
@@ -102,6 +109,8 @@ try:
                          ensure_ascii=False))
 except sqlite3.Error as exc:
     print("query-failed: %s" % exc, file=sys.stderr)
+    if "unable to open database file" in str(exc):
+        print(RO_HINT, file=sys.stderr)
     sys.exit(1)
 finally:
     conn.close()
@@ -111,13 +120,16 @@ PYEOF
   exit 1
 }
 
-# ---------- D1 patch-id 判重地基（条件 d；契约 8-10） ----------
-# 跨候选缓存：DEDUP_OID_PID 缓存已换算的 ref 头 oid→patch-id；缓存键 = 判重 ref 清单整体
-# （refname+oid 序列，for-each-ref 输出）——清单相同 ⇒ 头 commit oid 相同 ⇒ patch-id 相同，
-# 语义自洽（生产所有候选同仓 ⇒ 每轮至多一次全量 ref 头换算；流式比对 first-hit 早退）。
+# ---------- D4 patch-id 判重地基（条件 d；判重面 = own-PR snapshot own-PR 面） ----------
+# 跨候选缓存：DEDUP_OID_PID 缓存已换算的面项 oid→patch-id；缓存键 = snapshot 文件原文
+# （本轮不变 ⇒ 判重面只建一次；流式比对 first-hit 早退）。生产所有候选同仓 ⇒ 每轮至多一次
+# 精确 refname 解析与面项 patch-id 换算（面项 ≤ DEDUP_FACE_MAX_REFS=400，亚秒级）。
 DEDUP_OK=1
-DEDUP_KEY=""
-DEDUP_REFS=""
+DEDUP_KEY="__face_uninit__"
+SNAP="$CONTRIB/own-pr-watch-snapshot.json"
+DEDUP_FACE_MAX_REFS=400
+FACE_ST=""
+FACE_LINES=""
 DUP_PID=""
 typeset -A DEDUP_OID_PID
 
@@ -129,18 +141,127 @@ dedup_item_pid() {
   return "$rc"
 }
 
-# dedup_hit_ref <tid> <ws> → stdout 命中 ref 短名（无命中/不可判 = 空输出）
+# dedup_oid_valid <oid> → rc 0 = 40..64 位小写十六进制全长 commit oid（方可作 snapshot 直项）
+dedup_oid_valid() {
+  local rest
+  case "$1" in ''|[!0-9a-f]*) return 1 ;; esac
+  rest="${1//[0-9a-f]/}"
+  [[ -z "$rest" ]] || return 1
+  (( ${#1} >= 40 && ${#1} <= 64 ))
+}
+
+# build_dedup_face <ws> → 全局 FACE_ST（""=面可用 / missing / corrupt）+ FACE_LINES
+# （每行 display<TAB>oid）。面由 snapshot PR 列表界定（不按分支前缀猜 own-PR 面）：
+# headRefName 派生精确 refname refs/heads/<name> + refs/remotes/fork/<name> 批量单次解析，
+# 解析命中 ⇒ 面项 display = 剥 refs/heads/ / refs/remotes/ 前缀短名；headRefOid 形态合法
+# ⇒ 直接口项（display = headRefName 非空取 headRefName，否则 PR #<number>）；二者皆缺
+# ⇒ 条目跳过零面项。面项顺序：每 PR 内 heads 解析项 → fork 解析项 → oid 直项，PR 按
+# snapshot 键序。missing/corrupt ⇒ 面不可用（调用方逐候选 fail-open 放行，绝不回退全量
+# fork refs 扫描）。
+build_dedup_face() { # <ws>
+  local ws="$1" entries key hoid hname pre rn line oid rlout ncut=0
+  local -a refnames
+  local -A refseen RESOLVED
+  FACE_ST=""
+  FACE_LINES=""
+  refnames=()
+  refseen=()
+  RESOLVED=()
+  if [[ ! -f "$SNAP" ]]; then
+    FACE_ST="missing"
+    return 0
+  fi
+  if ! jq -e 'type=="object" and (.prs|type=="object")' "$SNAP" >/dev/null 2>&1; then
+    FACE_ST="corrupt"
+    return 0
+  fi
+  entries="$(jq -r '.prs | to_entries[] | [.key, (.value.headRefOid // ""), (.value.headRefName // "")] | @tsv' "$SNAP" 2>>"$LOG")" || {
+    FACE_ST="corrupt"
+    return 0
+  }
+  # 第一遍：snapshot 派生精确 refname 收集（去重；硬上界截断留痕——禁裸家族参数/通配的
+  # 前提下，面宽度仍需有界）。切分用手动参数展开而非 IFS read：连续 tab 会被 IFS 折叠、
+  # 空 headRefOid 字段被吞（name-only 条目整条失格，t8-04 S12 锚）。
+  split_entry() { # <line> → 全局 E_KEY/E_HOID/E_HNAME（空字段保留）
+    E_KEY="${1%%$'\t'*}"
+    local rest="${1#*$'\t'}"
+    E_HOID="${rest%%$'\t'*}"
+    E_HNAME="${rest#*$'\t'}"
+  }
+  while IFS= read -r entry_line; do
+    [[ -n "$entry_line" ]] || continue
+    split_entry "$entry_line"
+    key="$E_KEY" hoid="$E_HOID" hname="$E_HNAME"
+    [[ -n "$hname" ]] || continue
+    for pre in refs/heads refs/remotes/fork; do
+      rn="${pre}/${hname}"
+      [[ -n "${refseen[$rn]:-}" ]] && continue
+      if (( ${#refnames[@]} >= DEDUP_FACE_MAX_REFS )); then
+        ncut=$((ncut + 1))
+        continue
+      fi
+      refseen[$rn]=1
+      refnames+=("$rn")
+    done
+  done <<<"$entries"
+  if (( ncut > 0 )); then
+    log "判重面 refname 超硬上界 ${DEDUP_FACE_MAX_REFS}（截断 ${ncut} 个，留痕）"
+  fi
+  # 批量单次解析（读命令闭集内；失败按未解析处理，面相应收窄）
+  if (( ${#refnames[@]} > 0 )); then
+    rlout="$(git -C "$ws" for-each-ref "${refnames[@]}" 2>>"$LOG")" || {
+      log "判重面 ref 解析失败（for-each-ref rc 非 0，按未解析处理）"
+      rlout=""
+    }
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      oid="${line%% *}"
+      rn="${line##*$'\t'}"
+      RESOLVED[$rn]="$oid"
+    done <<<"$rlout"
+  fi
+  # 第二遍：按 PR 键序构造面项（heads 解析项 → fork 解析项 → oid 直项；同第一遍用
+  # split_entry 手动切分保空字段）
+  while IFS= read -r entry_line; do
+    [[ -n "$entry_line" ]] || continue
+    split_entry "$entry_line"
+    key="$E_KEY" hoid="$E_HOID" hname="$E_HNAME"
+    if [[ -n "$hname" ]]; then
+      rn="refs/heads/${hname}"
+      if [[ -n "${RESOLVED[$rn]:-}" ]]; then
+        FACE_LINES="${FACE_LINES}${hname}"$'\t'"${RESOLVED[$rn]}"$'\n'
+      fi
+      rn="refs/remotes/fork/${hname}"
+      if [[ -n "${RESOLVED[$rn]:-}" ]]; then
+        FACE_LINES="${FACE_LINES}fork/${hname}"$'\t'"${RESOLVED[$rn]}"$'\n'
+      fi
+    fi
+    if dedup_oid_valid "$hoid"; then
+      if [[ -n "$hname" ]]; then
+        FACE_LINES="${FACE_LINES}${hname}"$'\t'"${hoid}"$'\n'
+      else
+        FACE_LINES="${FACE_LINES}PR #${key}"$'\t'"${hoid}"$'\n'
+      fi
+    fi
+  done <<<"$entries"
+  return 0
+}
+
+# dedup_hit_ref <tid> <ws> → stdout 命中面项 display（无命中/不可判 = 空输出）
+# D4：迭代 own-PR snapshot 判重面（FACE_LINES）替代原 for-each-ref 全量清单；
+# snapshot 缺失/损坏/为空 ⇒ 逐候选留痕 fail-open 放行（跳过条件 d，绝不回退全量扫描）
 dedup_hit_ref() {
   local tid="$1" ws="$2"
-  local reflist shas refline refname oid csha short
-  reflist="$(git -C "$ws" for-each-ref refs/heads/contrib refs/remotes/fork 2>>"$LOG")" || {
-    log "判重 ref 清单获取失败（放行留痕）: task=${tid}"
-    reflist=""
-  }
-  if [[ "$reflist" != "$DEDUP_KEY" ]]; then
-    DEDUP_KEY="$reflist"
-    DEDUP_REFS="$reflist"
+  local snap_raw shas csha faceline display oid
+  snap_raw="$(cat "$SNAP" 2>>"$LOG" || true)"
+  if [[ "$snap_raw" != "$DEDUP_KEY" ]]; then
+    DEDUP_KEY="$snap_raw"
     DEDUP_OID_PID=()
+    build_dedup_face "$ws"
+  fi
+  if [[ -n "$FACE_ST" || -z "$FACE_LINES" ]]; then
+    log "判重跳过（own-PR snapshot 缺失/损坏/为空，fail-open 放行）: task=${tid}"
+    return 0
   fi
   # 先算候选 patch-id 集（先集后流式比对；单项 git show 失败/对象缺失/空 diff ⇒ 跳过留痕）
   local -A cids
@@ -159,32 +280,29 @@ dedup_hit_ref() {
     cids[$DUP_PID]=1
   done <<<"$shas"
   (( ${#cids[@]} > 0 )) || return 0
-  # 流式比对 ref 头 patch-id（first-hit 早退；oid 级缓存跨候选复用）
-  while IFS= read -r refline; do
-    [[ -n "$refline" ]] || continue
-    oid="${refline%% *}"
-    refname="${refline#*$'\t'}"
+  # 流式比对面项 patch-id（first-hit 早退；oid 级缓存跨候选复用）
+  while IFS= read -r faceline; do
+    [[ -n "$faceline" ]] || continue
+    display="${faceline%%$'\t'*}"
+    oid="${faceline##*$'\t'}"
     if [[ -n "${DEDUP_OID_PID[$oid]:-}" ]]; then
       DUP_PID="${DEDUP_OID_PID[$oid]}"
     else
       if ! dedup_item_pid "$ws" "$oid"; then
-        log "判重 ref 头跳过（git show 失败/对象缺失）: task=${tid} ref=${refname} oid=${oid}"
+        log "判重 ref 头跳过（git show 失败/对象缺失）: task=${tid} ref=${display} oid=${oid}"
         continue
       fi
       if [[ -z "$DUP_PID" ]]; then
-        log "判重 ref 头跳过（空 diff 空 patch-id）: task=${tid} ref=${refname} oid=${oid}"
+        log "判重 ref 头跳过（空 diff 空 patch-id）: task=${tid} ref=${display} oid=${oid}"
         continue
       fi
       DEDUP_OID_PID[$oid]="$DUP_PID"
     fi
     if [[ -n "${cids[$DUP_PID]:-}" ]]; then
-      short="$refname"
-      short="${short#refs/heads/}"
-      short="${short#refs/remotes/}"
-      printf '%s' "$short"
+      printf '%s' "$display"
       return 0
     fi
-  done <<<"$DEDUP_REFS"
+  done <<<"$FACE_LINES"
   return 0
 }
 

@@ -12,6 +12,10 @@
 #   ⑤ 游标损坏重建：视同缺失 → init 2026-07-01 本地 epoch 底座（严格大于：恰等于 init 的行不回扫）
 #   ⑥ body 文件内容：源卡 id/标题、红线「gh 只读」、verdict 双分支、收尾要求
 #   ⑦ 带参数 exit 2；kanban_card --kind 闭集扩展专案；run-watch 段 2.6 静态锚
+#   ⑧ D4 判重面（第三段演进留痕）：own-PR snapshot 种子夹具 seed_snapshot——判重命中/
+#      对象缺失/空 diff/事件失败四用例加种；snapshot 损坏/条目字段全缺（空面）⇒ fail-open
+#      建卡+逐候选留痕；for-each-ref 形态钉（零裸家族 refs/heads/contrib、refs/remotes/fork
+#      参数，零 *?[ 通配）；④b 加性断言 RO 打开失败 WAL 三件套 hint 落自有日志
 # 全部经 KANBAN_DB/CONTRIB_DATA_DIR/HERMES_BIN stub 沙箱隔离，零真实 hermes/gh 调用。
 set -uo pipefail
 
@@ -145,6 +149,9 @@ EEMP="1789000104"     # ③c 空 diff 候选卡 completed_at
 EEVENT="1789000105"   # ⑥ 事件失败候选卡 completed_at
 EPIN="1789000106"     # ④a board pin 候选卡 completed_at
 ENOHIT="1789000107"   # ② 未命中候选卡 completed_at
+ESNPC="1789000108"    # ⑧ snapshot 损坏候选卡 completed_at（D4）
+ESNPE="1789000109"    # ⑧ snapshot 条目字段全缺（空面）候选卡 completed_at（D4）
+ESNPF="1789000110"    # ⑧ for-each-ref 形态钉候选卡 completed_at（D4）
 
 mk_repo_change() { # <path> <filename> <content> — mk_repo 形态底座 + 1 个真实 diff 领先 commit
   mk_repo "$1" 0
@@ -198,6 +205,31 @@ del_tree_of() { # <ws> — 删 HEAD commit 的 tree 对象（log rc=0 而 git sh
 
 event_row_by_key() { # <key> → 该 key 首行事件 JSON（无=空）
   jq -c --arg k "$1" 'select(.key == $k)' "$EVENTS" 2>/dev/null | head -1
+}
+
+# ---------------- D4 判重面夹具 helper（第三段加性；不改既有 helper） ----------------
+
+seed_snapshot() { # <headRefName> <headRefOid> — 写沙箱 own-pr-watch snapshot（单条目新形态，
+# 七字段 = 旧五字段 + headRefOid/headRefName；镜像 own_pr_watch.sh 生产写出形态）
+  jq -n --arg n "$1" --arg oid "$2" \
+    '{generated_at: "2026-09-12T00:00:00Z",
+      prs: {"103201": {updatedAt: "2026-09-12T00:00:00Z", mergeable: "MERGEABLE",
+                       reviewDecision: "", comments: 0, external_comments: 0,
+                       headRefOid: $oid, headRefName: $n}}}' \
+    >"$DATA/own-pr-watch-snapshot.json"
+}
+
+mk_git_spy_log() { # 沙箱 bin/ 装 git 记账包装器（exec 真身；argv 落 stublog/git-calls.log，
+# for-each-ref 形态钉观测面——形态同 t8-01 git spy 先例）
+  local real
+  real="$(command -v git)"
+  cat >"$SB_ROOT/bin/git" <<EOF
+#!/bin/bash
+# 测试观测包装器（沙箱 bin 在 PATH 首位）：git argv 记账后 exec 真身
+printf 'git|%s\n' "\$*" >>"\$STUB_LOG_DIR/git-calls.log"
+exec "$real" "\$@"
+EOF
+  chmod +x "$SB_ROOT/bin/git"
 }
 
 # ---------------- ①+②+⑥ 三条件过滤 + 命中建卡 + body 内容 ----------------
@@ -288,6 +320,13 @@ else
   _pass "查询失败零游标写"
 fi
 assert_stub_not_called hermes "查询失败零建卡链调用"
+# D4 加性：RO 打开失败可诊断性——原始错误串 + WAL 三件套 hint 落自有日志
+assert_file_contains "$GLOG" "unable to open database file" "RO 失败原始错误串落自有日志（python stderr 落 LOG）"
+if grep -Eiq -- '-shm|wal|三件套' "$GLOG" 2>/dev/null; then
+  _pass "RO 失败 hint 落自有日志（含 -shm/wal/三件套 诊断）"
+else
+  _fail "RO 失败 hint 落自有日志（含 -shm/wal/三件套 诊断）" "GLOG 零 hint 命中"
+fi
 
 # ---------------- ⑤ 游标损坏重建 ----------------
 
@@ -342,6 +381,7 @@ t_case "已投递命中：patch-id 命中 refs/heads/contrib 孪生 ⇒ 零建�
 new_sb
 mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit" fix.txt "real change A"
 mk_deliv_twin "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit" refs/heads/contrib/pidhit
+seed_snapshot "contrib/pidhit" "$(git -C "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit" rev-parse refs/heads/contrib/pidhit)"   # D4 加性种子：own-PR 面 = 命中 ref
 add_row "$GATE_DB" t_pidhit "pid hit card" "$EHITD" "$SB_ROOT/ws/hermes-agent/.worktrees/t_pidhit"
 out="$(run_gate "$GATE_DB")"
 assert_exit 0 $?
@@ -387,6 +427,7 @@ new_sb
 WS_B="$SB_ROOT/ws/hermes-agent/.worktrees/t_deg_b"
 mk_repo_change "$WS_B" fix.txt "real change D"
 del_tree_of "$WS_B"
+seed_snapshot "deg-b" "$(git -C "$WS_B" rev-parse refs/remotes/origin/main)"   # D4 加性种子：面内 ref 未解析回落 oid 直项（不干扰单项缺失路径）
 add_row "$GATE_DB" t_deg_b "deg b" "$EDEGB" "$WS_B"
 run_gate "$GATE_DB" >/dev/null
 assert_exit 0 $?
@@ -403,6 +444,7 @@ mk_deliv_twin "$WS_C" refs/remotes/fork/contrib/emptytwin   # 孪生空 ref（�
 printf 'real change\n' >"$WS_C/fix.txt"             # 再叠 1 个真实 diff ahead commit：
 git -C "$WS_C" add -A                               # 候选集非空 ⇒ ref 侧空 diff 跳过路径可达
 git -C "$WS_C" -c user.email=t@example -c user.name=t commit -q -m real-fix
+seed_snapshot "contrib/emptytwin" "$(git -C "$WS_C" rev-parse refs/remotes/fork/contrib/emptytwin)"   # D4 加性种子：面 = 空 diff 孪生 ref（双侧空 patch-id 跳过路径保持）
 add_row "$GATE_DB" t_empty "empty diff card" "$EEMP" "$WS_C"
 run_gate "$GATE_DB" >/dev/null
 assert_exit 0 $?
@@ -438,6 +480,7 @@ new_sb
 WS_F="$SB_ROOT/ws/hermes-agent/.worktrees/t_evfail"
 mk_repo_change "$WS_F" fix.txt "real change F"
 mk_deliv_twin "$WS_F" refs/heads/contrib/evfail
+seed_snapshot "contrib/evfail" "$(git -C "$WS_F" rev-parse refs/heads/contrib/evfail)"   # D4 加性种子：命中态经 snapshot 面
 add_row "$GATE_DB" t_evfail "event fail card" "$EEVENT" "$WS_F"
 mkdir "$DATA/logs/notify.log"   # 实测选定注入：notify.log 置目录 ⇒ notify.sh event 末行 log 失败 rc=1
 run_gate "$GATE_DB" >/dev/null
@@ -449,5 +492,74 @@ else
   _pass "事件失败零游标推进"
 fi
 assert_file_contains "$GLOG" "事件入账失败" "fail-closed 留痕"
+
+# ---------------- ⑧ D4 判重面增补用例（own-PR snapshot 面；fail-open 三态 + 形态钉） ----------------
+
+t_case "snapshot 损坏 ⇒ fail-open：判重面不可用照常建卡 + 逐候选留痕（⑧ D4）"
+new_sb
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_snpcorrupt" fix.txt "real change G"
+add_row "$GATE_DB" t_snpcorrupt "snapshot corrupt card" "$ESNPC" \
+  "$SB_ROOT/ws/hermes-agent/.worktrees/t_snpcorrupt"
+printf 'NOT-JSON{{{' >"$DATA/own-pr-watch-snapshot.json"
+out="$(run_gate "$GATE_DB")"
+assert_exit 0 $?
+assert_eq "$(create_calls)" "1" "snapshot 损坏 fail-open 照常建卡（绝不回退全量扫描）"
+assert_file_contains "$GLOG" "判重跳过（own-PR snapshot 缺失/损坏/为空，fail-open 放行）" "损坏留痕存在"
+assert_file_contains "$GLOG" "task=t_snpcorrupt" "留痕可定位到该卡（task=<tid>）"
+assert_eq "$(cursor_val)" "$ESNPC" "fail-open 轮游标照常收尾推进"
+
+t_case "snapshot 条目字段全缺（空面）⇒ fail-open：判重跳过照常建卡（⑧ D4）"
+new_sb
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_snempty" fix.txt "real change H"
+add_row "$GATE_DB" t_snempty "snapshot empty face card" "$ESNPE" \
+  "$SB_ROOT/ws/hermes-agent/.worktrees/t_snempty"
+# 合法 snapshot（jq 校验过）但条目无 headRefOid/headRefName ⇒ 零面项 = 空面
+printf '%s\n' '{"generated_at": "2026-09-12T00:00:00Z", "prs": {"103201": {"updatedAt": "2026-09-12T00:00:00Z", "mergeable": "MERGEABLE", "reviewDecision": "", "comments": 0, "external_comments": 0}}}' \
+  >"$DATA/own-pr-watch-snapshot.json"
+out="$(run_gate "$GATE_DB")"
+assert_exit 0 $?
+assert_eq "$(create_calls)" "1" "空面 fail-open 照常建卡"
+assert_file_contains "$GLOG" "判重跳过（own-PR snapshot 缺失/损坏/为空，fail-open 放行）" "空面留痕存在"
+assert_file_contains "$GLOG" "task=t_snempty" "留痕可定位到该卡（task=<tid>）"
+assert_eq "$(cursor_val)" "$ESNPE" "空面轮游标照常收尾推进"
+
+t_case "for-each-ref 形态钉：面解析零裸家族参数/零通配，恰为 snapshot 派生精确 refname（⑧ D4 防回退全量扫）"
+new_sb
+mk_git_spy_log
+mk_repo_change "$SB_ROOT/ws/hermes-agent/.worktrees/t_fepin" fix.txt "real change I"
+mk_unrelated_ref "$SB_ROOT/ws/hermes-agent/.worktrees/t_fepin" refs/remotes/fork/contrib/otherpin
+seed_snapshot "contrib/otherpin" "$(git -C "$SB_ROOT/ws/hermes-agent/.worktrees/t_fepin" rev-parse refs/remotes/fork/contrib/otherpin)"
+add_row "$GATE_DB" t_fepin "face pin card" "$ESNPF" "$SB_ROOT/ws/hermes-agent/.worktrees/t_fepin"
+run_gate "$GATE_DB" >/dev/null
+assert_exit 0 $?
+assert_eq "$(create_calls)" "1" "面内 ref 指不同 diff ⇒ 未命中照常建卡（面由 snapshot 界定）"
+GITSLOG="$SB_ROOT/stublog/git-calls.log"
+forerows="$(awk -F'|' '$1 == "git" && index($0, "for-each-ref") > 0' "$GITSLOG" 2>/dev/null || true)"
+if [[ -n "$forerows" ]]; then
+  _pass "for-each-ref 调用真实发生（面解析路径可达，非平凡）"
+else
+  _fail "for-each-ref 调用真实发生（面解析路径可达，非平凡）" "git-calls.log 无 for-each-ref 行"
+fi
+assert_file_contains "$GITSLOG" "for-each-ref refs/heads/contrib/otherpin refs/remotes/fork/contrib/otherpin" \
+  "面解析恰为 snapshot 派生精确 refname 对（refs/heads/<name> + refs/remotes/fork/<name>）"
+febad="$(awk -F'|' '$1 == "git" {
+  s = substr($0, 5)
+  n = split(s, a, " ")
+  i = 1
+  if (a[1] == "-C") i = 3
+  if (a[i] == "for-each-ref") {
+    if (i + 1 > n) bad = 1
+    for (j = i + 1; j <= n; j++) {
+      r = a[j]
+      if (index(r, "*") > 0 || index(r, "?") > 0 || index(r, "[") > 0) bad = 1
+      if (r == "refs/heads/contrib" || r == "refs/remotes/fork") bad = 1
+      if (substr(r, 1, 11) != "refs/heads/" && substr(r, 1, 18) != "refs/remotes/fork/") bad = 1
+      if (substr(r, 1, 11) == "refs/heads/" && length(r) <= 11) bad = 1
+      if (substr(r, 1, 18) == "refs/remotes/fork/" && length(r) <= 18) bad = 1
+    }
+  }
+}
+END { print (bad ? 1 : 0) }' "$GITSLOG" 2>/dev/null || true)"
+assert_eq "$febad" "0" "for-each-ref 参数全部形如精确 refname（零裸家族 refs/heads/contrib、refs/remotes/fork，零 *?[ 通配）"
 
 t_finish
