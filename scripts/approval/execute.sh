@@ -178,13 +178,29 @@ ttl_verify() {
     TTL_FAIL_REASON="premises 抽验失败 ${dead} 条（dead/claim/evidence 空缺）"
     return 1
   fi
-  # 4) 近 5 评论否决/重复信号（机械关键词筛选；.[]?/.body? 双形状容错，解析失败=不拦）
-  local hits
-  hits="$("$GH_BIN" api "repos/${REPO}/issues/${ISSUE}/comments?per_page=5" 2>>"$LOG" \
+  # 4) 近 5 评论否决/重复信号——两层判读（09-10 rq-107156 两连误报沉淀）：
+  #    层1 机械哨兵（零 LLM）：关键词字面命中 → 层2 AI 语义判读（ttl_comment_judge.sh，
+  #    hermes -z 主判 + claude -p 备胎）：窗口内有无后续撤销/改判/反驳，PASS=放行。
+  #    判读者不可用（exit 3）→ 回退机械结果 fail-closed，绝不因判读层缺失放行。
+  #    快照契约：判读者只看评论原文，不给 issue 其他上下文（防幻觉扩张）。
+  local hits verdict
+  hits="$(GH_REPO="$REPO" "$GH_BIN" api "repos/${REPO}/issues/${ISSUE}/comments?per_page=5" 2>>"$LOG" \
     | jq -r '[.[]? | ((.body? // "") | tostring) |
         test("not planned|wontfix|won.t fix|closing as|closed as|duplicate of"; "i")] | any' 2>/dev/null)"
   if [[ "$hits" == "true" ]]; then
-    TTL_FAIL_REASON="issue #${ISSUE} 近 5 评论出现否决/重复信号"
+    if JUDGE_BIN="${JUDGE_BIN:-}" REPO="$REPO" ISSUE="$ISSUE" GH_BIN="$GH_BIN" LOG="$LOG" \
+      bash "$MARTIN/scripts/approval/ttl_comment_judge.sh" >>"$LOG" 2>&1; then
+      verdict="$(tail -1 "$LOG" | grep -Eo 'PASS|BLOCK' | tail -1)"
+      if [[ "$verdict" == "PASS" ]]; then
+        log "TTL 否决信号机械命中但语义判读 PASS（窗口内已撤销/改判），放行 issue #${ISSUE}"
+        return 0
+      elif [[ "$verdict" == "BLOCK" ]]; then
+        TTL_FAIL_REASON="issue #${ISSUE} 语义判读 BLOCK（否决信号成立且无撤销）"
+        return 1
+      fi
+    fi
+    # 判读层不可用（exit 3 或输出无法解析）→ 机械结果兜底（fail-closed）
+    TTL_FAIL_REASON="issue #${ISSUE} 近 5 评论出现否决/重复信号（语义判读不可用，机械兜底拦截）"
     return 1
   fi
   return 0
@@ -262,6 +278,63 @@ do_approved() {
   "$NOTIFY" receipt "$ID" --summary "${receipt_verb} ${URL}" >>"$LOG" 2>&1 \
     || log "receipt ${ID} 发送失败（记账与状态推进不受影响）"
   log "executed ${ID}（verdict=approved，drill=${IS_DRILL}，url=${URL}）"
+  return 0
+}
+
+do_release_gate() { # release-gate approved：hm release approve 回验 → token 签发 → 链式 submit
+  # hm CLI 解析：env seam → PATH → nvm 布局探测（同 hermes/tunnel 先例；launchd PATH 极简）
+  HM_BIN="${HM_BIN:-}"
+  if [[ -z "$HM_BIN" ]]; then
+    HM_BIN="$(command -v hm 2>/dev/null || true)"
+  fi
+  if [[ -z "$HM_BIN" && -x "$HOME/.local/bin/hm" ]]; then
+    HM_BIN="$HOME/.local/bin/hm"
+  fi
+  if [[ -z "$HM_BIN" ]]; then
+    _hm_cand="$(ls -t "$HOME"/.nvm/versions/node/*/bin/hm 2>/dev/null | head -1 || true)"
+    [[ -n "$_hm_cand" ]] && HM_BIN="$_hm_cand"
+  fi
+  if [[ -z "$HM_BIN" ]]; then
+    fail "hm CLI 不可达（HM_BIN/PATH/nvm 布局均未命中），release-gate 无法链式提审"
+    return 0
+  fi
+  # launchd 运行环境（B3）：显式 export PATH（nvm bin）与 HM_CREDENTIALS（缺省仓外 ~/.hm/credentials.json）
+  if [[ -n "${HM_NVM_BIN_DIR:-}" ]]; then
+    PATH="${HM_NVM_BIN_DIR}:${PATH}"; export PATH
+  fi
+  if [[ -z "${HM_CREDENTIALS:-}" && -f "$HOME/.hm/credentials.json" ]]; then
+    export HM_CREDENTIALS="$HOME/.hm/credentials.json"
+  fi
+  # 队列路径显式传递（approve 回验读 HM_RQ_QUEUE；不依赖 CONTRIB_DATA_DIR 透传链）
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[dry-run] HM_RQ_QUEUE=${QUEUE} HM_CREDENTIALS=${HM_CREDENTIALS:-<unset>} ${HM_BIN} release approve --gate ${ID}"
+    echo "[dry-run] rq.sh set ${ID} executed --note gate-token-issued-submit-chained"
+    [[ -n "$SLUG" ]] && { echo "[dry-run] tunnel rm ${SLUG}"; echo "[dry-run] rq.sh tunnel-removed ${ID}"; }
+    echo "[dry-run] notify.sh receipt ${ID} --summary 发版门已批，链式提审完成"
+    return 0
+  fi
+  log "release-gate ${ID}: 调 hm release approve（回验 + token + 链式 submit）"
+  if ! HM_RQ_QUEUE="$QUEUE" "$HM_BIN" release approve --gate "$ID" >>"$LOG" 2>&1; then
+    fail "hm release approve 失败（回验拒签或链式提审失败，详见 ${LOG}）"
+    return 0
+  fi
+  log "release-gate ${ID}: approve 成功（token 已消费），推进 executed"
+  "$RQ" set "$ID" executed --note "发版门已批：gate token 签发 + 链式提审完成" >>"$LOG" 2>&1 \
+    || { fail "rq set executed 失败"; return 0; }
+  # approved.log 台账（与 own-PR 审计口径一致；issue 列 = 合成号，标注 release-gate 语境）
+  local line
+  line="$(date "+%Y-%m-%dT%H:%M:%S%z") | hermes-contrib | issue #${ISSUE} 发版提审门（release-gate，L2-A tunnel 短码批准 slug=${SLUG}） | release-gate | hm-release-approve"
+  printf '%s\n' "$line" >> "$APPROVED_LOG" 2>/dev/null || log "approved.log 写入失败（路径/权限异常：${APPROVED_LOG}）"
+  if [[ -n "$SLUG" ]]; then
+    if "$TUNNEL_BIN" rm "$SLUG" >>"$LOG" 2>&1; then
+      "$RQ" tunnel-removed "$ID" >>"$LOG" 2>&1 || true
+    else
+      log "tunnel rm ${SLUG} 失败（7 天 sweep 兜底）"
+    fi
+  fi
+  "$NOTIFY" receipt "$ID" --summary "发版门已批：hm release approve 链式提审完成（token 单次消费）" >>"$LOG" 2>&1 \
+    || log "receipt ${ID} 发送失败（记账与状态推进不受影响）"
+  log "executed ${ID}（release-gate 全链完成）"
   return 0
 }
 
@@ -429,6 +502,15 @@ PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strz
       --summary "own-PR ${ID} 短码已批，coder 卡创建失败，请会话路执行" >>"$LOG" 2>&1 || true
   fi
   exit 0
+fi
+
+# release-gate 分支（2026-09-09，hm release 发版批准门，research/15 D4）：
+# 插在 draft 检查后、ttl_verify 之前——issue 为 appId 合成号，gh TTL 复验（issue OPEN/占坑/
+# premises 抽验/评论信号）不适用；分流退出防合成号进 gh 查询。drill 件落 do_approved 的
+# drill 路（跳过 gh 链，状态推进照常）。rejected/revise 沿通用路（rq 状态机 + receipt）。
+if [[ "$DISPOSITION" == "release-gate" && "$VERDICT" == "approved" && "$IS_DRILL" == "0" ]]; then
+  do_release_gate
+  exit $?
 fi
 
 # 临时正文文件：macOS/BSD mktemp 要求 X 串在模板末尾（带 .md 后缀会 mkstemp 失败 →

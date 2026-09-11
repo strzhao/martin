@@ -1,0 +1,53 @@
+#!/bin/bash
+# 影子 stub：himalaya —— mail_gate.sh seam（T3 mail 卡化测试矩阵用）
+# 注入方式：sandbox.sh 拷入沙箱 bin/，mail_gate.sh 经 HIMALAYA_BIN 默认 PATH 命中
+# 数据源（env 注入）：
+#   MAIL_STUB_ENVELOPES=<file> → `envelope list` 输出该文件内容（未设/缺失/空 → []，
+#     与「沙箱内无 himalaya」的既有行为等价：mail_gate 静默零采集）
+#   MAIL_STUB_DIR=<dir>        → `message read <id> -p` 读 <dir>/read-<id>.txt（缺失给默认渲染体）
+# 全程只读，无写操作旋钮（红线：himalaya 写操作在沙箱内也不应存在）。
+set -u
+LOG_DIR="${STUB_LOG_DIR:-}"
+
+# 调用记录（STUB_LOG_DIR 缺席时静默降级为不记录，仍保持安全默认行为）
+if [[ -n "$LOG_DIR" ]]; then
+  mkdir -p "$LOG_DIR/bodies" 2>/dev/null || true
+  n=$(( $(cat "$LOG_DIR/.seq-himalaya" 2>/dev/null || echo 0) + 1 ))
+  printf '%s\n' "$n" >"$LOG_DIR/.seq-himalaya"
+  line="himalaya|$PWD|"
+  first=1
+  for a in "$@"; do
+    if [[ $first -eq 0 ]]; then line="$line "; fi
+    line="$line$a"
+    first=0
+  done
+  printf '%s\n' "$line" >>"$LOG_DIR/calls.log"
+fi
+
+case "${1:-}" in
+  envelope)
+    if [[ -n "${MAIL_STUB_ENVELOPES:-}" && -s "$MAIL_STUB_ENVELOPES" ]]; then
+      # unseen 语义仿真：查询带 flag unseen 时隐藏 flags 含 Seen 的信封（仿真真实服务端）
+      if [[ " $* " == *" flag unseen "* ]]; then
+        jq -c '[.[] | select((.flags // []) | index("Seen") | not)]' "$MAIL_STUB_ENVELOPES"
+      else
+        cat "$MAIL_STUB_ENVELOPES"
+      fi
+    else
+      printf '[]\n'
+    fi
+    exit 0
+    ;;
+  message)
+    f="${MAIL_STUB_DIR:-}/read-${3:-}.txt"
+    if [[ -f "$f" ]]; then
+      cat "$f"
+    else
+      printf 'From: Teknium <notifications@github.com>\nSubject: Re: [NousResearch/hermes-agent] stub\n\n默认渲染体（无 Message-ID 头，页脚形态）。\n\nMessage ID: <stub-%s@github.com>\n' "${3:-0}"
+    fi
+    exit 0
+    ;;
+  *)
+    exit 2
+    ;;
+esac

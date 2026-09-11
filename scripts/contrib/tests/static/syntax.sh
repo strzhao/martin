@@ -11,10 +11,10 @@ source "$TESTS_ROOT/lib/assert.sh"
 TARGET="$(tests_scripts_dir "$TARGET_DEFAULT")"
 t_init "syntax.sh"
 
-BASH_PROD="notify.sh rq.sh scan_gate.sh deep_check_gate.sh"
+BASH_PROD="notify.sh rq.sh scan_gate.sh deep_check_gate.sh kanban_card.sh deepcheck_card.sh"
 ZSH_PROD="deep-check.sh run-deepcheck.sh run-watch.sh"
 
-t_case "生产脚本在位（7 个）"
+t_case "生产脚本在位（9 个）"
 for f in $BASH_PROD $ZSH_PROD; do
   if [[ -f "$TARGET/$f" ]]; then
     _pass "$f 在位"

@@ -192,8 +192,13 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 ### review 红线（COI 防御）
 
+0. **品牌姿态红线（2026-09-11 用户拍板，凌驾本节其余条款）**：strzhao 账号的一切对外发声（评论/PR/issue/close message）都是**品牌资产**，每条发出前自问「这条读起来像不像一个有分量的贡献者」：
+   - **不索取**：署名/credit 不主动开口要——署名是做出来的（对方 cherry-pick 时自然带），求来的署名一文不值（#103661 实证：原稿带 Co-authored-by 诉求被用户否掉，改为高姿态确认+关闭）
+   - **让路要有让路的样子**：关闭自己的 PR 让路竞品 = 一句确认+收工，不诉苦不邀功不夹条件；「Nice work / better landing spot」就是全部
+   - **不做低姿态动作**：不催、不哀求 review、不用感叹号堆热情、不写「谢谢分享学习了很多」式空话；承认对方更好时直说好在哪（file:line 级），不泛泛捧
+   - **竞争姿态**：吸收 > 差异化 > 观望，**不免费优化对手**（见 §11.2 竞争口径）——发言永远服务「我方是可信赖的高质量贡献者」这个长期形象，不为单次收益折腰
 1. 主载荷 = **对维护者的验证价值**：file:line receipts + mutation 自证（#96437 评论格式为模板）
-2. 自己的 PR/commit 只在**缺口驱动**场合出现；没货就纯 review，不硬带
+2. 自己的 PR/commit 只在**缺口驱动**场合出现；**没货时默认动作 = 造货**（forge 立项，≤20min 基准）——第一 KPI=commit 进仓，在 review 里提供我方 commit 是高姿态的合理做法，因没货错失合并窗 = 颗粒无收（#106199 教训）。`none`（纯 review）仅限真不可造：需维护者拍板方向 / schema 级重构 / 域外，note 须写硬理由。质量靠建设能力提升，**不靠硬凑**（反 slop：#103650 教训）——造不出合格件就发纯 review 并记欠账，不塞劣质 offer（09-11 用户二次拍板定稿）
 3. offer 措辞规范（**09-07 #103650 教训**：lift/absorb 对称措辞 → substance 被逐字采纳但作者默认走成本最低的 absorb 路径，我方 2 commits 署名归零）——**排序推荐，永不并列**：
    - ① **lift 保署名 = 显式首选**：「the filters and tests lift as one small commit keeping authorship」
    - ② absorb 须点名 credit：「if you'd rather rewrite it yourself, a Co-authored-by on the absorbing commit would be appreciated」
@@ -203,6 +208,19 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 4. **每周深检预算 1-3 个**（三轮验证 strategist→亲手核→fresh-context 红队成本高）；其余新 PR 只内部研判不发帖——不做全仓免费 QA（~~09-02 定 1-3/周~~ **09-04 用户拍板放宽为周 30/日 3——token 充裕，配额只做防突发节流；COI 防线移由 rubric 门槛 + premise 复验 + 每项微信审批承担**；由 `contrib-data/budget.json` 机械记账，散文预算状态以账本为准）
 5. 筛选 rubric：**域契合 × 合入临近度（CI 绿/review 收敛/mergeable）× 独家弹药 × 可收敛性 × 作者质量史**
 
+### §11.1a 竞品吸收口径（2026-09-11 用户拍板）
+
+**背景**：#103661/#103650 竞品复盘——旧路"见竞品→改判 review-evidence 帮它收口"是用我方 token 武装对手（帮对方提高合并概率），且对外姿态低（求署名）。用户拍板：**竞品是免费情报源 + 造货素材库，不是帮扶对象**。
+
+**A/B/C 决策树**（发现竞品 30 分钟内评估，产物 = absorb-plan + absorb-ledger 登记）：
+- **A absorb（对方有我缺的）**：拆可剥离要点 → forge 立项升级我方件（≤20min）；goods 注记吸收来源；对方好想法以我方 commit 形态回流上游
+- **B differentiate（对方有洞 + 我方有独家证据）**：我方件调成互补面，不发 review 帮修
+- **C stand-down（对方全面更好）**：高姿态一句话让路退场（#103661 模式），零成本离场
+
+**红线**：不发"帮竞品修洞"的 review；评估 gh 只读；吸收走 forge 红线（本地为止）；对外发声走 L2。
+
+**台账**：`contrib-data/absorb-ledger.json`（radar 巡检 A 路吸收件的存活期 follow-up）。
+
 ### §11.1 执行通道机械化（09-04 上线：ready-queue + L2-A 微信审批环）
 
 - **入队**：scan/radar 把「验证成本已付清、只差 L2 批准」的项写 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`；premises 逐条登记，radar 每日复验 + 执行前 TTL 复验双保险——#102413 教训制度化）
@@ -210,6 +228,8 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 - **执行**：用户「批/改/否 #rq-id」→ hermes 侧 `hermes-contrib-l2` skill：TTL 复验 → 逐字投递 → approved.log（L2-A，与会话内 L2-B 等效且互查去重）→ 回执；48h 搁置（09:17 cron 对账）。own-PR 批准后由 execute.sh 建 coder 卡全自动执行 push+PR（09-08 lane 改造；`allow_own_pr_push` 急停总开关，当前 true）
 
 ### 可 pick 库存台账（资产；review 是分发渠道）
+
+> **机读版（09-09 起）**：`contrib-data/inventory.json`（唯一写入口 `scripts/contrib/forge.sh`；radar 每日巡检新鲜度 + 带货率）。下表为散文快照，**以机读版为准**。
 
 | 资产 | 域 | 搭车场景 |
 |---|---|---|
@@ -223,6 +243,17 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 ### 漏斗度量
 
 review → adoption（点被采纳）→ **pick（commit 被收编入 main，graph 亮灯）** → 关系信号（@提及/直接 ping/进收敛者视野）。review 本身不入 graph，**pick 才是终极产出**；库存是资产、review 是渠道、信任是复利。
+
+### §11.2 goods-gate 与造货引擎（09-09 升级：机制层强制 commit 进仓优先）
+
+> 背景：09-09 #106199 深检发现双缺口但手无货，快合窗内只能裸 review（用户复盘：09-05 拍板的 commit 进仓优先原则是 prompt 教义、流水线无强制点，效果一般）。诊断出**机器层根因**：verdict 指南把「提不提 cherry-pick offer」列为 escalate 事由，制度性把 offer 决策推给人工且全流程无查库存/造货步骤。升级四件：
+
+1. **goods-gate（fail-closed）**：deep-check preflight 阶段新增「Goods 判定」必答节（redteam 缺节打回）；verdict.json 增 `goods.status` 必填字段，`auto-gate.sh` 硬条件 5 机械校验——缺字段/非法值一律升级人工。三态：`offered`（库存域匹配→评审带 offer）/ `forge-lane`（可造→评审照发不等待+同刻造货，**PR 存活期内 follow-up 补 offer**——开窗期是 offer 变现最优期）/ `none`（纯 review，合法但计数）
+   - **工时基准（09-10 用户拍板：禁无测量先验）**：单关注点 forge 件默认 **≤20 分钟**（实测锚点：weixin 4 件连造 12min、单件含入库 2.6min、自有 PR 开→合 3-39min）。判「来不及造」必须附测量依据（设备依赖/多文件/难复现），无依据按 20 分钟基准判可造。
+   - **时效窗与审批解耦（09-10 用户拍板，重点）**：review-evidence 类走 L2-auto 高置信自动批准，**审批不是等待项**——「等用户批会错过窗口」不成立，以此为由放弃造货 = 判定错误。时间压力只来自 PR 合并节奏本身，与人工审批无关。
+2. **verdict escalate 规则修正**：goods 三态判定不再是升级事由（域匹配带 offer、可造就造、真不可造才 none——不存在「提不提 offer 的取舍」）；只有 offer 措辞/署名排序拿不准才 escalate。none 须附硬理由，无理由的 none 在 radar 复检时翻案补造（09-11 二次拍板）
+3. **造货引擎**：`scripts/contrib/forge.sh`（init=worktree 基于 origin/main 建 forge/<slug> 分支；register=成品入台账 status=ready；check=新鲜度巡检；set-status；list）。红线继承 build：只到本地为止，绝不 push
+4. **度量闭环**：`goods-metrics.json`（auto-gate 每次调用机械记账 missing/offered/forge-lane/none）；radar 3.5 步巡检——连续 ≥3 次 none = 造货能力报警（goods-drought 置顶；逐条复检 none 硬理由，可翻案的补 forge 立项——没及时提供的货=颗粒无收），库存 stale（checked>14d 或 base 落后>50 commit）进简报
 
 ## 相关记忆
 - `hermes-contribution-followups.md` —— 4 个 PR 的具体进度 + sweeper 反馈机制

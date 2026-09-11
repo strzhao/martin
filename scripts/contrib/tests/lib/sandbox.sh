@@ -52,6 +52,7 @@ sb_seed_data() { # 沙箱 contrib-data 底座（与生产 config 默认值同构
   "max_auto_builds_per_day": 1,
   "min_build_score": 12,
   "stale_pr_days": 10,
+  "own_pr_alert_per_day": 2,
   "repo": "NousResearch/hermes-agent",
   "auto_deep_check": true,
   "deep_check_per_week": 30,
@@ -60,7 +61,7 @@ sb_seed_data() { # 沙箱 contrib-data 底座（与生产 config 默认值同构
   "ready_min_score": 11,
   "allow_own_pr_push": false,
   "probe_per_day": 1,
-  "max_alert_pushes_per_day": 3,
+  "max_alert_pushes_per_day": 30,
   "max_approval_pushes_per_day": 3,
   "approval_ttl_hours": 48,
   "notify_min_interval_min": 20,
@@ -107,13 +108,28 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
   cp "$src"/*.sh "$SB_ROOT/scripts/contrib/"
   chmod +x "$SB_ROOT"/scripts/contrib/*.sh 2>/dev/null || true
 
+  # 1b) approval 域脚本（T4 deepcheck_card.sh 的 auto-gate/execute 桥接依赖）：
+  #     被测目录的兄弟 approval/ 一并镜像；目录不存在时跳过（向前兼容）
+  local apprv_dir
+  apprv_dir="$(dirname "$src")/approval"
+  if [[ -d "$apprv_dir" ]] && ls "$apprv_dir"/*.sh >/dev/null 2>&1; then
+    mkdir -p "$SB_ROOT/scripts/approval"
+    cp "$apprv_dir"/*.sh "$SB_ROOT/scripts/approval/"
+    chmod +x "$SB_ROOT"/scripts/approval/*.sh 2>/dev/null || true
+  fi
+
   # 2) 影子 stub
   local stubsrc="${CONTRIB_TEST_STUBS:-}"
   if [[ -z "$stubsrc" ]]; then
     echo "sandbox: CONTRIB_TEST_STUBS 未设置（影子 stub 目录）" >&2
     return 1
   fi
-  cp "$stubsrc"/hermes "$stubsrc"/claude "$stubsrc"/gh "$stubsrc"/tunnel "$stubsrc"/osascript "$stubsrc"/pgrep "$SB_ROOT/bin/"
+  cp "$stubsrc"/hermes "$stubsrc"/claude "$stubsrc"/gh "$stubsrc"/tunnel "$stubsrc"/osascript "$stubsrc"/pgrep "$stubsrc"/himalaya "$SB_ROOT/bin/"
+  # date 影子 stub（09-10 own-PR 盯梢新增）：STUB_DATE_TODAY 未设=全量透传 /bin/date，
+  # 既有套件零行为变化；存在性守卫兼容外部 CONTRIB_TEST_STUBS 目录未跟进的情形
+  if [[ -f "$stubsrc/date" ]]; then
+    cp "$stubsrc/date" "$SB_ROOT/bin/"
+  fi
   chmod +x "$SB_ROOT"/bin/*
 
   # 3) shim + 数据底座
@@ -123,6 +139,8 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
   # 4) seam 全量导出（默认值与生产硬编码逐字符一致，仅指向沙箱）
   export MARTIN_DIR="$SB_ROOT"
   export CONTRIB_DATA_DIR="$SB_ROOT/contrib-data"
+  # board seam（T6）：沙箱缺省空=回退态（零 --board）；SB_KANBAN_BOARD=<slug> 可整体注入 pin 态
+  export KANBAN_BOARD="${SB_KANBAN_BOARD:-}"
   export NOTIFY_LOCK="$SB_ROOT/locks/notify.lock"
   export NOTIFY_SEND_LAST="$SB_STUBLOG/hermes-send-last.json"
   export RQ_LOCKDIR="$SB_ROOT/locks/rq.lock"
@@ -131,6 +149,9 @@ sb_new() { # sb_new → 创建沙箱；设置 SB_* 与 seam env（当前进程�
   export DEEPCHECK_LOCK="$SB_ROOT/locks/deepcheck.lock"
   export HERMES_BIN="$SB_ROOT/bin/hermes"
   export GH_BIN="$SB_ROOT/bin/gh"
+  # himalaya seam（T3）：run-watch 顶部 export PATH 前置真实 /opt/homebrew/bin，同名真身会
+  # 越过沙箱 bin/ 被命中——必须显式钉 stub 绝对路径（mail_gate.sh 的 HIMALAYA_BIN seam）
+  export HIMALAYA_BIN="$SB_ROOT/bin/himalaya"
   export TUNNEL_BIN="$SB_ROOT/bin/tunnel"
   export OSASCRIPT_BIN="$SB_ROOT/bin/osascript"
   export GATEWAY_PROBE_BIN="$SB_ROOT/bin/pgrep"
@@ -166,6 +187,7 @@ sb_run() {
       PATH="$SB_STRICT_PATH" \
       MARTIN_DIR="$SB_ROOT" \
       CONTRIB_DATA_DIR="$SB_ROOT/contrib-data" \
+      KANBAN_BOARD="${SB_KANBAN_BOARD:-}" \
       NOTIFY_LOCK="$SB_ROOT/locks/notify.lock" \
       NOTIFY_SEND_LAST="$SB_STUBLOG/hermes-send-last.json" \
       RQ_LOCKDIR="$SB_ROOT/locks/rq.lock" \
@@ -174,6 +196,7 @@ sb_run() {
       DEEPCHECK_LOCK="$SB_ROOT/locks/deepcheck.lock" \
       HERMES_BIN="$SB_ROOT/bin/hermes" \
       GH_BIN="$SB_ROOT/bin/gh" \
+      HIMALAYA_BIN="$SB_ROOT/bin/himalaya" \
       TUNNEL_BIN="$SB_ROOT/bin/tunnel" \
       OSASCRIPT_BIN="$SB_ROOT/bin/osascript" \
       GATEWAY_PROBE_BIN="$SB_ROOT/bin/pgrep" \

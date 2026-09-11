@@ -62,7 +62,7 @@ assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "c-foo-1") | .channel' "$EVENTS_FILE")" "foo-ops" "channel 落账"
 
 t_case "flush 批次只含 contrib：foo 事件不推送、不标 pushed、不占限额"
-out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 assert_exit 0 $?
 foo_pushed="$(jq -r 'select(.key == "c-foo-1") | .pushed' "$EVENTS_FILE")"
 assert_eq "$foo_pushed" "false" "foo 事件未标 pushed"
@@ -78,27 +78,38 @@ alerts="$(jq -r '.alerts | length' "$STATE_FILE")"
 assert_eq "$alerts" "1" "alerts 只 bump 一次（非 contrib 不占限额）"
 
 # ---------------- DRY_RUN 否定变体（场景11.P3）----------------
-t_case "DRY_RUN=true：flush 零 hermes/tunnel 调用且 stdout 含 [dry-run]"
+# T5 卡化语义更新：叙事批 flush 在 dry-run 下仍走 digest 卡路（建卡=编排写非传输发送，
+# 干跑只盖发送不盖盖编排——「dry-run 只盖发送不盖账本」同款口径）；dry-run 的消息体打印
+# 移至 worker 侧 send-digest 环节，flush stdout 不再含 [dry-run]。
+t_case "DRY_RUN=true：flush 叙事批建 digest 卡（零 send/tunnel）+ 事件挂账不消费"
 sb_notify event pipeline-failure --key c-dry-1 --summary "dry-run 批次" >/dev/null
-before_hermes="$(stub_count hermes)"
 before_tunnel="$(stub_count tunnel)"
+before_send="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+  "$CONTRIB_TEST_STUB_LOG/calls.log" 2>/dev/null)"
 # 时间闸门不 sleep：回拨 last_flush_epoch 构造「可立即 flush」前置态
 sb_state_set '.last_flush_epoch = 0'
-out="$(sb_run -e "NOTIFY_DRY_RUN=true" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
+sb_run -e "NOTIFY_DRY_RUN=true" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 rc=$?
 assert_exit 0 $rc
-assert_contains "$out" "[dry-run]" "stdout 标注 dry-run"
-assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "hermes 零调用"
 assert_eq "$(( $(stub_count tunnel) - before_tunnel ))" "0" "tunnel 零调用"
-# 观察登记（非契约断言）：dry-run 演练会把批次事件标 pushed=true（演练消费语义）。
-# 契约规约只冻结「零传输调用 + stdout 含 [dry-run]」，未冻结 dry-run 的 pushed 语义，
-# 故此处只固化现状防漂移；是否应保留事件待后续拍板。
+send_calls="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+  "$CONTRIB_TEST_STUB_LOG/calls.log" 2>/dev/null)"
+assert_eq "$(( send_calls - before_send ))" "0" "hermes send 零调用（dry-run 只盖发送；kanban 建卡属编排写）"
+assert_file_contains "$SB_ROOT/contrib-data/kanban-flight-digest.json" '"digest"' "digest 卡已建并登记"
+# 卡化后 dry-run 叙事批挂账不消费（旧内联摘要路的 dry-run pushed 语义随卡化废止）：
+# pushed 留 false 由卡闭环（worker send-digest）驱动，下轮 done+sent 消费收敛
 dry_pushed="$(jq -r 'select(.key == "c-dry-1") | .pushed' "$EVENTS_FILE")"
-assert_eq "$dry_pushed" "true" "现状固化：dry-run 标 pushed（演练消费）"
+assert_eq "$dry_pushed" "false" "卡化语义：dry-run 叙事批挂账不消费（等卡闭环）"
 
 # ---------------- 真发 + notify-state schema（场景11.P4）----------------
 t_case "真发 flush 后 notify-state schema（fallback_notice 允许缺失=契约）"
-out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
+# 构造机械批前置态：c-dry-1 已由卡闭环消费（拨账模拟）+ 清 flight + 补一条机械事件
+jq 'if .key == "c-dry-1" then .pushed = true else . end' "$EVENTS_FILE" >"$EVENTS_FILE.tmp" \
+  && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
+rm -f "$SB_ROOT/contrib-data/kanban-flight-digest.json"
+sb_notify event own-pr-activity --key c-real-1 --summary "真发机械事件" >/dev/null
+sb_state_set '.last_flush_epoch = 0'
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 rc=$?
 assert_exit 0 $rc
 chk="$(jq -e '

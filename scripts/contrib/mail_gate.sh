@@ -12,6 +12,10 @@
 #
 # 只读红线：全程只用 envelope list / message read -p（preview 不置已读），
 # 绝不 mark/move/delete/send。私有邮件不碰（from github.com 过滤 + to/主题双分流）。
+# 采集权威=游标，不是 unseen（09-09 实证 8750-8755 被外部 IMAP/POP3 客户端拉取即置
+# 已读：gate 26h「未读=55 新邮件=0」完美错过 6 封，靠人工回扫才捞回）。所以查询
+# 不带 flag unseen，列最新页后纯客户端按 id>cursor 过滤——seen 状态在我们控制外，
+# 不可作为采集信号。幂等不靠 seen：cursor 只当下界 + notify.sh event --key 去重。
 # QQ IMAP 坑（实测）：查询严禁带日期条件（服务端 SEARCH 超时 >90s）；stderr 有
 # imap_codec WARN 需丢弃；id 是 IMAP 序列号、expunge 后漂移——游标只当下界，
 # 幂等靠 notify.sh event --key（message-id/日期组合）。
@@ -57,8 +61,11 @@ if [[ "${1:-}" == "--commit-cursor" ]]; then
   exit 0
 fi
 
-# ── 采集：未读 GitHub 通知（服务端过滤 from+unseen；日期条件严禁）──
-raw="$("$HIMAIL" envelope list -o json -f INBOX -s "$FETCH_SIZE" "from github.com and flag unseen" 2>/dev/null || echo "[]")"
+# ── 采集：GitHub 通知（近 FETCH_SIZE 封，服务端只过滤 from；日期条件严禁）──
+# 不带 flag unseen：外部客户端会把信拉取置已读（09-09 实证），seen 不可靠；
+# 新旧由 id>cursor 客户端判定（下见 cursor 段）。FETCH_SIZE 是采集窗口上限，
+# 单轮新邮件逼近该值=窗口饱和，下轮日志会告警（每小时一跑，正常远够）。
+raw="$("$HIMAIL" envelope list -o json -f INBOX -s "$FETCH_SIZE" "from github.com" 2>/dev/null || echo "[]")"
 jq -e 'type == "array"' <<<"$raw" >/dev/null 2>&1 || raw="[]"
 
 # 客户端双分流（From 显示名是真实评论者，只认地址与主题）：
@@ -71,7 +78,7 @@ upstream=$(jq -c '
     ) | select((.subject // "") | test("^\\[GitHub\\]") | not)
 ]' <<<"$raw")
 
-# ── 首启：无游标只定位不回灌（存量未读不研判，防首轮 token 爆炸）──
+# ── 首启：无游标只定位不回灌（存量邮件不研判，防首轮 token 爆炸）──
 if [[ ! -s "$CURSOR" ]]; then
   max_id="$(jq -r '[.[].id | tonumber] | max // 0' <<<"$upstream")"
   if (( max_id == 0 )); then
@@ -79,7 +86,7 @@ if [[ ! -s "$CURSOR" ]]; then
     exit 0
   fi
   jq -n --argjson n "$max_id" --arg d "$(date -u +%FT%TZ)" '{last_id: $n, initialized: $d}' > "$CURSOR"
-  log "首启：cursor 定位到 #${max_id}，存量 $(jq 'length' <<<"$upstream") 封未读不回灌"
+  log "首启：cursor 定位到 #${max_id}，存量 $(jq 'length' <<<"$upstream") 封不回灌"
   echo "mail cursor initialized at #${max_id} (backlog skipped)"
   exit 0
 fi
@@ -87,7 +94,13 @@ fi
 last="$(jq -r '.last_id // 0' "$CURSOR" 2>/dev/null || echo 0)"
 new_items="$(jq -c "[.[] | select((.id | tonumber) > $last)]" <<<"$upstream")"
 new_count="$(jq 'length' <<<"$new_items")"
-log "cursor=#$last 未读GitHub通知=$(jq 'length' <<<"$upstream") 新邮件=$new_count"
+log "cursor=#$last GitHub通知近页=$(jq 'length' <<<"$upstream") 新邮件=$new_count"
+if (( new_count >= FETCH_SIZE )); then
+  log "告警：新邮件=$new_count 达采集窗口上限 FETCH_SIZE=$FETCH_SIZE 可能截尾——人工核查 IMAP"
+  # 截尾=潜在永久丢信（下轮 --commit-cursor 拨到最新 id 后窗口外旧信跳过），
+  # 除日志外必须走事件通道（本仓规范：流水线异常→events.jsonl→AI digest）
+  "$MARTIN/scripts/contrib/notify.sh" event mail-window-saturated --key "mail-sat-$(date +%F)" >/dev/null 2>&1 || true
+fi
 
 if (( new_count == 0 )); then
   # 无新邮件，但上轮研判失败的遗留 pending 仍待消费——不能 exit 0 卡死它

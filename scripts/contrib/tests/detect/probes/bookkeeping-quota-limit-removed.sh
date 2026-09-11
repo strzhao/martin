@@ -3,6 +3,10 @@
 set -uo pipefail
 printf '%s\n' '{"ts":"2026-01-01T00:00:00+08:00","class":"own-pr-activity","key":"bk-quota","channel":"contrib","summary":"限额探针","pushed":false,"attempts":0,"pushed_at":null}' >>"$CONTRIB_DATA_DIR/events.jsonl"
 TODAY="$(date +%F)"
+# 显式 pin 限额=3（09-10：种子 max_alert_pushes_per_day 已镜像生产改 30，探针前置归自持——
+# 否则 pristine 轮 3<30 照推被误判「守卫被拆」，探针 BROKEN）
+jq '.max_alert_pushes_per_day = 3' "$CONTRIB_DATA_DIR/config.json" >"$CONTRIB_DATA_DIR/config.json.tmp" \
+  && mv "$CONTRIB_DATA_DIR/config.json.tmp" "$CONTRIB_DATA_DIR/config.json"
 jq -c --arg d "$TODAY" '.alerts[$d] = 3' "$CONTRIB_DATA_DIR/notify-state.json" >"$CONTRIB_DATA_DIR/notify-state.json.tmp" \
   && mv "$CONTRIB_DATA_DIR/notify-state.json.tmp" "$CONTRIB_DATA_DIR/notify-state.json"
 bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush >/dev/null 2>&1

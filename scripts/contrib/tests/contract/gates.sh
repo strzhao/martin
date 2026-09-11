@@ -76,24 +76,23 @@ make_issue() { # make_issue <number> <title> <label> → 一行 issue JSON
 
 t_case "scan gate：无新命中 → exit 0"
 printf '{"last_issue": 5000}' >"$SB_ROOT/contrib-data/scan-cursor.json"
-printf '[]\n' >"$SB_ROOT/contrib-data/pending-hits.json"
 printf '%s\n' "$(make_issue 5000 "old issue" "")" | jq -s '.' >"$SB_ROOT/gh-issues.json"
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc
 assert_eq "$(jq -r '.last_issue' "$SB_ROOT/contrib-data/scan-cursor.json")" "5000" "游标推进"
 
-t_case "scan gate：域内新命中 → exit 10 + pending-hits 落盘"
+t_case "scan gate：域内新命中 → exit 10 + 批次文件落盘（T6 撤销兼容写后唯一数据源）"
 printf '{"last_issue": 5000}' >"$SB_ROOT/contrib-data/scan-cursor.json"
 printf '%s\n' "$(make_issue 5001 "gateway weixin 消息投递失败" "")" | jq -s '.' >"$SB_ROOT/gh-issues.json"
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 10 $rc
-assert_file_contains "$SB_ROOT/contrib-data/pending-hits.json" "gateway weixin 消息投递失败" "命中落盘"
+assert_file_contains "$SB_ROOT/contrib-data/pending-batches"/batch-*.json "gateway weixin 消息投递失败" "命中落盘"
 
-t_case "scan gate：黑名单域（desktop/kanban/dashboard）→ exit 0"
+t_case "scan gate：黑名单域（desktop/dashboard）→ exit 0（kanban 已于 09-09 ff67d2a 移出黑名单）"
 printf '{"last_issue": 5000}' >"$SB_ROOT/contrib-data/scan-cursor.json"
-printf '%s\n%s\n' "$(make_issue 5002 "desktop UI 改版" "comp/desktop")" "$(make_issue 5003 "Kanban board improvements" "")" | jq -s '.' >"$SB_ROOT/gh-issues.json"
+printf '%s\n%s\n' "$(make_issue 5002 "desktop UI 改版" "comp/desktop")" "$(make_issue 5003 "Dashboard widgets refresh" "")" | jq -s '.' >"$SB_ROOT/gh-issues.json"
 sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh"' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc "黑名单命中被滤除"
@@ -106,12 +105,12 @@ sb_run -e "STUB_GH_ISSUES_FILE=$SB_ROOT/gh-issues.json" 'zsh "$MARTIN_DIR/script
 rc=$?
 assert_exit 0 $rc "duplicate/PR 不命中"
 
-t_case "scan gate：--drain 清空 pending"
-printf '[{"number": 5001}]' >"$SB_ROOT/contrib-data/pending-hits.json"
+t_case "scan gate：--drain 批次兜底清账（pending → drained；T6 后唯一数据源=批次文件）"
+printf '[{"number": 5001, "state": "pending"}]' >"$SB_ROOT/contrib-data/pending-batches/batch-20260910-010101.json"
 sb_run 'zsh "$MARTIN_DIR/scripts/contrib/scan_gate.sh" --drain' >/dev/null 2>&1
 rc=$?
 assert_exit 0 $rc
-assert_eq "$(cat "$SB_ROOT/contrib-data/pending-hits.json")" "[]" "pending 清空"
+assert_eq "$(jq -r '.[0].state' "$SB_ROOT/contrib-data/pending-batches/batch-20260910-010101.json")" "drained" "pending 项已 drained"
 
 sb_cleanup
 t_finish

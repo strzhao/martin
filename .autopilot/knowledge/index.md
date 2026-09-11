@@ -55,3 +55,13 @@
 - [2026-09-08] 遥测弱断言 vacuous PASS：推送正证据=订阅存在∧终态窗口 send ok 双闸 | tags: qa, vacuous-assertion, telemetry, hkstock | → patterns.md
 - [2026-09-08] cron bot-chat 投递≠唤醒：定时链路=cron 直建卡+notify-subscribe 补订 | tags: hermes, cron, bot-chat, subscribe, hkstock | → patterns.md
 - [2026-09-08] CC shell ANTHROPIC_* 劫持 hermes LLM（401）：env -u 铁律 | tags: hermes, anthropic, env, 401 | → patterns.md
+- [2026-09-08] dry-run 只盖发送不盖账本：notify.sh event 干跑真实入账下轮真推 | tags: bash, dry-run, gate-scope, notify, contrib-watch | → patterns.md
+- [2026-09-08] 红线扫描 \border\b 误报代码标识符：交易关键词用中文+显式短语 | tags: qa, false-positive, red-line, hkstock | → patterns.md
+- [2026-09-08] coder 卡交付须回 merge 主仓（worktree 残留≠持久交付） | tags: hermes, kanban, coder, worktree, mktd | → patterns.md
+- [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言（compgen zsh 静默恒假） | tags: bash, zsh, shebang, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing | → patterns.md
+- [2026-09-09] 账本写入方多形态 × 单格式 grep 幂等检查 = 同 key 重复入账 | tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch | → patterns.md
+- [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名） | tags: testing, black-box, date, stub, sandbox, contrib-watch | → patterns.md
+- [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md
+- [2026-09-10] fixture 数据形态漂移诱发假红：错误根因三处固化（注释+补丁+台账）需全量勘误 | tags: testing, fixture, data-shape, mirror-production, erratum, contrib-watch | → patterns.md
+- [2026-09-10] 种子 config 隐式依赖三处齐红 + detect 维度不计总分但影响 exit code | tags: testing, shared-fixture, implicit-dependency, exit-code, contrib-watch | → patterns.md
+- [2026-09-10] autopilot 分级字段补判后必须重设 gate（AC-FIELD block 清空 gate 陷阱） | tags: autopilot, stop-hook, gate, state-machine | → patterns.md

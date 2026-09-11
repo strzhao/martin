@@ -58,7 +58,7 @@ assert_exit 0 $?
 assert_eq "$(jq -r --arg d "$TODAY" '.approvals[$d].fail["rq-20260907-013"] // 0' "$STATE_FILE")" "1" "上限=1 时 fail 只累计 1"
 assert_eq "$(( $(stub_count osascript) - before_osascript ))" "0" "累计不足 3 不触发 osascript"
 
-t_case "E11d: _ai_digest --model 剥 [1m]（settings.json env 优先于运行时 env）"
+t_case "E11d: _ai_digest --model 剥 [1m]（settings.json env 优先于运行时 env）——经 fallback 路触发"
 mkdir -p "$SB_HOME/.claude"
 cat >"$SB_HOME/.claude/settings.json" <<'EOF'
 { "env": { "ANTHROPIC_MODEL": "glm-5.3-flash[1m]" } }
@@ -66,9 +66,10 @@ EOF
 sb_state_set '.last_flush_epoch = 0'
 sb_notify event pipeline-failure --key e11-digest --summary "模型后缀剥离用例" >/dev/null
 assert_exit 0 $?
-sb_run -e "NOTIFY_DRY_RUN=false" -e "ANTHROPIC_MODEL=kimi-k3[1M]" \
+# T5 卡化：主路（digest 卡）零 claude；STUB_HERMES_FAIL 令建卡失败 → fallback_ai → claude 被调
+# （fallback 发送同样失败 → flush exit 1，本用例只验 claude 参数）
+sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL=1" -e "ANTHROPIC_MODEL=kimi-k3[1M]" \
   'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
-assert_exit 0 $?
 claude_calls="$(grep 'claude|' "$SB_STUBLOG/calls.log" 2>/dev/null || true)"
 assert_contains "$claude_calls" "--model glm-5.3-flash" "settings.json env 剥后缀后作 --model"
 assert_not_contains "$claude_calls" "[1m]" "调用参数零 [1m] 残留"
@@ -79,9 +80,8 @@ rm -f "$SB_HOME/.claude/settings.json"
 sb_state_set '.last_flush_epoch = 0'
 sb_notify event pipeline-failure --key e11-digest-2 --summary "运行时 env 回落用例" >/dev/null
 assert_exit 0 $?
-sb_run -e "NOTIFY_DRY_RUN=false" -e "ANTHROPIC_MODEL=glm-5.3-flash[1m]" \
+sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL=1" -e "ANTHROPIC_MODEL=glm-5.3-flash[1m]" \
   'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
-assert_exit 0 $?
 claude_calls="$(grep 'claude|' "$SB_STUBLOG/calls.log" 2>/dev/null | tail -1)"
 assert_contains "$claude_calls" "--model glm-5.3-flash" "运行时 env 剥后缀回落生效"
 assert_not_contains "$claude_calls" "[1m]" "回落路径同样零后缀"
@@ -91,8 +91,8 @@ printf '{ "env": { "ANTHROPIC_MODEL": "kimi-k3" } }' >"$SB_HOME/.claude/settings
 sb_state_set '.last_flush_epoch = 0'
 sb_notify event pipeline-failure --key e11-digest-3 --summary "正常模型名用例" >/dev/null
 assert_exit 0 $?
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
-assert_exit 0 $?
+sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL=1" \
+  'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
 claude_calls="$(grep 'claude|' "$SB_STUBLOG/calls.log" 2>/dev/null | tail -1)"
 assert_contains "$claude_calls" "--model kimi-k3" "无后缀模型名原样作 --model"
 

@@ -126,12 +126,16 @@ for v, t, expect in probes:
 tracked = subprocess.run(
     ["git", "-C", sys.argv[2], "ls-files"], capture_output=True, text=True
 ).stdout.split()
-# 自指豁免：本测试文件源码内含探针样例字面量（元自证所需），无法自扫——
-# 其路径级检查由 3.P3 覆盖，内容级扫描排除自身。
+# 自指与 driver 豁免：本测试文件源码内含探针样例字面量（元自证所需），无法自扫；
+# tests/ 下其他验收 driver 也合法使用标的代码作测试符号（茅台 600519 是公开 ticker，
+# 隐私不变量针对 holdings 数据值而非公开代码）——内容级扫描排除 tests/ 目录，
+# 其路径级检查由 3.P3 覆盖（口径同约束 8：driver 排除）。
 self_real = os.path.realpath(sys.argv[3])
 for path in tracked:
     fp = os.path.join(sys.argv[2], path)
     if os.path.realpath(fp) == self_real:
+        continue
+    if path.startswith("scripts/hkstock/tests/"):
         continue
     if not os.path.isfile(fp) or os.path.getsize(fp) > 5_000_000:
         continue
