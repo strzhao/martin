@@ -491,4 +491,9 @@ worker 会话上下文注入的 HERMES_KANBAN_DB 会让 `hermes kanban --board c
 
 ## [2026-09-12] 同一判定逻辑多落点（孪生门）一致性靠机械手段：注释互指 + 双侧同契约测试 + 字节级守卫
 同一业务判定在两条执行路径各需一份时（如 execute 路与 notify 路各一份门槛函数），三防线：①两处函数头注释互指（改一处必查另一处，评审可见）；②验收测试对两路**同契约双侧锁死**（同一 fixture 语义在两条路径各断言一遍，不依赖单侧用例传递）；③长期解=自动化一致性守卫（提取两处函数体 diff 断言，挂静态门）。只做①时同步演进靠人肉 review 兜底，孪生漂移是时间问题——本轮 QA 独立审查的 Important 遗留正是③缺失。判死文案类冻结字面量额外要求：改前先从基线 commit 逐字节比对，确认「文案不变」本身就是验收点。
+③已于 2026-09-12 卡 t_9202949f 落地：gate.sh 第 4 关（occ_all_stalled 双源归一化 /usr/bin/diff 断言）。边界设计：默认态=仓级结构不变量，源缺失/抽取空/diff 故障一律 FAIL；MARTIN_GATE_TARGET/--target 沙箱态=同形对 find 圈定、无对 SKIP 不产发现——既有 TARGET 沙箱测试零回归，且红队 mutation 测试可对副本黑盒机械重复（副本漂移→FAIL）。自证三重实证：沙箱漂移 T3、口径敏感性 T4、真身变异 T8（改 execute.sh 21→22 → gate FAIL 指明漂移行 → 还原全绿）。
+
+## [2026-09-12] BSD sed `\+` 是字面加号：归一化比对口径的「镜像掩盖」假绿（GNU 扩展禁入跨平台口径）
+卡 t_9202949f 孪生门比对口径原定 `sed 's/[[:space:]]\+/ /g'`（GNU 语义「一个或多个空白」）；macOS BSD sed 实测 `\+`=字面 `+`，真实行为是「把 空白紧跟加号 的序列替换成单空格」——`date +%s` 被吃成 `date %s`、行首缩进根本不折叠。危害形态=**镜像掩盖**：比对两侧经同一有损变换，凡落在被吃维度上的真变异两侧同样被吃，diff 恒零、守卫假绿（`date +%s`→`date %s` 单字符变异完全不可见，恰是停摆锚计算的关键字节）。修法：POSIX 可移植等价形态 `[[:space:]][[:space:]]*`；且归一化管道自身必须进变异自证（预注册 `+%s`→`%s` 谓词兜底，防未来有人改回字面 `\+`）。同族教训：「第三方工具链遮蔽系统 diff：stdout 空的静默假绿」（2026-09-05）——同属比对基建自身失真导致守卫假绿；另见「变异测试 vs 纵深防御」（2026-09-05）。
+<!-- tags: bash, macos, bsd-sed, regex, normalization, mutation-testing, mirrored-masking, false-green, contrib-watch -->
 <!-- tags: approval, twin-gate, duplication, consistency, drift, gate, contrib-watch, testing -->

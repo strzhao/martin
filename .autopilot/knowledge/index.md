@@ -64,7 +64,8 @@
 - [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名） | tags: testing, black-box, date, stub, sandbox, contrib-watch | → patterns.md
 - [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 + 分桶断言变体 | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md (evidence updated 2026-09-12)
 - [2026-09-12] GitHub PR updatedAt 是全体协作者动作的并集：当事方停摆判定必须锚定其自身最后动作 | tags: github, gh-cli, updatedAt, staleness, ttl, anchor, contrib-watch | → patterns.md
-- [2026-09-12] 同一判定逻辑多落点（孪生门）一致性靠机械手段：注释互指 + 双侧同契约测试 + 字节级守卫 | tags: approval, twin-gate, duplication, consistency, drift, contrib-watch | → patterns.md
+- [2026-09-12] 同一判定逻辑多落点（孪生门）一致性靠机械手段：注释互指 + 双侧同契约测试 + 字节级守卫（③已落地 gate.sh 第 4 关，evidence updated 2026-09-12） | tags: approval, twin-gate, duplication, consistency, drift, contrib-watch | → patterns.md
+- [2026-09-12] BSD sed `\+` 是字面加号：归一化比对口径的「镜像掩盖」假绿（GNU 扩展禁入跨平台口径，POSIX 形态 [[:space:]][[:space:]]*） | tags: bash, macos, bsd-sed, normalization, mutation-testing, false-green, contrib-watch | → patterns.md
 - [2026-09-10] fixture 数据形态漂移诱发假红：错误根因三处固化（注释+补丁+台账）需全量勘误 | tags: testing, fixture, data-shape, mirror-production, erratum, contrib-watch | → patterns.md
 - [2026-09-10] 种子 config 隐式依赖三处齐红 + detect 维度不计总分但影响 exit code | tags: testing, shared-fixture, implicit-dependency, exit-code, contrib-watch | → patterns.md
 - [2026-09-10] autopilot 分级字段补判后必须重设 gate（AC-FIELD block 清空 gate 陷阱） | tags: autopilot, stop-hook, gate, state-machine | → patterns.md
