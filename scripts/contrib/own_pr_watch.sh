@@ -7,8 +7,15 @@
 #     key <PR>-comment-<external_comments>-<日期> / <PR>-merged-<日期> / <PR>-closed-<日期>
 #   低级 own-pr-info（叙事类→flush 聚合 digest=简报语义，不受子上限）：
 #     key <PR>-mergeable-<日期> / <PR>-stale-<日期>
+#   台账缺口 own-pr-unledgered（机械模板卡；红线告警，key 无日期=一次即持久）：
+#     key <PR>-unledgered / fork-<分支>-unledgered
+#     —— 对「上游 PR / fork 分支」与 approved.log（L2 台账）做差集：**未获批却 push** 的
+#        机械发现面（#108006 缺口：fork push + gh pr create 绕过台账三处零记录，09-11）。
+#        上游 PR 面判据 = createdAt >= 台账基线 且 l2_ledger.sh check 无命中；
+#        fork 面 = refs/remotes/fork/* 新增或 sha 推进（本地 remote-tracking，零网络）；
+#        基线/快照存 contrib-data/l2-ledger-state.json（本段唯一写者，损坏重建零事件）。
 #   静默：新 PR/首跑建基线、本人评论（external_comments 不增）、任何含 UNKNOWN 的
-#         mergeable 翻转、仅 reviewDecision 变化
+#         mergeable 翻转、仅 reviewDecision 变化、createdAt 缺失或早于台账基线
 #
 # 用法: own_pr_watch.sh   （单发无子命令；带任何参数=用法错误）
 #
@@ -21,9 +28,10 @@
 #       updatedAt/mergeable/reviewDecision/comments/external_comments + headRefOid/headRefName
 #       ——D4 加性两字段：同一 gh pr list 调用附带（gh 成本零增量），供 coder_upstream_gate
 #       own-PR 判重面消费）；
+#       台账差集状态 $CONTRIB/l2-ledger-state.json（本脚本唯一写者，原子写 tmp+mv）；
 #       永不触碰 assets-snapshot.json（radar LLM 快照）。自有日志 $CONTRIB/logs/own-pr-watch.log。
 #       events.jsonl 唯一入账出口 = notify.sh event（其自身同 key 幂等兜底）。
-# seam: GH_BIN / CONTRIB_DATA_DIR / MARTIN_DIR / OWN_PR_GH_USER（缺省 strzhao）
+# seam: GH_BIN / GIT_BIN / CONTRIB_DATA_DIR / MARTIN_DIR / OWN_PR_GH_USER / HERMES_REPO_DIR
 set -euo pipefail
 
 MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
@@ -71,6 +79,13 @@ ALERT_MAX="$(int_or "$(cfg '.own_pr_alert_per_day' '2')" '2')"
 STALE_DAYS="$(int_or "$(cfg '.stale_pr_days' '10')" '10')"
 TODAY="$(date +%F)"
 NOW_EPOCH="$(date +%s)"
+
+# 台账差集面（#108006 缺口闭环）——approved.log 是「这次对外动作是否获批」的唯一机械账
+L2_LEDGER="$MARTIN/scripts/contrib/l2_ledger.sh"
+LEDGER_STATE="$CONTRIB/l2-ledger-state.json"
+HERMES_REPO="${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}"
+GIT_BIN="${GIT_BIN:-git}"
+LEDGER_LOG_NOTE="台账差集 0（基线/无缺口）"
 
 # 连败计数（kanban_card .hermes-down 先例：单整数，仅成功清零，无 TTL）
 fail_count() {
@@ -136,13 +151,97 @@ write_snapshot() { # <prs_obj_json> — 原子写（tmp+mv）
     && mv "$tmp" "$SNAP"
 }
 
+# ---------- L2 台账差集（零 LLM、零网络写：未获批却 push 的机械发现面） ----------
+# 判据来源：approved.log 是「这次对外动作是否获批」的唯一机械账；l2_ledger.sh check 只读判定。
+# 首跑/状态损坏 → 建基线（零事件，存量 PR/ref 整体豁免）；此后只报「基线之后」的新动作。
+ledger_ledgered() { # <branch> <prnum> → 0=有台账 1=无（check 自身失败按「无台账」保守处理）
+  [[ -f "$L2_LEDGER" ]] || return 1
+  case "$(bash "$L2_LEDGER" check --branch "${1:-}" --pr "${2:-}" \
+    --ledger "${APPROVED_LOG:-$MARTIN/approved.log}" 2>/dev/null || true)" in
+    LEDGERED*) return 0 ;;
+  esac
+  return 1
+}
+
+fork_refs_json() { # → {"refs/remotes/fork/<分支>":"<sha>"}；仓缺失/非 git → {}
+  local out
+  out="$("$GIT_BIN" -C "$HERMES_REPO" for-each-ref --format='%(refname)|%(objectname)' \
+    refs/remotes/fork/ 2>/dev/null || true)"
+  if [[ -z "$out" ]]; then
+    printf '{}'
+    return 0
+  fi
+  printf '%s\n' "$out" \
+    | jq -R -s 'split("\n") | map(select(length > 0) | split("|")) | map({key: .[0], value: .[1]}) | from_entries' 2>/dev/null \
+    || printf '{}'
+}
+
+ledger_state_save() { # <refs_json> [--baseline] — 原子写；失败只记日志（不回滚主流程）
+  local tmp="$LEDGER_STATE.tmp" ts
+  ts="$(date -u +%FT%TZ)"
+  if [[ "${2:-}" == "--baseline" ]]; then
+    jq -n --argjson ep "$(date +%s)" --arg ts "$ts" --argjson refs "$1" \
+      '{version: 1, baseline_epoch: $ep, baseline_at: $ts, fork_refs: $refs, last_run: $ts}' >"$tmp" 2>/dev/null \
+      && mv "$tmp" "$LEDGER_STATE" 2>/dev/null && return 0
+  else
+    jq --argjson refs "$1" --arg ts "$ts" '.fork_refs = $refs | .last_run = $ts' "$LEDGER_STATE" >"$tmp" 2>/dev/null \
+      && mv "$tmp" "$LEDGER_STATE" 2>/dev/null && return 0
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  log "L2 台账状态写失败（下轮按损坏重建基线）"
+  return 0
+}
+
+ledger_diff() { # 追加 LEDGER_KEYS/LEDGER_SUMM 并写 LEDGER_LOG_NOTE；自身失败绝不影响主流程
+  local refs base num branch created ce k sha old name n=0
+  refs="$(fork_refs_json)"
+  if ! jq -e 'type == "object" and (.baseline_epoch | type == "number")' "$LEDGER_STATE" >/dev/null 2>&1; then
+    ledger_state_save "$refs" --baseline
+    log "L2 台账差集：首跑/状态损坏 → 建基线（fork refs $(jq 'length' <<<"$refs" 2>/dev/null || echo 0) 个，本轮零事件）"
+    LEDGER_LOG_NOTE="台账差集 基线（本轮零事件）"
+    return 0
+  fi
+  base="$(jq -r '.baseline_epoch' "$LEDGER_STATE" 2>/dev/null || echo 0)"
+  # ① 上游 PR 面：createdAt 缺失（旧夹具/形态漂移）或早于基线 → 吸收，不作为缺口
+  while IFS='|' read -r num branch created; do
+    [[ -n "$num" ]] || continue
+    ce="$(printf '%s' "$created" | jq -R 'if . == "" then empty else (fromdateiso8601? // empty) end' 2>/dev/null || true)"
+    [[ -n "$ce" ]] || continue
+    (( ce >= base )) || continue
+    if ledger_ledgered "$branch" "$num"; then continue; fi
+    LEDGER_KEYS+=("${num}-unledgered")
+    LEDGER_SUMM+=("PR #${num}（分支 ${branch:-未取到}）已发布，但 approved.log 无对应台账 —— 疑未获批就 push；核对批准来源后用 l2_ledger.sh record 补记")
+    n=$(( n + 1 ))
+  done < <(jq -r '.[] | [(.number | tostring), (.headRefName // ""), (.createdAt // "")] | join("|")' \
+    <<<"$raw" 2>/dev/null || true)
+  # ② fork 面：本地 remote-tracking ref 新增或 sha 推进（push 落本地即更新，零网络）
+  while IFS='|' read -r k sha; do
+    [[ -n "$k" ]] || continue
+    old="$(jq -r --arg k "$k" '.fork_refs[$k] // ""' "$LEDGER_STATE" 2>/dev/null || true)"
+    [[ "$old" == "$sha" ]] && continue
+    name="${k#refs/remotes/fork/}"
+    if ledger_ledgered "$name" ""; then continue; fi
+    LEDGER_KEYS+=("fork-${name//\//_}-unledgered")
+    LEDGER_SUMM+=("fork 分支 ${name} 有推送（${sha:0:8}）但 approved.log 无台账 —— 疑未获批就 push；核对批准来源后用 l2_ledger.sh record 补记")
+    n=$(( n + 1 ))
+  done < <(jq -r 'to_entries[] | "\(.key)|\(.value)"' <<<"$refs" 2>/dev/null || true)
+  ledger_state_save "$refs"
+  LEDGER_LOG_NOTE="台账差集 ${n}（基线 epoch=${base}：PR 面 createdAt>=基线且无台账 / fork 面 ref 推进且无台账）"
+  return 0
+}
+
 # ---------- stage-1：廉价查询（失败 → 断路中止） ----------
 raw="$(GH_REPO="$GH_REPO" "$GH_BIN" pr list --author "$GH_USER" --state open \
-  --json number,updatedAt,mergeable,reviewDecision,comments,headRefOid,headRefName 2>>"$LOG")" || gh_fail
+  --json number,updatedAt,mergeable,reviewDecision,comments,headRefOid,headRefName,createdAt 2>>"$LOG")" || gh_fail
 if ! jq -e 'type == "array"' <<<"$raw" >/dev/null 2>&1; then
   log "stage-1 输出非 JSON 数组，按 gh 失败处理"
   gh_fail
 fi
+
+# ---------- stage-1.5：L2 台账差集（首跑建基线零事件；命中 → own-pr-unledgered） ----------
+LEDGER_KEYS=()
+LEDGER_SUMM=()
+ledger_diff
 
 # ---------- 快照读取（损坏 → 重建基线，exit 0 零事件） ----------
 CORRUPT=0
@@ -320,9 +419,15 @@ for k in ${LOW_KEYS[@]+"${LOW_KEYS[@]}"}; do
   notify_event own-pr-info "$k" "${LOW_SUMM[$i]}"
   i=$(( i + 1 ))
 done
+# 台账缺口：机械类（notify.sh 模板卡渲染），key 无日期 = 一次即持久告警
+i=0
+for k in ${LEDGER_KEYS[@]+"${LEDGER_KEYS[@]}"}; do
+  notify_event own-pr-unledgered "$k" "${LEDGER_SUMM[$i]}"
+  i=$(( i + 1 ))
+done
 
 # ---------- 快照原子落盘 + 成功清零 ----------
 write_snapshot "$NEW_PRS"
 rm -f "$FAIL_FILE"
-log "盯梢完成：高级 ${#HIGH_KEYS[@]}+${#TERM_KEYS[@]}（停发按当日 ${ALERT_MAX}）低级 ${#LOW_KEYS[@]}，exit 0"
+log "盯梢完成：高级 ${#HIGH_KEYS[@]}+${#TERM_KEYS[@]}（停发按当日 ${ALERT_MAX}）低级 ${#LOW_KEYS[@]}，${LEDGER_LOG_NOTE}，exit 0"
 exit 0

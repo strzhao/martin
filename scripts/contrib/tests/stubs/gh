@@ -8,6 +8,8 @@
 #   STUB_GH_PRS_FILE=<f>    → `pr list` 输出该文件内容（own PR JSON 数组，驱动 own_pr_watch）
 #   STUB_GH_VIEW_DIR=<dir>  → `pr view <N>` 输出 <dir>/pr-<N>.json；文件缺失 → exit 1
 #                             （可模拟单 PR 终态核实失败）
+#   STUB_GH_PR_CREATE_URL=<u> → `pr create` 输出该 URL（l2_ledger.sh publish 用）
+#   STUB_GH_PR_CREATE_FAIL=1  → `pr create` exit 1
 set -u
 NAME="gh"
 LOG_DIR="${STUB_LOG_DIR:-}"
@@ -57,6 +59,14 @@ if [[ "${1:-}" == "pr" ]]; then
       echo "gh stub: pr view 数据文件缺失: $_vf" >&2
       exit 1
     fi
+  elif [[ "${2:-}" == "create" ]]; then
+    # l2_ledger.sh publish 的 PR 创建面（09-12 台账环）：默认给一个固定 URL，失败可注毒
+    if [[ -n "${STUB_GH_PR_CREATE_FAIL:-}" ]]; then
+      echo "gh stub: 模拟 pr create 失败" >&2
+      exit 1
+    fi
+    printf '%s\n' "${STUB_GH_PR_CREATE_URL:-https://github.com/NousResearch/hermes-agent/pull/1}"
+    exit 0
   fi
 fi
 
