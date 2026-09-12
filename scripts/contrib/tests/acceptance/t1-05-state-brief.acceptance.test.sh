@@ -20,6 +20,11 @@
 #   MX-S6 events 双序列化形态（jq 紧凑 vs python json.dumps 带空格）双类计数→告警；
 #         仅 >24h premise-dead 反向（24h 窗→正常）
 #   MX0 零病理基线：全空 fixture → 总览行逐字 `总伤情：告警×0 注意×0 正常×6` 且零 degraded
+#   MX-immutable-fallback 主库 WAL 形态（WAL 头、无 -wal/-shm 旁文件=生产主 board 真实
+#         只读形态）immutable=1 回退读取：S2 非 [degraded] ∧ 与 delete 形态同内容库的
+#         S2「计数：」「伤情判定：」行逐字节相等 ∧ 种子卡 id 双侧 S2 同现
+#   唯一标记契约：孤儿命中断言只用「存在孤儿卡（§0 病例②）」「｜孤儿（所提 rq 全部终态」
+#         两唯一标记，禁裸 token「孤儿」（S1 注意分支文案含该词——M-A 假绿根因）
 #   用法错误闭集：未知 flag / --out 缺参 / --out 落盘失败 → exit 2
 # SSOT：预注册验收谓词（autopilot 红队任务书全文=设计文档）+ 其 md 机器锚定字面量节
 # 纪律：黑盒——对被测脚本全部观测仅经 `bash scripts/contrib/state_brief.sh`（exit/stdout），
@@ -138,6 +143,38 @@ mk_fx(){ # → fixture 根（三 seam 完整形态：空板×2 + 零病理 contr
   mk_cdata "${r}/contrib-data"
   printf '%s' "${r}"
 }
+mk_board_wal(){ # <db> — WAL 形态空板（schema 同 mk_board；PRAGMA journal_mode=WAL 建库，
+  # 对应生产主 board 真实只读形态）。注意：此后的 sqlite3 写入（add_card 种子等）会重建
+  # -wal/-shm 旁文件，故 checkpoint(TRUNCATE)+rm+形态自证不在本工厂内做，而由 wal_seal
+  # 在场景内「最后一次库写入之后」调用。
+  sqlite3 "$1" >/dev/null <<'SQL'
+PRAGMA journal_mode=WAL;
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT, assignee TEXT,
+  status TEXT NOT NULL, priority INTEGER DEFAULT 0, created_by TEXT,
+  created_at INTEGER NOT NULL, started_at INTEGER, completed_at INTEGER,
+  workspace_kind TEXT NOT NULL DEFAULT 'scratch', workspace_path TEXT,
+  branch_name TEXT, project_id TEXT, result TEXT, idempotency_key TEXT
+);
+CREATE TABLE task_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, run_id INTEGER,
+  kind TEXT NOT NULL, payload TEXT, created_at INTEGER NOT NULL
+);
+SQL
+}
+wal_seal(){ # <db> <场景名> — 最后一次库写入之后：checkpoint(TRUNCATE)+rm -wal/-shm 旁文件
+  # （本机 sqlite3 CLI 干净退出不删旁文件——实测残留；旁文件在则 mode=ro 可开、回退空转）
+  # + 写后跑前形态自证：mode=ro 必败 ∧ immutable=1 必成，否则 die（防 fixture 形态漂移假绿/假红）
+  local db="$1" p="$2"
+  sqlite3 "${db}" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null 2>&1
+  rm -f "${db}-wal" "${db}-shm"
+  if sqlite3 "file:${db}?mode=ro" 'SELECT count(*) FROM tasks;' >/dev/null 2>&1; then
+    die "${p}" "WAL 形态自证败：mode=ro 竟可开（旁文件未清，immutable 回退将空转）: ${db}"
+  fi
+  if ! sqlite3 "file:${db}?mode=ro&immutable=1" 'SELECT count(*) FROM tasks;' >/dev/null 2>&1; then
+    die "${p}" "WAL 形态自证败：immutable=1 打不开: ${db}"
+  fi
+}
 cleanup_trees(){ for d in "$@"; do [ -n "${d}" ] && [ -d "${d}" ] && rm -rf "${d}"; done; }
 
 # ---- 黑盒运行器（stdout 承载；stderr 落 ${ERR}；rc 走 $?） ----
@@ -175,6 +212,70 @@ verify_structure(){ # <label> <md> — P2 结构谓词复用面：六节标题�
   eq "${jn}" "6" "${lbl} 全文判定行恰 6"
   has_re "$(ovr "${md}")" '^总伤情：告警×[0-9]+ 注意×[0-9]+ 正常×[0-9]+( degraded×[0-9]+)?$' "${lbl} 总览行格式"
 }
+
+# =============================================================================
+# MX-S1 — 孤儿命中：blocked 卡提及 rq，而该 rq 在 ready-queue 全部终态（executed）
+#   kill 无孤儿检测 No-op / 只按 status 过滤 No-op
+#   唯一标记契约：断言只用「存在孤儿卡（§0 病例②）」（判定行 reason）与
+#   「｜孤儿（所提 rq 全部终态」（卡行后缀）两唯一标记，禁裸 token「孤儿」——
+#   S1 注意分支生产文案（未触发孤儿/深检槽/超龄任一）也含该词，正/负样本撞车
+#   即 M-A 假绿根因（父卡 t_582e238b mutation 自证实证）。
+#   顺序理由（fail-fast 首死归因）：本场景是 M-A mutant（RQ_TERMINAL_RE 改坏）的直接
+#   命中场景，置于 P1（selftest 全绿门）之前——acceptance fail-fast 首死必须落在咬合
+#   场景本身，而非被同层防御层 P1 掩盖成 FAIL[P1]（注入必须剥离同类防御层，
+#   patterns.md 2026-09-05）。
+# =============================================================================
+P="MX-S1-orphan"
+RQ_ORPH="rq-${DSTAMP}-010101"
+FX="$(mk_fx)"
+add_card "${FX}/contrib/kanban.db" "t_fxorph1" "blocked" "contrib" 3600 \
+  "深检 preflight ${RQ_ORPH} [deep]" "rq-id: ${RQ_ORPH}"
+rq_add "${FX}/contrib-data/ready-queue.json" "${RQ_ORPH}" "executed"
+OUT="$(run_sb_fx "${ERR}" "${FX}")"; RC=$?
+art "t1-05.mx-s1.orphan.out" "${RC}" "${OUT}"
+eq "${RC}" "0" "${P} exit=0"
+verify_structure "${P}" "${OUT}"
+S1BLK="$(section "${OUT}" "1")"
+has "${S1BLK}" "存在孤儿卡（§0 病例②）" "${P} S1 判定行含孤儿唯一标记[存在孤儿卡（§0 病例②）]"
+has "${S1BLK}" "｜孤儿（所提 rq 全部终态" "${P} S1 卡行含孤儿唯一后缀标记[｜孤儿（所提 rq 全部终态]"
+has "${S1BLK}" "t_fxorph1" "${P} S1 卡清单含孤儿卡 t_fxorph1"
+cleanup_trees "${FX}"
+echo "PASS ${P}"
+
+# =============================================================================
+# MX-immutable-fallback — 主库 WAL 形态（WAL 头、无 -wal/-shm 旁文件=生产主 board
+#   真实只读形态）下 immutable=1 回退读取：与 delete 形态同内容库对照，S2 读数一致。
+#   kill 回退路径 No-op：immutable 改坏（→immutable=0）→ WAL 树 S2 [degraded] 且读数不等。
+#   断言（契约 1:1）：(a) WAL 树 S2 无 [degraded]；(b) 两树 S2「计数：」行与
+#   「伤情判定：」行逐字节相等（时间相关字段不比对，防 flaky）；(c) 种子卡 id 双侧 S2 同现。
+#   种子卡不提及任何 rq id（防 RQ_TERMINAL_RE mutant 波及本场景首死归因）。
+#   顺序理由（fail-fast 首死归因）：本场景是 M-B mutant（immutable=1 改坏）的直接命中
+#   场景，置于 P1 之前，理由同 MX-S1-orphan（patterns.md 2026-09-05）。
+# =============================================================================
+P="MX-immutable-fallback"
+FXA="$(mk_fx)"
+FXB="$(mk_fx)"
+rm -f "${FXB}/main/kanban.db"
+mk_board_wal "${FXB}/main/kanban.db"
+add_card "${FXA}/main/kanban.db" "t_fxwal1" "ready" "contrib" 1800 "fx immutable 回退种子卡" "fx 种子正文不含 rq"
+add_card "${FXB}/main/kanban.db" "t_fxwal1" "ready" "contrib" 1800 "fx immutable 回退种子卡" "fx 种子正文不含 rq"
+wal_seal "${FXB}/main/kanban.db" "${P}"
+OUTA="$(run_sb_fx "${ERR}" "${FXA}")"; RCA=$?
+OUTB="$(run_sb_fx "${ERR}" "${FXB}")"; RCB=$?
+art "t1-05.mx-immutable-fallback.delete.out" "${RCA}" "${OUTA}"
+art "t1-05.mx-immutable-fallback.wal.out" "${RCB}" "${OUTB}"
+eq "${RCA}" "0" "${P} delete 形态树 exit=0"
+eq "${RCB}" "0" "${P} WAL 形态树 exit=0"
+verify_structure "${P}" "${OUTB}"
+S2A="$(section "${OUTA}" "2")"
+S2B="$(section "${OUTB}" "2")"
+hasnt "${S2B}" "[degraded]" "${P} WAL 形态树 S2 无 [degraded]（immutable=1 回退成功）"
+has "${S2B}" "t_fxwal1" "${P} WAL 形态树 S2 含种子卡 t_fxwal1（回退读数正确性）"
+has "${S2A}" "t_fxwal1" "${P} delete 形态树 S2 含种子卡 t_fxwal1（对照面）"
+eq "$(printf '%s\n' "${S2A}" | grep -F -- '计数：')" "$(printf '%s\n' "${S2B}" | grep -F -- '计数：')" "${P} 两树 S2 计数行逐字节相等"
+eq "$(printf '%s\n' "${S2A}" | grep -F -- '伤情判定：')" "$(printf '%s\n' "${S2B}" | grep -F -- '伤情判定：')" "${P} 两树 S2 伤情判定行逐字节相等"
+cleanup_trees "${FXA}" "${FXB}"
+echo "PASS ${P}"
 
 # =============================================================================
 # P1 — --selftest 全绿
@@ -298,26 +399,6 @@ cleanup_trees "${FX}"
 echo "PASS ${P}"
 
 # =============================================================================
-# MX-S1 — 孤儿命中：blocked 卡提及 rq，而该 rq 在 ready-queue 全部终态（executed）
-#   kill 无孤儿检测 No-op / 只按 status 过滤 No-op
-# =============================================================================
-P="MX-S1-orphan"
-RQ_ORPH="rq-${DSTAMP}-010101"
-FX="$(mk_fx)"
-add_card "${FX}/contrib/kanban.db" "t_fxorph1" "blocked" "contrib" 3600 \
-  "深检 preflight ${RQ_ORPH} [deep]" "rq-id: ${RQ_ORPH}"
-rq_add "${FX}/contrib-data/ready-queue.json" "${RQ_ORPH}" "executed"
-OUT="$(run_sb_fx "${ERR}" "${FX}")"; RC=$?
-art "t1-05.mx-s1.orphan.out" "${RC}" "${OUT}"
-eq "${RC}" "0" "${P} exit=0"
-verify_structure "${P}" "${OUT}"
-S1BLK="$(section "${OUT}" "1")"
-has "${S1BLK}" "孤儿" "${P} S1 命中孤儿检测（唯一病理源）"
-has "${S1BLK}" "t_fxorph1" "${P} S1 卡清单含孤儿卡 t_fxorph1"
-cleanup_trees "${FX}"
-echo "PASS ${P}"
-
-# =============================================================================
 # MX-S2 — ready+gave_up 命中：主板 assignee=contrib status=ready 单卡 2 条
 #   task_events kind=gave_up（契约「某卡 gave_up ≥2 次」→ 告警）；kill「只按 status 过滤」
 #   No-op + 阈值 No-op。
@@ -338,6 +419,7 @@ eq "${RC}" "0" "${P} exit=0"
 verify_structure "${P}" "${OUT}"
 S2BLK="$(section "${OUT}" "2")"
 has "${S2BLK}" "gave_up" "${P} S2 含 gave_up 事件统计（域关键词）"
+has "${S2BLK}" "gave_up×2" "${P} S2 计数 gave_up×2（同卡 2 次恰达告警阈值，防 ×0/×1 空转命中）"
 has "${S2BLK}" "t_fxgx1" "${P} S2 含 ready 态 gave_up 卡 t_fxgx1（事件面穿透 status 过滤）"
 has_re "${S2BLK}" '^- 伤情判定：告警 ——' "${P} S2 判定=告警（同卡 gave_up ×2 ≥ 阈值，契约「某卡 gave_up ≥2 次」）"
 cleanup_trees "${FX}"
@@ -439,6 +521,10 @@ S5BLK="$(section "${OUT}" "5")"
 has "${S5BLK}" "深检单飞槽" "${P} S5 命中深检单飞槽（登记卡 blocked 占用槽位）"
 has "${S5BLK}" "t_fxslot1" "${P} S5 深检槽项含登记卡 t_fxslot1"
 hasnt "${S5BLK}" "flight 泄漏" "${P} 在板 blocked 卡不构成 flight 泄漏（精确性反向）"
+# 唯一标记负向锁（可分性谓词）：本场景卡提及的 rq 非终态（deep-check）→ 孤儿不触发。
+# 观测块必须是 S1 节（禁施于 S5BLK——S5 节本就不含该标记，施于 S5 即真空断言）
+S1BLK="$(section "${OUT}" "1")"
+hasnt "${S1BLK}" "存在孤儿卡（§0 病例②）" "${P} S1 节无孤儿判定行唯一标记（提及 rq 非终态 → 孤儿不触发）"
 cleanup_trees "${FX}"
 echo "PASS ${P}"
 
@@ -458,8 +544,8 @@ art "t1-05.mx-s6.dual.out" "${RC}" "${OUT}"
 eq "${RC}" "0" "${P} exit=0"
 verify_structure "${P}" "${OUT}"
 S6BLK="$(section "${OUT}" "6")"
-has "${S6BLK}" "pipeline-failure" "${P} S6 含 pipeline-failure 计数（jq 紧凑形态）"
-has "${S6BLK}" "premise-dead" "${P} S6 含 premise-dead 计数（json.dumps 带空格形态）"
+has "${S6BLK}" "pipeline-failure×1" "${P} S6 计数 pipeline-failure×1（jq 紧凑形态，防 ×0 空转命中）"
+has "${S6BLK}" "premise-dead×1" "${P} S6 计数 premise-dead×1（json.dumps 带空格形态，防 ×0 空转命中）"
 has_re "${S6BLK}" '^- 伤情判定：告警 ——' "${P} S6 判定=告警（premise-dead 任意命中）"
 cleanup_trees "${FX}"
 echo "PASS ${P}"
