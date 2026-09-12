@@ -574,7 +574,7 @@ case "$cmd" in
       goods_note="$(jq -r 'if .goods then ((.goods.status // "?") + " — " + ((.goods.note // "") | .[0:160])) else empty end' "$vjson" 2>/dev/null)"
     fi
     if [[ -z "$goods_note" ]]; then
-      goods_note="$(grep -m1 '^    *.*goods[:：]' "$dpath" 2>/dev/null | sed 's/^ *//' | head -c 200)"
+      goods_note="$(grep -m1 '^    *.*goods[:：]' "$dpath" 2>/dev/null | sed 's/^ *//' | head -c 200 || true)"
       [[ -n "$goods_note" ]] || goods_note="我方货: 未判定（probe/人工立项路无 verdict.goods；审批前请确认是否应有我方 commit/offer）"
     fi
     acquire_lock; ts="$(now_iso)"
