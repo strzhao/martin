@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # gate-twin-consistency.acceptance.sh — gate.sh 第 4 关「孪生门一致性」黑盒验收
-# （T1-T7 预注册谓词硬断言；T8 见下方声明位）
+# （T1-T8 预注册谓词硬断言；T9 见下方声明位）
 # SSOT：.autopilot/runtime/sessions/t_9202949f/requirements/20260912-给-contrib-审批链的「孪/context.md
 #       + 同卡设计文档 D1-D7（验收权威源；SCAN/FAIL/GATE 字面量按 D7 冻结）
 # 覆盖谓词（驱动 → 硬断言）：
@@ -15,8 +15,18 @@
 #   T6 注释差异容忍     --target 沙箱 notify.sh 副本仅函数头前注释/函数内列 0 纯注释行不同 → exit=0 ∧ PASS
 #   T7 单侧抽取为空     --target 沙箱 notify.sh 副本 occ_all_stalled→occ_all_stalled_old →
 #                       exit=1 ∧ FAIL 行含 twin 且含「抽取」或「为空」
-# T8 声明：真身 mutation 自证（真身原地 21 * 86400→22 * 86400 → gate FAIL(exit 1) → git checkout 还原 →
+#   T8 默认态孪生源缺失（D5②） 整树镜像沙箱（gate.sh+pattern 真身拷贝；approval 根只有占位 stray；
+#                       hkstock 空根；contrib 根孪生对 execute.sh/notify.sh 均缺席）默认态跑沙箱内
+#                       gate.sh → exit 恰=1 ∧ SCAN 孪生门一致性: FAIL ∧ FAIL gate twin 行恰 2 ∧
+#                       detail 逐字含「孪生源缺失: *approval*/execute.sh」与
+#                       「孪生源缺失: *contrib*/notify.sh」∧ 末行 GATE: FAIL
+# T9 声明：真身 mutation 自证（真身原地 21 * 86400→22 * 86400 → gate FAIL(exit 1) → git checkout 还原 →
 #   全绿）由编排器 QA 轮在真身执行，不在本文件（本文件以沙箱副本等价覆盖见 T3）。
+# D5③ 已声明 gap（不可测，非沉默）：diff 故障 rc>=2 分支技术上无法黑盒测量——
+#   (1) /usr/bin/diff 被 pin 绝对路径，PATH 遮蔽注入不可达（该 pin 正是 2026-09-05
+#       「第三方 diff 遮蔽系统 diff=stdout 空静默假绿」教训的防御本身）；
+#   (2) 系统二进制受 SIP 保护不可替换；(3) diff 输入为进程替换流恒可读，无法诱发 rc>=2；
+#   (4) patch 沙箱 gate.sh 副本注入故障=白盒变异被测对象，违反本文件黑盒纪律。
 # 纪律：黑盒视角——只经 `bash scripts/contrib/tests/gate.sh`（含 --target flag / MARTIN_GATE_TARGET env）
 #   观察 exit/stdout；绝不读 gate.sh 源码（被实现对象）；缺陷样本一律注入 mktemp 临时树，绝不写仓内
 #   scripts/ 真实树（含被守卫的 execute.sh/notify.sh）；沙箱副本从真仓 scripts/approval/execute.sh 与
@@ -29,7 +39,7 @@
 # CONTRACT_AMBIGUOUS: D3「去纯注释行」未写明缩进口径（列 0「# 行」与缩进「# 行」是否同判）；T6 仅用列 0
 #   注释钉契约，缩进注释不设硬断言（不钉未注册口径）。
 # 测试命令：bash scripts/contrib/tests/acceptance/gate-twin-consistency.acceptance.sh
-# 产物：/tmp/autopilot-artifacts/twin.t{1,2,3,4,5,6,7}.out
+# 产物：/tmp/autopilot-artifacts/twin.t{1,2,3,4,5,6,7,8}.out
 # =============================================================================
 set -u
 
@@ -44,7 +54,6 @@ mkdir -p "$ART"
 
 die(){ echo "ACCEPTANCE-FAIL[$1]: $2" >&2; exit 1; }
 eq(){ [ "$1" = "$2" ] || die "$3" "期望 [$2] 实得 [$1]"; }
-ne(){ [ "$1" != "$2" ] || die "$3" "期望 != [$2]，实得相等 [$1]"; }
 has(){ printf '%s' "$1" | grep -qF -- "$2" || die "$3" "stdout 未包含 [$2]"; }
 hasnt(){ if printf '%s' "$1" | grep -qF -- "$2"; then die "$3" "不应包含却包含 [$2]"; fi; }
 has_re(){ printf '%s' "$1" | grep -qE -- "$2" || die "$3" "未匹配正则 [$2]"; }
@@ -53,7 +62,7 @@ has_re(){ printf '%s' "$1" | grep -qE -- "$2" || die "$3" "未匹配正则 [$2]"
 [ -f "$GATE" ] || die "env" "gate.sh 缺失: $GATE"
 [ -f "$REPO_ROOT/scripts/approval/execute.sh" ] || die "env" "真身 execute.sh 缺失: $REPO_ROOT/scripts/approval/execute.sh"
 [ -f "$REPO_ROOT/scripts/contrib/notify.sh" ] || die "env" "真身 notify.sh 缺失: $REPO_ROOT/scripts/contrib/notify.sh"
-for t in sed awk grep git mktemp cmp; do
+for t in sed awk grep git mktemp; do
   command -v "$t" >/dev/null 2>&1 || die "env" "本机缺 ${t}（本验收自身依赖集，验收环境不得缺）"
 done
 [ -x /usr/bin/diff ] || die "env" "缺 /usr/bin/diff（D4 pin 绝对路径的依赖前提，fail closed）"
@@ -261,5 +270,37 @@ has_re "$(last_line "$T7_OUT")" '^GATE: FAIL \(2 files, [0-9]+ findings\)$' "$P 
 rm -rf "$T7_SBX"; rm -f "$T7_ERR"
 echo "PASS $P"
 
-echo "gate-twin-consistency: ALL PASS（T1-T7 硬断言全绿；T8 真身 mutation 自证由编排器 QA 轮执行）"
+# =============================================================================
+# T8 默认态孪生源缺失（D5②） — 整树镜像沙箱：gate.sh+pattern 真身拷贝、approval 根只有占位
+# stray、hkstock 空根、contrib 根孪生对（execute.sh/notify.sh）均缺席 → 默认态跑沙箱内 gate.sh，
+# 孪生源逐缺失 detail 发 FAIL，exit 恰=1（三分支：缺对不得降 SKIP、不得 bad_root rc=2 污染）
+# =============================================================================
+P="T8"
+T8_SBX="$(mktemp -d "$TMPBASE/gate-twin.XXXXXX")"
+mkdir -p "$T8_SBX/scripts/contrib/tests/lib" "$T8_SBX/scripts/approval" "$T8_SBX/scripts/hkstock"
+cp "$GATE" "$T8_SBX/scripts/contrib/tests/gate.sh"
+cp "$REPO_ROOT/scripts/contrib/tests/lib/fullwidth-pattern.txt" "$T8_SBX/scripts/contrib/tests/lib/fullwidth-pattern.txt"
+printf '#!/bin/bash\nexit 0\n' > "$T8_SBX/scripts/approval/stray-b.sh"
+# 装配自检（硬断言，vacuous-PASS 防线）：孪生对缺席是本谓词的样本本体
+[ ! -f "$T8_SBX/scripts/approval/execute.sh" ] || die "$P 装配" "execute.sh 不应存在于沙箱（缺对前提）"
+[ ! -f "$T8_SBX/scripts/contrib/notify.sh" ] || die "$P 装配" "notify.sh 不应存在于沙箱（缺对前提）"
+[ -f "$T8_SBX/scripts/contrib/tests/gate.sh" ] || die "$P 装配" "gate.sh 镜像缺失"
+[ -s "$T8_SBX/scripts/contrib/tests/lib/fullwidth-pattern.txt" ] || die "$P 装配" "pattern 镜像缺失"
+[ -f "$T8_SBX/scripts/approval/stray-b.sh" ] || die "$P 装配" "stray-b.sh 占位缺失"
+[ -d "$T8_SBX/scripts/hkstock" ] || die "$P 装配" "hkstock 空根缺失（防 bad_root rc=2 污染谓词）"
+T8_ERR="$(mktemp "$TMPBASE/gate-twin-err.XXXXXX")"
+T8_OUT="$( bash "$T8_SBX/scripts/contrib/tests/gate.sh" 2>"$T8_ERR" )" || T8_RC=$?
+T8_RC="${T8_RC:-0}"
+art "twin.t8.out" "$T8_RC" "$T8_OUT" "$T8_ERR"
+eq "$T8_RC" 1 "$P 默认态孪生源缺失必须 exit 恰=1（D5② fail-closed；不得 0/2）"
+if [ -s "$T8_ERR" ]; then die "$P" "FAIL 跑 stderr 应为空（发现走 stdout）"; fi
+has "$T8_OUT" "SCAN 孪生门一致性: FAIL" "$P SCAN FAIL 字面量（D7 冻结；默认态缺失禁降级 SKIP）"
+eq "$(printf '%s\n' "$T8_OUT" | grep -cE '^FAIL gate twin ')" "2" "$P FAIL gate twin 行恰 2（两缺失源逐条 detail，聚合不短路）"
+has "$T8_OUT" '孪生源缺失: *approval*/execute.sh' "$P detail 逐字含 approval 缺失（冻结字面，星号字面）"
+has "$T8_OUT" '孪生源缺失: *contrib*/notify.sh' "$P detail 逐字含 contrib 缺失（冻结字面，星号字面）"
+has_re "$(last_line "$T8_OUT")" '^GATE: FAIL \(2 files, [0-9]+ findings\)$' "$P 末行闭集 GATE: FAIL（沙箱恰 2 个 .sh）"
+rm -rf "$T8_SBX"; rm -f "$T8_ERR"
+echo "PASS $P"
+
+echo "gate-twin-consistency: ALL PASS（T1-T8 硬断言全绿；T9 真身 mutation 自证由编排器 QA 轮执行）"
 exit 0
