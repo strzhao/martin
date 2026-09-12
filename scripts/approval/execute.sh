@@ -367,12 +367,18 @@ do_release_gate() { # release-gate approved：hm release approve 回验 → toke
     fail "hm CLI 不可达（HM_BIN/PATH/nvm 布局均未命中），release-gate 无法链式提审"
     return 0
   fi
-  # launchd 运行环境（B3）：显式 export PATH（nvm bin）与 HM_CREDENTIALS（缺省仓外 ~/.hm/credentials.json）
+  # launchd 运行环境（B3）：显式 export PATH（nvm bin）与 HM_CREDENTIALS。
+  # 凭据文件磁盘实名是 ~/.hm/private.json（AGC Service Account 导出名）；credentials.json
+  # 是历史假设名——09-12 实证两者不一致时静默缺凭据 → hm release approve 必败，两处都探。
   if [[ -n "${HM_NVM_BIN_DIR:-}" ]]; then
     PATH="${HM_NVM_BIN_DIR}:${PATH}"; export PATH
   fi
-  if [[ -z "${HM_CREDENTIALS:-}" && -f "$HOME/.hm/credentials.json" ]]; then
-    export HM_CREDENTIALS="$HOME/.hm/credentials.json"
+  if [[ -z "${HM_CREDENTIALS:-}" ]]; then
+    if [[ -f "$HOME/.hm/private.json" ]]; then
+      export HM_CREDENTIALS="$HOME/.hm/private.json"
+    elif [[ -f "$HOME/.hm/credentials.json" ]]; then
+      export HM_CREDENTIALS="$HOME/.hm/credentials.json"
+    fi
   fi
   # 队列路径显式传递（approve 回验读 HM_RQ_QUEUE；不依赖 CONTRIB_DATA_DIR 透传链）
   if [[ "$DRY_RUN" == "true" ]]; then

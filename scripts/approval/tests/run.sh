@@ -65,7 +65,17 @@ if [[ "$cmd" == "drops" && "$sub" == "decision" ]]; then
 fi
 if [[ "$cmd" == "rm" ]]; then
   printf '%s\n' "$*" >> "$LOG_DIR/tunnel-rm.log"
+  if [[ -f "$STUB_STATE/rm-fail" ]]; then
+    echo "stub tunnel: rm forced failure" >&2
+    exit 1
+  fi
   exit 0
+fi
+if [[ "$cmd" == "list" ]]; then
+  # slug 存在性复核用（collect.sh slug_gone）；list.txt 缺省 = list 不可用（exit 1）
+  if [[ -f "$STUB_STATE/list.txt" ]]; then cat "$STUB_STATE/list.txt"; exit 0; fi
+  echo "stub tunnel: list unavailable" >&2
+  exit 1
 fi
 if [[ "$cmd" == "deploy" ]]; then
   printf 'https://pages.example/legacy\n'
@@ -429,6 +439,42 @@ collect_cmd > "$SB/collect6.out" 2>&1
 check_eq "9.P5 回收 rm 恰 1 次" "$(rm_count)" "1"
 check_ne "9.P5 removed_at 登记" "$(q_field "$E_ID" '.tunnel.removed_at')" "null"
 check_contains "$(cat "$SB/stub/calls/tunnel-rm.log")" "$E_SLUG" "9.P5 rm 的是登记 slug"
+sb_done
+
+# 9.P5b 幽灵 slug 幂等回收（rm 报错但 slug 已不在 → 幂等成功终态，不得死循环；
+# 生产实证：c0i5s6514x 每 90s 重试 4125 次/5 天）
+sb_new true
+make_item review-evidence deep
+P_ID="$ID"
+notify_cmd approve "$P_ID" >/dev/null 2>&1
+rq set "$P_ID" shelved >/dev/null 2>&1
+jq --arg id "$P_ID" --argjson ep "$(( $(date +%s) - 3 * 86400 ))" \
+  '.items |= map(if .id == $id then .tunnel.deployed_epoch = $ep else . end)' \
+  "$SB/contrib-data/ready-queue.json" > "$SB/q.tmp" && mv "$SB/q.tmp" "$SB/contrib-data/ready-queue.json"
+printf '1\n' > "$SB/stub/rm-fail"                 # rm 恒败（模拟 slug 已在远端消失的报错形态）
+printf 'other-slug\tmd\n' > "$SB/stub/list.txt"   # list 可用且不含本 slug → 页不在
+collect_cmd > "$SB/collect-r1.out" 2>&1
+check_eq "9.P5b 幽灵 slug 幂等成功 removed_at 登记" "$(q_field "$P_ID" '.tunnel.removed_at' | grep -c null)" "0"
+collect_cmd > "$SB/collect-r2.out" 2>&1
+check_eq "9.P5b 第二轮不再重试 rm（恰 1 次）" "$(rm_count)" "1"
+check_contains "$(cat "$SB/contrib-data/logs/approval-collect.log")" "幂等成功" "9.P5b 日志留幂等痕迹"
+sb_done
+
+# 9.P5c 真失败仍重试（rm 失败 + slug 还在 → 保持候选，下轮再试）
+sb_new true
+make_item review-evidence deep
+Q_ID="$ID"
+notify_cmd approve "$Q_ID" >/dev/null 2>&1
+rq set "$Q_ID" shelved >/dev/null 2>&1
+jq --arg id "$Q_ID" --argjson ep "$(( $(date +%s) - 3 * 86400 ))" \
+  '.items |= map(if .id == $id then .tunnel.deployed_epoch = $ep else . end)' \
+  "$SB/contrib-data/ready-queue.json" > "$SB/q.tmp" && mv "$SB/q.tmp" "$SB/contrib-data/ready-queue.json"
+printf '1\n' > "$SB/stub/rm-fail"
+printf '%s\tmd\n' "$(q_field "$Q_ID" '.tunnel.slug')" > "$SB/stub/list.txt"  # slug 还在
+collect_cmd > "$SB/collect-f1.out" 2>&1
+check_eq "9.P5c slug 仍在 → 不标 removed_at" "$(q_field "$Q_ID" '.tunnel.removed_at')" "null"
+collect_cmd > "$SB/collect-f2.out" 2>&1
+check_eq "9.P5c 下轮仍重试 rm（恰 2 次）" "$(rm_count)" "2"
 sb_done
 
 # 9.P4 execute 失败 → failed + pipeline-failure 事件

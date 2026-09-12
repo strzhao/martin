@@ -75,6 +75,14 @@ record_event() { # <class> <key> <summary> → 事件入账（dry-run 只打印�
   "$NOTIFY" event "$1" --key "$2" --summary "$3" >>"$LOG" 2>&1 || true
 }
 
+slug_gone() { # <slug> → 0=slug 已不存在（页不在=回收目标已达成）
+  # 语义真源是 tunnel list；list 本身失败时保守返回 1（当作还在，维持重试）
+  local out rc=0
+  out="$(</dev/null "$TUNNEL_BIN" list 2>>"$LOG")" || rc=$?
+  (( rc != 0 )) && return 1
+  ! awk '{print $1}' <<<"$out" | grep -qx -- "$1"
+}
+
 collect_one() { # <id> → 0（任何 rc 都不中断本轮，逐项隔离）
   local id="$1"
   local slug code
@@ -164,6 +172,11 @@ reclaim_expired() { # <ttl_hours> <now_epoch> → 搁置/过期页面回收
     if "$TUNNEL_BIN" rm "$slug" >>"$LOG" 2>&1; then
       "$RQ" tunnel-removed "$id" >>"$LOG" 2>&1 || true
       log "回收 ${id}: tunnel rm ${slug}（部署超 ${ttl}h 未删，state 已非待决）"
+    elif slug_gone "$slug"; then
+      # rm 报错但 slug 已不在（页不在=回收目标已达成）→ 幂等成功，
+      # 不做会变成 90s 死循环（实证：c0i5s6514x 连刷 4125 次/5 天）
+      "$RQ" tunnel-removed "$id" >>"$LOG" 2>&1 || true
+      log "回收 ${id}: tunnel rm ${slug} 报错但 slug 已不存在，视为幂等成功（tunnel-removed）"
     else
       log "回收 ${id}: tunnel rm ${slug} 失败（下轮重试；7 天强删 sweep 兜底）"
     fi
