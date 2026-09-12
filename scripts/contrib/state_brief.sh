@@ -883,8 +883,14 @@ run_brief() {
 
 # ---------- --selftest ----------
 # fixture 自建（mktemp 树，trap 清理），经 env seams 注入，绝不触生产六源。
-# 八病例断言 + --out 一致性断言；断言行 `- [PASS] <名>` / `- [FAIL] <名>`，
-# 收尾 `--selftest 全绿`；任一 FAIL exit 1。
+# 十二条断言：病例 1-10 + main 库 WAL 形态自证（11）+ WAL 形态 immutable 回退可读（12）；
+# 断言行 `- [PASS] <名>` / `- [FAIL] <名>`，收尾 `--selftest 全绿`；任一 FAIL exit 1。
+# main.db fixture = 生产主 board 真实只读形态（WAL 头、无 -wal/-shm 旁文件）：建库后
+# 显式 checkpoint(TRUNCATE)+rm 旁文件（本机 sqlite3 CLI 干净退出不删旁文件——实测残留），
+# 并写后跑前自证（断言 11：mode=ro 必败 ∧ immutable=1 必成），此后每次 st_run 的 S2
+# 全部经 ro_sqlite 的 immutable=1 回退读取（回退行为由断言 12 咬合）。
+# 孤儿断言（断言 2）用唯一标记子串「存在孤儿卡（§0 病例②）」与「｜孤儿（所提 rq 全部终态」，
+# 禁裸 token「孤儿」——S1 注意分支生产文案含该词，正/负样本会撞车（M-A 假绿根因）。
 SELFTEST_FAIL=0
 ST_OUT=""
 ST_RC=0
@@ -935,7 +941,7 @@ CREATE TABLE task_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
   kind TEXT NOT NULL, payload TEXT, created_at INTEGER NOT NULL
 );
-INSERT INTO tasks VALUES('t_aaa','孤儿病例卡','处理 rq-20260901-abc123 的上游回填','contrib','blocked',${ep_2h},NULL);
+INSERT INTO tasks VALUES('t_aaa','上游回填病例卡','处理 rq-20260901-abc123 的上游回填','contrib','blocked',${ep_2h},NULL);
 INSERT INTO tasks VALUES('t_bbb','scan 病例卡','','contrib','done',${ep_2h},${ep_1h});
 INSERT INTO tasks VALUES('t_ccc','深检病例卡','深检 rq-20260901-abc123','contrib','blocked',${ep_2h},NULL);
 INSERT INTO task_events (task_id, kind, created_at) VALUES('t_aaa','blocked',${ep_1h});
@@ -943,8 +949,12 @@ INSERT INTO task_events (task_id, kind, created_at) VALUES('t_bbb','completed',$
 INSERT INTO task_events (task_id, kind, created_at) VALUES('t_ccc','blocked',${ep_1h});
 SQLEOF
 
-  # --- main.db fixture（病例1：status=ready 卡带 gave_up 事件） ---
-  sqlite3 "${ST_MDB}" <<SQLEOF
+  # --- main.db fixture（病例1：status=ready 卡带 gave_up 事件；WAL 形态建库） ---
+  # 生产主 board 真实形态 = WAL 头、无 -wal/-shm 旁文件（mode=ro error 14、immutable=1 恰配）。
+  # 建库调用 >/dev/null（PRAGMA journal_mode=WAL 会输出 "wal" 污染 selftest stdout）；
+  # 本机 sqlite3 CLI 干净退出不删旁文件（实测残留）→ heredoc 后立即显式 checkpoint+rm。
+  sqlite3 "${ST_MDB}" >/dev/null <<SQLEOF
+PRAGMA journal_mode=WAL;
 CREATE TABLE tasks (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT, assignee TEXT,
   status TEXT NOT NULL, created_at INTEGER NOT NULL, completed_at INTEGER
@@ -956,6 +966,24 @@ CREATE TABLE task_events (
 INSERT INTO tasks VALUES('t_ddd','gave_up 病例卡','','contrib','ready',${ep_1h},NULL);
 INSERT INTO task_events (task_id, kind, created_at) VALUES('t_ddd','gave_up',${ep_1h});
 SQLEOF
+  sqlite3 "${ST_MDB}" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null 2>&1
+  rm -f "${ST_MDB}-wal" "${ST_MDB}-shm"
+
+  # 病例11：main.db WAL 形态自证（写后跑前，直连 sqlite3 不经 ro_sqlite）：
+  # mode=ro 必败 ∧ immutable=1 必成——fixture 形态漂移防假绿/假红。
+  # 探针 URL 拼接构造（运行时仍逐字等于契约形态 file:<db>?mode=ro&immutable=1）：
+  # M-B drill 的全量 sed 替换会命中源内该字面量的一切出现，而本断言职责是 fixture
+  # 形态自证，必须对生产代码 mutation 免疫（变异下仍 PASS，正好证明红因是
+  # ro_sqlite 回退路径而非 fixture 腐坏）。
+  local ok11=1
+  local st_immu="mode=ro&immutable="
+  st_immu="${st_immu}1"
+  if ! sqlite3 "file:${ST_MDB}?mode=ro" 'SELECT count(*) FROM tasks;' >/dev/null 2>&1; then
+    if sqlite3 "file:${ST_MDB}?${st_immu}" 'SELECT count(*) FROM tasks;' >/dev/null 2>&1; then
+      ok11=0
+    fi
+  fi
+  st_assert "11-main库WAL形态自证(ro败immutable成)" "${ok11}"
 
   # --- ready-queue.json fixture（病例2/5：executed 终态 + awaiting-approval + approved） ---
   cat > "${ST_TREE}/ready-queue.json" <<JSONEOF
@@ -1000,10 +1028,14 @@ JSONEOF
   if printf '%s' "${s2}" | grep -q 't_ddd' && printf '%s' "${s2}" | grep -q 'gave_up×1'; then ok1=0; fi
   st_assert "1-main-board-ready卡带gave_up事件入S2清单" "${ok1}"
 
-  # 病例2：contrib.db blocked 卡提及 rq state=executed → 「孤儿」命中
+  # 病例2：contrib.db blocked 卡提及 rq state=executed → 孤儿两唯一标记全命中。
+  # 禁裸 token「孤儿」：S1 注意分支生产文案（未触发孤儿/深检槽/超龄任一）也含该词，
+  # 裸 token 正/负样本不可分（M-A 假绿根因）；fixture 卡标题已去判定词
+  # （「孤儿病例卡」→「上游回填病例卡」，body 的 rq mention 是检测输入，保留）。
   s1="$(st_sec 1)"
   local ok2=1
-  if printf '%s' "${s1}" | grep -q '孤儿'; then ok2=0; fi
+  if printf '%s' "${s1}" | grep -qF '存在孤儿卡（§0 病例②）' \
+     && printf '%s' "${s1}" | grep -qF '｜孤儿（所提 rq 全部终态'; then ok2=0; fi
   st_assert "2-孤儿命中(所提rq全部终态)" "${ok2}"
 
   # 病例3：flight scan 登记卡已 done → 「flight 泄漏」命中
@@ -1045,6 +1077,15 @@ JSONEOF
   local ok9=1
   if [[ "${ST_RC}" == "0" ]] && [[ "${ST_OUT}" == "$(cat "${ST_TREE}/out.md")" ]]; then ok9=0; fi
   st_assert "9---out文件与stdout一致" "${ok9}"
+
+  # 病例12：main.db WAL 形态（无旁文件）→ 首次 st_run 的 S2 经 immutable=1 回退读取：
+  # 非 [degraded] 且读数正确（含 t_ddd）——immutable 回退路径的行为咬合（M-B 直接命中；
+  # 变异 immutable=0 时断言 1/12 双红、断言 11 仍绿，归因回退路径而非 fixture 腐坏）。
+  local ok12=1
+  if [[ "${ST_RC}" == "0" ]] \
+     && printf '%s' "${s2}" | grep -q 't_ddd' \
+     && ! printf '%s' "${s2}" | grep -q '\[degraded\]'; then ok12=0; fi
+  st_assert "12-main库WAL形态immutable回退可读(S2非degraded含t_ddd)" "${ok12}"
 
   # 病例10：deepcheck 登记卡健康在飞（ready）→ S1 不触发病例①（占槽告警收敛回归）
   local ok10=1
