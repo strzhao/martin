@@ -73,6 +73,8 @@
 
 **commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
 
+**AI Native 架构改造（2026-09-13 立项）**：contrib-watch「影子工作流引擎」收敛——三层架构（L1 硬底座/L2 看板即控制面/L3 值班 agent 环）、11 优化点×3 波拆卡规格与验收标准。何时读：参与 contrib-watch 架构改造、派发/执行 B 系（hermes 框架三特性：per-kind 并发上限/create 校验/死信车道）或 C 系（值班环）卡前 → 看 [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)。
+
 ### 快车道与 L2-A 微信审批环（09-04 上线）
 
 及时性数据实证（#102413 probe 7h 作废 / #102700 建议 build 后 2h 被占）后，contrib-watch 加了快车道：**闸门已反转为黑名单**（09-04；09-09 修订：kanban 移出黑名单——用户 kanban 重度使用，只排除 desktop/dashboard 等零契合域，其余 issue 全部进 LLM 研判——token 充裕；PR 仍走每日 08:07 停滞雷达，不做小时级全量分析）。scan/radar 把「验证成本已付清、只差 L2 批准」的项写入 `contrib-data/ready-queue.json`（唯一写入口 `scripts/contrib/rq.sh`，含 premises/ammo/score/状态机）。**深检触发双通道：run-watch 每小时尾部快车道（候选即出即检，nohup 后台）+ launchd 09:37 兜底窗口**，对预算内 top1 自动跑三轮审（strategist preflight + fresh-context 红队，两次独立 `claude -p`，文件版次传递），成稿落 `contrib-data/pending/` → tunnel 只读 URL → `hermes send` 推微信 🟡 审批卡（深检配额周/日均 30，09-04 用户拍板放宽——token 充裕，配额已非节流而是**告警线：候选项因配额不足排队时微信通知用户**；账本 `budget.json`；probe 车道单轮 strategist 免红队、不占深检预算）。告警（自有 PR 获维护者互动/merge 灯、probe premise 死亡、流水线故障、配额告罄）走 `events.jsonl` 聚合推送，非审批类日 ≤3（**09-05 起推送载荷必须过 AI 整理层，见「hermes 外发消息规范」——notify.sh 脚本直推属待改造存量**）。用户微信回「批/改/否 #rq-id」由 hermes 侧 `~/.hermes/skills/github/hermes-contrib-l2/` skill 处理：TTL 复验（issue 存活/占坑/premises 抽验/近 5 评论信号）→ gh 落弹 → approved.log（L2-A）→ 回执；48h 无回复由 hermes cron（09:17 no-agent）搁置+晨间对账。
