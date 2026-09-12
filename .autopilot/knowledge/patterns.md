@@ -446,7 +446,8 @@ gateway 哨兵初版选 `hermes kanban list` 作探活——但它是本地 SQLi
 
 ## [2026-09-10] 审计型「零 X」谓词的正反两向都要在真实产物形态上实测
 红线检测类 grep（如「零 gh 写」）有两个对称死法：①正则被自身合法查询的字段名命中（mergeable 命中 merge、comments 命中 comment）→ 合规实现必红（自败）；②token 锚定修正后未适配记账行格式（calls.log 整行=`gh|cwd|argv`，argv 前有 `|` 前缀，`(^| )` 锚失配）→ 写调用也零命中（空转恒绿）。防御：谓词定稿前对「应红样本（写调用）」与「应绿样本（真实只读 argv）」各实测一遍。另有不可满足类：观测面与被观测对象机制不相交（要求 production 代码把脚本名写进 stub 的 calls.log）→ 任何实现必红；处置=铁律例外 E1-E3 闭合 + 等价硬观测（被观测行为唯一发起方的调用行）+ 头注留痕 + 重锁。plan-reviewer 两轮各抓一个（先自败后空转），实测是唯一裁判。
-<!-- tags: testing, predicate, vacuous-pass, false-red, red-line, audit-regex, contrib-watch -->
+变体三（09-12 补轮实证，「零 X」全量断言与合法业务流结构性冲突）：「全程零 `-X POST`」在放行桶不可满足——放行路本来就要投递（审批卡推送本身是 POST）→ 裁决为分桶断言（拦截桶零 POST ∧ 放行桶 POST 仅限投递端点恰 1 次）。配套防空转铁律：负向审计（not contains）求值前必须先正证调用记录非空且含预期只读命令，否则空记录恒绿是假绿。
+<!-- tags: testing, predicate, vacuous-pass, false-red, red-line, audit-regex, contrib-watch, bucketed-assertion -->
 
 ## [2026-09-10] fixture 数据形态漂移诱发假红：错误根因会三处固化（注释+补丁+台账）
 同一 stage-1 查询，unit 夹具 comments 用数组（镜像生产）、acceptance 夹具用标量 → 假红被误诊为真 bug，且「标量=真实 gh 形态」的错误定性写进修复注释、补丁逻辑与变更台账三处；qa-reviewer 用真实 gh 一次只读实测证伪（gh 2.92.0 `pr list --json comments` 返回数组含 author.login）。「测试镜像生产」完整口径=调用方式（shell/argv）+ **数据形态**（字段是数组还是标量）都要镜像；误诊勘误必须覆盖注释/逻辑/台账三处。顺带：真 fallback（行值合法即权威、非法才回落旧值）优于无条件覆盖——前者额外覆盖「外部计数被删后回退」边沿。
@@ -457,5 +458,37 @@ gateway 哨兵初版选 `hermes kanban list` 作探活——但它是本地 SQLi
 <!-- tags: testing, shared-fixture, config-seed, implicit-dependency, exit-code, detect-dim, contrib-watch -->
 
 ## [2026-09-10] autopilot 分级字段补判后必须重设 gate：AC-FIELD block 会清空 gate
-stop-hook 对 AC-FIELD-INVALID 的 block 会把 gate 清空（提示语「补判字段后重设 gate=review-accept」是流程步骤非客套）——只补字段不重设 gate → §5.5 自动推进不触发，陷入通用 qa 提示循环空转。同族：任何「重设 X 后继续」类 block 处置，重设动作本身就是完成条件的一半。
-<!-- tags: autopilot, stop-hook, gate, state-machine, field-validation -->
+stop-hook 对 AC-FIELD-INVALID 的 block 会把 gate 清空（提示语「补判字段后重设 gate=review-accept」是流程步骤非客套）——只补字段不重设 gate → §5.5 自动推进不触发，陷入通用 qa 提示循环空转。同族：任何「重设 X 后继续」类 block 处置，重设动作本身就是完成条件的一半。同族变体（09-11 实证）：**首写分级字段就必须同轮写 gate**——§5.5 前置 = gate=review-accept ∧ phase=qa ∧ auto_approve=true ∧ 三字段达标，字段齐而 gate 空 → 静默不推进（无 systemMessage），同样表现为通用 qa 提示循环白耗一 iteration；gate 与分级字段是同一个写入动作，不是两步。
+<!-- tags: autopilot, stop-hook, gate, state-machine, field-validation, auto-advance -->
+
+## [2026-09-11] hermes kanban.db 只读查询唯一可用形态：python3 mode=ro URI + completed_at 是 epoch 整数
+本机 `sqlite3 -readonly <db>` 恒报 `error 14 unable to open database file`（不可用）；只读查 kanban.db 的唯一形态是 `python3 -c "sqlite3.connect('file:<路径>?mode=ro', uri=True)"`。tasks.completed_at 是 INTEGER epoch 秒（非 ISO 字符串，PRAGMA table_info 实证）——游标类增量扫描直接整数比较，勿按字符串日期设计。live db 上有真实写入者，任何非 ro 连接都是越界写。
+<!-- tags: sqlite, kanban, readonly, python3, epoch, contrib, macos -->
+
+## [2026-09-11] 「本地修复≠上游资产」机械边：回扫闸门幂等三件套（事件 key 预查+建卡幂等键+游标双成功才推进）
+coder 卡红线只 commit 不 push，本地修复与上游 PR 之间没有机械路径——解法是零 LLM 回扫闸门（done coder 卡 → hermes-agent worktree 领先 origin/main → contrib 评估卡），幂等靠三层独立机制互兜底：①消费前 events.jsonl 双格式 grep（`"key":"K"` 紧凑 + `"key": "K"` 带空格，flush 会重写账本换格式）②kanban_card idempotency-key（建卡侧防重，游标回退/损坏重建也不重复建卡）③游标「建卡+事件双成功才推进、零行不写、失败停最后成功卡下轮自然重试」。任何单层失效其余两层仍防重复卡；评估/verdict 归 contrib worker 异步，闸门绝不代替研判、绝不 push（L2 不豁免）。
+<!-- tags: contrib, upstream, idempotency, cursor, gate, coder-lane, kanban, fail-closed -->
+
+## [2026-09-11] patch-id 判重机械边四坑：fork refs 千级要流式早退缓存 / 空 diff 空 patch-id / 删 tree 非删 commit / ref 头即判重集
+「本地修复是否已投递上游在飞」的纯 git 判重：`git show <sha> | git patch-id --stable` 首列对比 refs/heads/contrib/* ∪ refs/remotes/fork/* 各 ref 头同法 patch-id（异 sha 同 diff 必同 patch-id，实测+真实事故锚 069b5f8085≡72aee6f7f9 双证）。四个实测坑：①fork 镜像 refs 实测 1073 个，逐 ref 全量换算每候选 ~17s——必须先算候选 patch-id 集、ref 侧流式比对 first-hit 早退、跨候选按 for-each-ref 清单整体作键缓存（rev-parse 作键会破 git 子命令闭集契约）；②空 diff commit（merge 空提交、--allow-empty 夹具）产**空** patch-id，须跳过留痕而非当命中；③要测「git show 失败/对象缺失」必须删 tree/blob 松散对象——删 commit 对象会让 git log rc=128 被上游条件先行过滤，用例不成立；④判重集只取 ref 头是有界近似：上游收下后 ref 头前移即漏拦，接受并在卡 body「上游空间占用 gh 实查」步骤兜底。适用：任何「本地领先 commit vs 已投递分支」同构判重。
+<!-- tags: git, patch-id, dedup, contrib, upstream, performance, streaming-cache, testing, fixture-trap -->
+
+## [2026-09-11] HERMES_KANBAN_DB 解析优先级压过 `hermes kanban --board`：kanban 写调用一律 env -u 剥离
+worker 会话上下文注入的 HERMES_KANBAN_DB 会让 `hermes kanban --board contrib` 静默落到该 env 指的 db/board（实测：带 env 时 --board contrib list 输出 default board 内容）——生产 launchd 无此 env 所以平时不发作，闸门被 worker 会话调用时必炸（4 张评估卡落错 board 实锤）。解法在**调用方**加 `env -u HERMES_KANBAN_DB bash kanban_card.sh …`（kanban_card.sh 内部 hermes_call 只剥 ANTHROPIC_*，env -u 是逐变量白名单不透传剥离）。这是「CC shell ANTHROPIC_* 劫持 hermes」同族第二例：凡 hermes 系 CLI 有 env 优先级高于 flag 的解析面，跨上下文调用点一律 env -u 白名单剥离；stub 观测面用独立 log 文件记变量存在性（对照运行证非平凡，防 vacuous absent）。
+<!-- tags: hermes, kanban, env, board-pin, env-u, cross-context, contrib-watch, vacuous-pass -->
+
+## [2026-09-12] 沙盒 e2e 三重击穿链：PATH-stub 被被测脚本 PATH 重排击穿 → env -u 送真 CLI 上真板 → HERMES_* 读面重定向掩盖污染
+对「会自行重排 PATH 的被测脚本」做 hermes stub，PATH 前置必被击穿（kanban_card.sh 调 hermes 前把 $HOME/.local/bin:/opt/homebrew/bin 前置到 PATH 做 launchd 兼容）→ 解析到真 hermes；调用链若带 env -u HERMES_KANBAN_DB（board pin），真 CLI 落到**真 contrib 板库** ~/.hermes/kanban/boards/contrib/kanban.db（≠ default 板 ~/.hermes/kanban.db），实测误建 3 张 ready 卡。排障再叠一层：delegate 会话 shell 自带 HERMES_KANBAN_DB/HERMES_HOME，CLI list/show 读面被重定向到 default 板 →「查不到污染」假象（查不到≠不存在）。正确姿势：①hermes 注入走 HERMES_BIN seam（kanban_card.sh 声明面，unit/acceptance 同款）；②e2e 后硬哨兵（真板 sqlite mode=ro 计数前后对比 + stub calls.log 非空证明 stub 真被调）；③排障先 env | grep -i hermes；④污染清除走官方 CLI 三步 block → archive → archive --rm（无单步硬删；ready 态直接 archive 会被拒）。
+<!-- tags: testing, sandbox, path-stub, hermes-bin, env-redirect, contrib-board, pollution, kanban, e2e -->
+
+## [2026-09-12] shell `IFS=$'\t' read` 连续 tab 折叠吞空字段：jq @tsv 多列解析必须手动参数展开切分
+`while IFS=$'\t' read -r a b c` 对 `\t\t` 连续分隔符按 IFS 空白折叠——中间空字段被吞、后列前移（jq @tsv 输出 `key\t\tname` 解析成 a=key b=name c=空）。字段可空的 TSV 一律改 `IFS= read -r line` + 手动切分（`${line%%$'\t'*}` / `${rest#*$'\t'}` 保空值）；红队黑盒用「name-only 条目」夹具即可抓此缺陷（全字段非空的多用例对它恒绿）。
+<!-- tags: bash, zsh, ifs, tsv, empty-field, word-splitting, testing, red-team -->
+
+## [2026-09-12] GitHub PR updatedAt 是全体协作者动作的并集：当事方活跃/停摆判定必须锚定其自身最后动作
+外部系统提供的「最后更新时间」类字段是所有协作者动作（含第三方评论、机器人、元数据变更）的并集，不能作为特定当事方「停摆多久」的判据——第三方一句话就能把「停摆数月」顶成「刚刚更新」。正确锚 = 当事方自身动作时间的最大值（PR 作者：commits 的 committedDate ∪ 本人评论的 createdAt，排除他人）；updatedAt 只可留日志。判停摆类自动化（TTL 豁免、stale 判定、超时接管）落地前用双向 fixture 锁口径：第三方新评论 + 当事方久无动作 → 仍按当事方锚；当事方自身有新动作 → 锚被刷新。实测事故：占用 PR 停摆锚误用 updatedAt，被我方自己投递的 evidence review 评论顶新 → 豁免条件结构性永不可达（验收用例永远跑不进放行分支）。
+<!-- tags: github, gh-cli, updatedAt, staleness, ttl, anchor, contrib-watch, predicate -->
+
+## [2026-09-12] 同一判定逻辑多落点（孪生门）一致性靠机械手段：注释互指 + 双侧同契约测试 + 字节级守卫
+同一业务判定在两条执行路径各需一份时（如 execute 路与 notify 路各一份门槛函数），三防线：①两处函数头注释互指（改一处必查另一处，评审可见）；②验收测试对两路**同契约双侧锁死**（同一 fixture 语义在两条路径各断言一遍，不依赖单侧用例传递）；③长期解=自动化一致性守卫（提取两处函数体 diff 断言，挂静态门）。只做①时同步演进靠人肉 review 兜底，孪生漂移是时间问题——本轮 QA 独立审查的 Important 遗留正是③缺失。判死文案类冻结字面量额外要求：改前先从基线 commit 逐字节比对，确认「文案不变」本身就是验收点。
+<!-- tags: approval, twin-gate, duplication, consistency, drift, gate, contrib-watch, testing -->

@@ -50,6 +50,7 @@
 - [2026-09-08] 契约字面量要锚定工具源码：速记进契约 → 红队锁死速记 → 实现被逼教错语法 | tags: contract, autopilot, tool-syntax, red-team, hermes | → patterns.md
 - [2026-09-07] bash 产线统一入库验收门选型：三关聚合薄壳 + regex 单源 + pre-commit 路径守卫 | tags: testing, gate, bash, pipeline, contrib-watch | → decisions.md
 - [2026-09-08] hermes 复杂编码委派 coder profile 选型：真 profile 内转调 + 单条 claude -p 长进程 | tags: hermes, kanban, profile, claude-code, autopilot, delegation, headless | → decisions.md
+- [2026-09-11] zcode 插件手动四件套脚本化 sync-autopilot-to-zcode.sh（registry upsert 保留字段/installedAt 仅版本变化刷/旧版本实体并存） | tags: zcode, plugin, sync-script, registry-upsert, idempotency | → decisions.md
 
 - [2026-09-08] kanban CLI 建卡零订阅→终态不推微信（notify-subscribe 补订三解） | tags: hermes, kanban, subscribe, weixin, hkstock | → patterns.md
 - [2026-09-08] 遥测弱断言 vacuous PASS：推送正证据=订阅存在∧终态窗口 send ok 双闸 | tags: qa, vacuous-assertion, telemetry, hkstock | → patterns.md
@@ -61,7 +62,16 @@
 - [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言（compgen zsh 静默恒假） | tags: bash, zsh, shebang, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing | → patterns.md
 - [2026-09-09] 账本写入方多形态 × 单格式 grep 幂等检查 = 同 key 重复入账 | tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch | → patterns.md
 - [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名） | tags: testing, black-box, date, stub, sandbox, contrib-watch | → patterns.md
-- [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md
+- [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 + 分桶断言变体 | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md (evidence updated 2026-09-12)
+- [2026-09-12] GitHub PR updatedAt 是全体协作者动作的并集：当事方停摆判定必须锚定其自身最后动作 | tags: github, gh-cli, updatedAt, staleness, ttl, anchor, contrib-watch | → patterns.md
+- [2026-09-12] 同一判定逻辑多落点（孪生门）一致性靠机械手段：注释互指 + 双侧同契约测试 + 字节级守卫 | tags: approval, twin-gate, duplication, consistency, drift, contrib-watch | → patterns.md
 - [2026-09-10] fixture 数据形态漂移诱发假红：错误根因三处固化（注释+补丁+台账）需全量勘误 | tags: testing, fixture, data-shape, mirror-production, erratum, contrib-watch | → patterns.md
 - [2026-09-10] 种子 config 隐式依赖三处齐红 + detect 维度不计总分但影响 exit code | tags: testing, shared-fixture, implicit-dependency, exit-code, contrib-watch | → patterns.md
 - [2026-09-10] autopilot 分级字段补判后必须重设 gate（AC-FIELD block 清空 gate 陷阱） | tags: autopilot, stop-hook, gate, state-machine | → patterns.md
+- [2026-09-11] kanban.db 只读唯一形态 python3 mode=ro URI（sqlite3 -readonly error 14）+ completed_at 是 epoch 整数 | tags: sqlite, kanban, readonly, python3, epoch, contrib | → patterns.md
+- [2026-09-11] 本地修复→上游回馈机械边：回扫闸门幂等三件套（事件 key 预查+建卡幂等键+游标双成功才推进） | tags: contrib, upstream, idempotency, cursor, gate, fail-closed | → patterns.md
+- [2026-09-11] patch-id 判重机械边四坑：fork refs 千级流式早退缓存/空 diff 空 patch-id/删 tree 非删 commit/ref 头即判重集 | tags: git, patch-id, dedup, contrib, upstream, performance, testing | → patterns.md
+- [2026-09-11] HERMES_KANBAN_DB 优先级压过 --board：kanban 写调用一律 env -u 剥离（env 劫持同族第二例） | tags: hermes, kanban, env, board-pin, cross-context, contrib-watch | → patterns.md
+- [2026-09-11] 上游回馈闸门已投递判重选型：纯本地 git refs 头 patch-id（snapshot 扩展评估不走） | tags: contrib, upstream, patch-id, dedup, decision, gate | → decisions.md
+- [2026-09-12] 沙盒 e2e 三重击穿链：PATH-stub 被 PATH 重排击穿→env -u 送真 CLI 上真板→HERMES_* 读面重定向掩盖污染 | tags: testing, sandbox, path-stub, hermes-bin, env-redirect, contrib-board, pollution | → patterns.md
+- [2026-09-12] shell IFS=$'\t' read 连续 tab 折叠吞空字段：jq @tsv 多列解析必须手动参数展开切分 | tags: bash, zsh, ifs, tsv, empty-field, red-team | → patterns.md
