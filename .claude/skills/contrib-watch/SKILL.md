@@ -1,7 +1,7 @@
 ---
 name: contrib-watch
-description: hermes 上游机会流水线——增量扫描新 issue 后智能研判（评分→五分类决策）、停滞 PR 雷达（salvage 供给）、本地自动 PR 构建（产出分支+PR 草稿，绝不 push/绝不建 PR）、就绪队列快车道（验证付清项→微信 L2-A 审批环）、GitHub 通知邮件研判（三通道分流）、叙事告警摘要卡（digest：三段式人话+send-digest 唯一外发）。六种模式：scan（研判 pending 命中+入队）、radar（每日雷达+自有资产+premise 复验+至多 1 个自动构建）、build <issue#>（本地 PR 构建流水线）、deep-check <rq-id>（三轮审自动化：strategist preflight+fresh-context 红队）、mail（邮件三通道：auto 流水线动作/important 微信卡/routine 简报）、digest 摘要卡（叙事告警三段式摘要+发送）。
-argument-hint: [scan | radar | build <issue#> | deep-check <rq-id> --phase preflight|redteam | mail] [附加说明]
+description: hermes 上游机会流水线——增量扫描新 issue 后智能研判（评分→五分类决策）、停滞 PR 雷达（salvage 供给）、本地自动 PR 构建（产出分支+PR 草稿，绝不 push/绝不建 PR）、就绪队列快车道（验证付清项→微信 L2-A 审批环）、GitHub 通知邮件研判（三通道分流）、叙事告警摘要卡（digest：三段式人话+send-digest 唯一外发）。七种模式：scan（研判 pending 命中+入队）、radar（每日雷达+自有资产+premise 复验+至多 1 个自动构建）、build <issue#>（本地 PR 构建流水线）、deep-check <rq-id>（三轮审自动化：strategist preflight+fresh-context 红队）、mail（邮件三通道：auto 流水线动作/important 微信卡/routine 简报）、digest 摘要卡（叙事告警三段式摘要+发送）、duty 值班卡（六源伤情巡检+白名单处置+台账留痕）。
+argument-hint: [scan | radar | build <issue#> | deep-check <rq-id> --phase preflight|redteam | mail | duty] [附加说明]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Agent
 ---
 
@@ -235,6 +235,20 @@ contrib 域告警推送的 AI 整理层卡化形态：notify.sh flush 遇叙事�
 - -q 模式禁脚本形态（`python -c` / `jq -e` / 任何 `* -e`）
 - 限额拒发（`FAIL limit`）是**正常失败收尾**，不是异常——summary 写明原因即可，编排层（flush flight 检查）对失败终态自动走 fallback 兜底
 - attempts 计数由 flush fallback 路管理，worker 不碰事件账本（send-digest 只按批次 keys 标 pushed）
+
+---
+
+## 模式七：duty（贡献域值班卡：六源伤情巡检+白名单处置，由 run-watch 尾部值班段建卡，2026-09-13 起）
+
+值班环 = 同时刻至多一张「contrib 值班卡」在飞（编排层 `scripts/contrib/duty_card.sh` create 建卡，flight 登记 `kanban-flight-duty.json`，节流戳 `.duty-last-create` 缺省每 2h 一轮）；卡 body 内嵌 state_brief 全文（六源伤情巡检，第 1-6 节各带「伤情判定」行：正常/注意/告警/degraded）与本模式契约原文，worker 按卡 body 执行，本节是同一契约的权威文本。
+
+1. **领卡与伤情判定**：kanban_show 读卡 body → 逐节读内嵌 state brief → 按判定行动：**正常 = 不动手但记台账**；**注意 = 记录观察**；**告警 = 按白名单处理或升级事件**；**degraded = 记台账并在 summary 报告缺源**。
+2. **白名单（可动手，仅此三项，各自治边界钉死）**：①清 `kanban-flight-*.json` 陈旧登记（仅登记卡已终态 done/archived/cancelled 或查无时才清）；②`rq.sh set <id> expired`（仅实查确认 premise 死亡、且该项仍处深检自有态 queued/deep-check——L2 链态 awaiting-approval/approved 归审批链，不可直达 expired）；③`rq.sh budget refund <id> --lane <deep|probe>`（仅 budget 账本确有该 id 的 reserve 记录才退——refund 每调必减 used，双调=预算超发）。
+3. **archive 只声明不执行（白名单二分裁决：为何归档不是我动手）**：归档资格判定成立时，台账追加 `| <时间> | archive-request | <目标卡 id> | pending | 判据：<…> | decisionReason：<…> |` 即止，由编排层 `duty_card.sh apply`（run-watch 值班段 / launchd 一次性作业，非 worker 进程上下文）复核后代行归档。理由 = worker 进程被框架 fence（子进程继承 `HERMES_DELEGATED_CHILD_CONTEXT=1`，kanban 写动词 archive/create/complete 与 kanban_db 写事务一律 fail-closed，锚 hermes_cli/kanban.py:214-241）——**禁绕过：禁 unset 该闸、禁直连 SQLite 写板、禁任何写板旁路**。apply 侧复核五条：目标卡在 contrib board 存在 / `.task.status` ∈ {blocked, gave_up} / 非 running / 卡龄 >24h / 卡所提 rq 无 awaiting-approval 与 approved 态项。
+4. **红线（禁止）**：任何 push / gh 写 / 微信外发 / 改 approved.log / 触碰 awaiting-approval 与 approved 态项（含其 rq 与关联卡，如 rq-20260912-812574 与 t_f8c0d470）/ 删除任何 rq 项 / 归档 running 或龄 ≤24h 的卡 / 改既有脚本。
+5. **台账强制产出**：`contrib-data/duty-ledger.md` 每动作一行（六列管道分隔 `| 时间 | 动作 | 对象 | 状态 | 判据：… | decisionReason：… |`；动作闭集 flight-clean / rq-expired / budget-refund / archive-request / archive），**不动手的判定也要记一行**；文件不存在则首建并写表头与行格式说明。
+6. **白名单外发现 → 升级**：`bash scripts/contrib/notify.sh event pipeline-failure --key <日期>-duty-<短标识> --summary <30 字内>`（受每日 3 条硬闸，宁进简报不进微信）+ 写台账 + 写进 summary。
+7. **收尾**：kanban_complete 必须同时传 summary 与 result；summary 三段式（发生了什么/为何重要/建议动作），自包含（用户只看得到它）。
 
 ---
 
