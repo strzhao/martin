@@ -4,7 +4,7 @@
 # 覆盖谓词：1.P1 1.P2 1.P3 / 2.P1 2.P2 2.P3 / 3.P1 3.P2 / 4.P1 4.P2 /
 #           5.P1 5.P2 / 6.P1 6.P2 / 7.P1 7.P2 / 10.P1 10.P2 10.P3
 # SSOT：.autopilot/runtime/requirements/20260907-需要，实现这里的验收/state.md `## 验收场景`；
-#       +20260912 根集真源化卡：.autopilot/runtime/sessions/t_1d48fa2f/requirements/20260912-【目标：修掉-martin-仓/context.md
+#       +20260912 覆盖集根集真源化卡（kanban t_1d48fa2f）：根集改由 gate.sh 默认态 ROOTS 行派生，
 # 纪律：黑盒视角——只经 `bash scripts/contrib/tests/gate.sh`（含 --target）观察 exit/stdout；
 #       缺陷样本一律注入 mktemp 临时树（绝不写仓内 scripts/ 真实树，不断言真实文件含缺陷）；
 #       覆盖集根集真源 = gate.sh 默认态 ROOTS 行派生；两路计数一致语义，绝对值退场；
