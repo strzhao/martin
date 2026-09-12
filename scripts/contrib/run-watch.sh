@@ -672,4 +672,29 @@ if [[ -x "$MARTIN/scripts/contrib/deep_check_gate.sh" ]]; then
   fi
 fi
 
+# --- 5. 值班环（duty，2026-09-13）：节流缺省每 2h 一轮（DUTY_INTERVAL_SECS，值班卡同时刻
+#     至多一张在飞）；段内 fail-soft 不拖死主链（rc 只记日志，不改本脚本退出码与既有段行为）；
+#     apply 为编排层代行特权动作（worker 进程被框架 fence，kanban 写 fail-closed——归档由
+#     本段代行，BRIEFING §2 白名单二分）。---
+DUTY_CARD="$MARTIN/scripts/contrib/duty_card.sh"
+if [[ -x "$DUTY_CARD" ]]; then
+  duty_harvest_rc=0
+  bash "$DUTY_CARD" harvest >>"$LOG" 2>&1 || duty_harvest_rc=$?   # duty_card.sh harvest
+  echo "[$(ts)] duty 值班环 harvest exit=$duty_harvest_rc" >>"$LOG"
+  # create 前置守卫：contrib 板库不存在（沙箱单测等无板环境）→ 只记日志跳过建卡——
+  # 无板环境惰性面，非生产行为分支（生产 launchd 板库存在 → 照常每 2h 节流建卡）；
+  # 守卫只加在本段，duty_card.sh 本体不带（直调语义不变）。harvest/apply 无条件调用
+  # （无 flight-duty 登记时零副作用）。
+  if [[ -f "$HOME/.hermes/kanban/boards/contrib/kanban.db" ]]; then
+    duty_create_rc=0
+    bash "$DUTY_CARD" create >>"$LOG" 2>&1 || duty_create_rc=$?     # duty_card.sh create
+    echo "[$(ts)] duty 值班环 create exit=$duty_create_rc" >>"$LOG"
+  else
+    echo "[$(ts)] duty 值班环 create 跳过（contrib 板库不存在，无板环境惰性面）" >>"$LOG"
+  fi
+  duty_apply_rc=0
+  bash "$DUTY_CARD" apply >>"$LOG" 2>&1 || duty_apply_rc=$?       # duty_card.sh apply
+  echo "[$(ts)] duty 值班环 apply exit=$duty_apply_rc" >>"$LOG"
+fi
+
 echo "[$(ts)] ===== run-watch done =====" >>"$LOG"
