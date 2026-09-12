@@ -17,7 +17,10 @@
 #              恰达 2 发 pipeline-failure --key <日期>-ownpr-watch-down，成功即清零）
 #            2=用法错误
 #
-# 数据: 快照 $CONTRIB/own-pr-watch-snapshot.json（本脚本唯一写者，原子写 tmp+mv）；
+# 数据: 快照 $CONTRIB/own-pr-watch-snapshot.json（本脚本唯一写者，原子写 tmp+mv；条目形态 =
+#       updatedAt/mergeable/reviewDecision/comments/external_comments + headRefOid/headRefName
+#       ——D4 加性两字段：同一 gh pr list 调用附带（gh 成本零增量），供 coder_upstream_gate
+#       own-PR 判重面消费）；
 #       永不触碰 assets-snapshot.json（radar LLM 快照）。自有日志 $CONTRIB/logs/own-pr-watch.log。
 #       events.jsonl 唯一入账出口 = notify.sh event（其自身同 key 幂等兜底）。
 # seam: GH_BIN / CONTRIB_DATA_DIR / MARTIN_DIR / OWN_PR_GH_USER（缺省 strzhao）
@@ -112,7 +115,8 @@ high_used() {
   fi
 }
 
-# stage-1 行 → 快照条目（external_comments = 作者≠strzhao 的评论数）
+# stage-1 行 → 快照条目（external_comments = 作者≠strzhao 的评论数；headRefOid/headRefName
+# 为 D4 加性映射——stage-1 字段列表已附带，缺省空串，旧快照/旧夹具零破坏）
 prs_from_raw() { # <raw_array_json>
   jq -c --arg u "$GH_USER" '
     [.[] | {key: (.number | tostring),
@@ -120,7 +124,9 @@ prs_from_raw() { # <raw_array_json>
                   mergeable: (.mergeable // "UNKNOWN"),
                   reviewDecision: (.reviewDecision // ""),
                   comments: ((.comments // []) | length),
-                  external_comments: ([.comments[]? | select(((.author // {}).login // "") != $u)] | length)}}]
+                  external_comments: ([.comments[]? | select(((.author // {}).login // "") != $u)] | length),
+                  headRefOid: (.headRefOid // ""),
+                  headRefName: (.headRefName // "")}}]
     | from_entries' <<<"$1"
 }
 
@@ -132,7 +138,7 @@ write_snapshot() { # <prs_obj_json> — 原子写（tmp+mv）
 
 # ---------- stage-1：廉价查询（失败 → 断路中止） ----------
 raw="$(GH_REPO="$GH_REPO" "$GH_BIN" pr list --author "$GH_USER" --state open \
-  --json number,updatedAt,mergeable,reviewDecision,comments 2>>"$LOG")" || gh_fail
+  --json number,updatedAt,mergeable,reviewDecision,comments,headRefOid,headRefName 2>>"$LOG")" || gh_fail
 if ! jq -e 'type == "array"' <<<"$raw" >/dev/null 2>&1; then
   log "stage-1 输出非 JSON 数组，按 gh 失败处理"
   gh_fail
@@ -276,10 +282,12 @@ while IFS='|' read -r num upd mergeable reviewdec cmtn extn; do
         ;;
     esac
   fi
-  # 快照条目吸收本轮实测值（高级停发也吸收，防永久重检）
+  # 快照条目吸收本轮实测值（高级停发也吸收，防永久重检）；D4：与既有条目做对象合并
+  # （*. 右侧五字段覆盖、headRefOid/headRefName 等加性字段保续），保证快照条目下轮
+  # 自然再生新形态——绝不整条替换（否则加性字段每轮被冲掉，闸门判重面永久 fail-open）
   NEW_PRS="$(jq -c --arg k "$num" --arg upd "$upd" --arg m "$mergeable" --arg r "$reviewdec" \
     --argjson c "$cmtn" --argjson e "$extn" \
-    '. + {($k): {updatedAt: $upd, mergeable: $m, reviewDecision: $r, comments: $c, external_comments: $e}}' \
+    '. + {($k): ((.[$k] // {}) * {updatedAt: $upd, mergeable: $m, reviewDecision: $r, comments: $c, external_comments: $e})}' \
     <<<"$NEW_PRS")"
 done < <(jq -r --arg u "$GH_USER" '
   .[] | ([.number, (.updatedAt // ""), (.mergeable // "UNKNOWN"), (.reviewDecision // ""),

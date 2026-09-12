@@ -2,7 +2,7 @@
 # kanban_card.sh — contrib 域建卡薄封装（T1 契约钉死，T3/T4/T5 复用地基；T6 加 board seam）
 #
 # 用法:
-#   kanban_card.sh create --kind <scan|mail|radar|deepcheck|digest>
+#   kanban_card.sh create --kind <scan|mail|radar|deepcheck|digest|upstream>
 #                 --title <t> --body-file <path> [--priority N] [--json-out <path>]
 #                 [--idempotency-key <k>] [--board <slug>]
 #   kanban_card.sh healthcheck
@@ -162,8 +162,8 @@ create_card() {
   done
   [[ -n "$kind" && -n "$title" && -n "$body_file" ]] || usage
   case "$kind" in
-    scan|mail|radar|deepcheck|digest) : ;;
-    *) fail "非法 --kind: ${kind}（闭集 scan|mail|radar|deepcheck|digest）" ;;
+    scan|mail|radar|deepcheck|digest|upstream) : ;;
+    *) fail "非法 --kind: ${kind}（闭集 scan|mail|radar|deepcheck|digest|upstream）" ;;
   esac
   [[ -f "$body_file" ]] || fail "body 文件不存在: $body_file"
   if [[ -n "$priority" ]] && ! printf '%s' "$priority" | grep -qE '^[0-9]+$'; then

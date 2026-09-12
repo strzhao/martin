@@ -21,7 +21,9 @@
 #                              STUB_KANBAN_STATUS_MAP（按 id）→ STUB_KANBAN_CARD_STATUS（全局）控制
 #   另：每次调用向 $LOG_DIR/anthropic-env.log 追加一行子进程 env 中三个 ANTHROPIC_*
 #   变量存在性（hermes|base_url=…|auth_token=…|api_key=…，支撑 env -u 剥离断言）；
-#   --body 参数值复制到 bodies/hermes-<n>.txt（卡 body 内容断言用）
+#   每次调用向 $LOG_DIR/kanban-db-env.log 追加一行 HERMES_KANBAN_DB 存在性
+#   （hermes|present|absent，D2 board pin 剥离断言面）；--body 参数值复制到
+#   bodies/hermes-<n>.txt（卡 body 内容断言用）
 set -u
 NAME="hermes"
 LOG_DIR="${STUB_LOG_DIR:-}"
@@ -64,6 +66,12 @@ printf 'hermes|base_url=%s|auth_token=%s|api_key=%s\n' "$a_base" "$a_auth" "$a_k
 h_home="absent"; [[ -n "${HERMES_HOME:-}" ]] && h_home="present"
 h_prof="absent"; [[ -n "${HERMES_PROFILE:-}" ]] && h_prof="present"
 printf 'hermes_home=%s hermes_profile=%s\n' "$h_home" "$h_prof" >>"$LOG_DIR/hermes-env.log"
+
+# HERMES_KANBAN_DB 存在性记录（子进程 env 视角；D2 board pin：coder_upstream_gate 以
+# env -u HERMES_KANBAN_DB 发起建卡，剥离后应 absent；对照直调 kanban_card.sh 携注入应
+# present——append-only 一行/调用，既有测试零感知）
+k_kdb="absent"; [[ -n "${HERMES_KANBAN_DB:-}" ]] && k_kdb="present"
+printf 'hermes|%s\n' "$k_kdb" >>"$LOG_DIR/kanban-db-env.log"
 
 # T2：delay 旋钮（挂死后仍走下方 fail/成功分支，可组合）
 if [[ -n "${STUB_HERMES_DELAY:-}" ]]; then
