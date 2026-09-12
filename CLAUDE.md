@@ -73,7 +73,7 @@
 
 **commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
 
-**AI Native 架构改造（2026-09-13 立项）**：contrib-watch「影子工作流引擎」收敛——三层架构（L1 硬底座/L2 看板即控制面/L3 值班 agent 环）、11 优化点×3 波拆卡规格与验收标准。何时读：参与 contrib-watch 架构改造、派发/执行 B 系（hermes 框架三特性：per-kind 并发上限/create 校验/死信车道）或 C 系（值班环）卡前 → 看 [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)。
+**AI Native 架构改造（2026-09-13 立项，W1 当夜落地）**：contrib-watch「影子工作流引擎」收敛——三层架构（L1 硬底座/L2 看板即控制面/L3 值班 agent 环）。**已生效**：①值班环（`scripts/contrib/duty_card.sh` + contrib-watch SKILL 模式七 duty + run-watch 尾部 2h 节流段 + `contrib-data/duty-ledger.md`）——值班卡按 state_brief（`scripts/contrib/state_brief.sh`，零 LLM 六源伤情聚合）白名单内自愈（archive 超龄卡/清陈旧 flight/rq expired/refund），禁触 L2 态项，动作带 decisionReason；②hermes 框架件（本地分支待合并/offer：`feat/kanban-create-validate` 建卡 skill 硬校验、`feat/kanban-dead-letter` 死信车道）；③martin 侧 deepcheck blocked 失速收割（88a8b54）+ 幽灵 slug 幂等回收（2926c72）。何时读：值班环改造/扩展 L1 白名单、研判 duty-ledger 异常、推进 D1/D2/E1 收敛、或把 B 系分支 offer 上游前 → 看 [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)。
 
 ### 快车道与 L2-A 微信审批环（09-04 上线）
 
