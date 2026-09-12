@@ -121,6 +121,8 @@ ensure_state() {
 }
 
 log() { echo "[$(date '+%F %T')] notify: $*" >> "$CONTRIB/logs/notify.log"; }
+# 孪生闸门（occ_all_stalled）的 gh stderr 落点，与 execute.sh 的 $LOG 同角色（卡 t_b8ef4f58）
+LOG="$CONTRIB/logs/notify.log"
 
 acquire_lock() {
   local i=0
@@ -944,7 +946,7 @@ _build_approval_page() {
       "",
       # 升级路专属（09-06 默认自动/例外升级）：AI 定不了的点置顶——用户只需裁决这几条
       ((if (($it.escalate_reasons // []) | length) > 0
-        then (["## 🤔 我需要什么才能决策（09-11 起：缺判断依据才升级，用户给依据/原则，不是替 AI 选）", ""],
+        then (["## 🤔 我需要什么才能决策（09-11 起：缺判断依据才升级，用户给依据/原则，不是替 AI 选）", ""]
               + [$it.escalate_reasons[] | "- " + .] + [""])
         else [] end)[]),
       (if $it.disposition == "release-gate" then "## 这次发版要提审什么" else "## 这条评论说了什么" end),
@@ -998,6 +1000,64 @@ _legacy_deploy() {
   else
     log "approve ${id}: tunnel 部署失败（卡片将以全文路径代替）"
   fi
+  return 0
+}
+
+# ── stalled-occupier 豁免（卡 t_b8ef4f58，2026-09-12）────────────────────────────
+# 与 scripts/approval/execute.sh 的 occ_all_stalled 同源（孪生实现），必须同步演进：改一处必改另一处。
+# 语义：占用 PR 全部停摆 >21 天 → rc=0 豁免放行；任一活跃（≤21 天）→ rc=1 走原判死文案；
+#       gh 取证失败/形状异常/无锚可算 → rc=2 fail-closed（TTL_FAIL_REASON 落可诊断原因，维持拦截）。
+# ⚠️ 锚口径设计偏差（卡 body 定稿 updatedAt 实证不可用，全文见 worktree state.md 设计方案节）：
+#   #84087 的 updatedAt=2026-09-10 是我方 evidence review 评论顶起来的，按 updatedAt 判停摆恒
+#   「活跃」、豁免永不触发。故锚 =「占坑者自身最后动作」= max(commits[].committedDate ∪
+#   本人评论 createdAt)；第三方评论只顶 updatedAt（仅日志留痕），不作锚。
+# 零 LLM / 零新依赖 / gh 只读（每占用 PR 一次 pr view）；日期解析 macOS BSD date -j -f（仓内惯例）。
+occ_all_stalled() { # <repo> <foreign_pr_csv> → rc 0=全部停摆放行 | 1=活跃占坑 | 2=fail-closed
+  local repo="$1" csv="$2" p view_out rc_v calc anchor_iso up_iso anchor_ep days
+  local now cutoff old_ifs
+  now="$(date +%s)"
+  cutoff=$(( 21 * 86400 ))
+  old_ifs="$IFS"
+  IFS=","
+  for p in $csv; do
+    view_out="$(GH_REPO="$repo" "$GH_BIN" pr view "$p" --json commits,author,comments,updatedAt 2>>"$LOG")" \
+      && rc_v=0 || rc_v=$?
+    if (( rc_v != 0 )) || [[ -z "${view_out//[[:space:]]/}" ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 取证失败（rc=${rc_v}），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    calc="$(jq -r '(.author.login // "") as $a |
+      {anchor: (([.commits[]?.committedDate]
+        + [.comments[]? | select((.author.login // "") == $a) | .createdAt | select(. != null)]) | max // ""),
+        updatedAt: (.updatedAt // "")}' <<<"$view_out" 2>>"$LOG")"
+    if [[ -z "$calc" ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 响应形状异常（jq 解析失败），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    anchor_iso="$(jq -r '.anchor // ""' <<<"$calc")"
+    up_iso="$(jq -r '.updatedAt // ""' <<<"$calc")"
+    if [[ -z "$anchor_iso" ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 既无 commit 也无作者评论（停摆锚不可算），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    anchor_ep="$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$anchor_iso" "+%s" 2>/dev/null)" || true
+    if [[ ! "${anchor_ep:-}" =~ ^[0-9]+$ ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 停摆锚日期不可解析（anchor=${anchor_iso}），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    if (( now - anchor_ep > cutoff )); then
+      days=$(( (now - anchor_ep) / 86400 ))
+      log "stalled-occupier 豁免：#${p} 停摆 ${days} 天（anchor=${anchor_iso}，updatedAt=${up_iso}）"
+    else
+      IFS="$old_ifs"
+      return 1
+    fi
+  done
+  IFS="$old_ifs"
   return 0
 }
 
@@ -1060,11 +1120,26 @@ cmd_approve() {
         | jq -r --arg own "$own_pr" '[.[]?.number | tostring | select(. != $own)] | join(",")' 2>/dev/null || true)"
       fi
       if [[ -n "$prs" && "$prs" != "null" ]]; then
-        log "approve $id: premise 死亡（issue #$iss 已被 PR $prs 占坑）——置 rejected，不发卡"
-        "$RQ" set "$id" rejected --note "premise 死亡：已被 PR $prs 占坑（发卡前 TTL 轻复验拦截）" >/dev/null 2>&1 || true
-        "$SELF_BIN" event premise-dead --key "premise-dead-$id" \
-          --summary "审批项 $id 的 issue #$iss 已被 PR $prs 占坑，发卡前拦截未推送" >/dev/null 2>&1 || true
-        continue
+        # 停摆豁免（卡 t_b8ef4f58）：与 execute.sh ttl_verify 第 2 项同源同步演进。
+        # 全部停摆 → 豁免继续发卡；任一活跃 → 走原判死文案（一字不改）；
+        # rc=2 取证失败 → fail-closed 拦截（不发卡；note/event 注明 fail-closed，不误报 premise 死亡）。
+        local occ_rc=0
+        occ_all_stalled "$(cfg '.repo' 'NousResearch/hermes-agent')" "$prs" || occ_rc=$?
+        if (( occ_rc == 0 )); then
+          log "approve $id: 占用 PR 全部停摆超限，stalled-occupier 豁免，继续发卡"
+        elif (( occ_rc == 2 )); then
+          log "approve $id: ${TTL_FAIL_REASON}——置 rejected，不发卡"
+          "$RQ" set "$id" rejected --note "占坑判定 fail-closed：${TTL_FAIL_REASON}（发卡前 TTL 轻复验拦截）" >/dev/null 2>&1 || true
+          "$SELF_BIN" event premise-dead --key "premise-dead-$id" \
+            --summary "审批项 $id 发卡前占坑取证失败 fail-closed，未推送" >/dev/null 2>&1 || true
+          continue
+        else
+          log "approve $id: premise 死亡（issue #$iss 已被 PR $prs 占坑）——置 rejected，不发卡"
+          "$RQ" set "$id" rejected --note "premise 死亡：已被 PR $prs 占坑（发卡前 TTL 轻复验拦截）" >/dev/null 2>&1 || true
+          "$SELF_BIN" event premise-dead --key "premise-dead-$id" \
+            --summary "审批项 $id 的 issue #$iss 已被 PR $prs 占坑，发卡前拦截未推送" >/dev/null 2>&1 || true
+          continue
+        fi
       fi
     fi
     # 已成功推过则不重复

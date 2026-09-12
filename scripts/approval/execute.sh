@@ -111,10 +111,69 @@ strip_leading_comments() {
   ' "$1"
 }
 
+# ── stalled-occupier 豁免（卡 t_b8ef4f58，2026-09-12）────────────────────────────
+# 与 scripts/contrib/notify.sh 的 occ_all_stalled 同源（孪生实现），必须同步演进：改一处必改另一处。
+# 语义：占用 PR 全部停摆 >21 天 → rc=0 豁免放行；任一活跃（≤21 天）→ rc=1 走原判死文案；
+#       gh 取证失败/形状异常/无锚可算 → rc=2 fail-closed（TTL_FAIL_REASON 落可诊断原因，维持拦截）。
+# ⚠️ 锚口径设计偏差（卡 body 定稿 updatedAt 实证不可用，全文见 worktree state.md 设计方案节）：
+#   #84087 的 updatedAt=2026-09-10 是我方 evidence review 评论顶起来的，按 updatedAt 判停摆恒
+#   「活跃」、豁免永不触发。故锚 =「占坑者自身最后动作」= max(commits[].committedDate ∪
+#   本人评论 createdAt)；第三方评论只顶 updatedAt（仅日志留痕），不作锚。
+# 零 LLM / 零新依赖 / gh 只读（每占用 PR 一次 pr view）；日期解析 macOS BSD date -j -f（仓内惯例）。
+occ_all_stalled() { # <repo> <foreign_pr_csv> → rc 0=全部停摆放行 | 1=活跃占坑 | 2=fail-closed
+  local repo="$1" csv="$2" p view_out rc_v calc anchor_iso up_iso anchor_ep days
+  local now cutoff old_ifs
+  now="$(date +%s)"
+  cutoff=$(( 21 * 86400 ))
+  old_ifs="$IFS"
+  IFS=","
+  for p in $csv; do
+    view_out="$(GH_REPO="$repo" "$GH_BIN" pr view "$p" --json commits,author,comments,updatedAt 2>>"$LOG")" \
+      && rc_v=0 || rc_v=$?
+    if (( rc_v != 0 )) || [[ -z "${view_out//[[:space:]]/}" ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 取证失败（rc=${rc_v}），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    calc="$(jq -r '(.author.login // "") as $a |
+      {anchor: (([.commits[]?.committedDate]
+        + [.comments[]? | select((.author.login // "") == $a) | .createdAt | select(. != null)]) | max // ""),
+        updatedAt: (.updatedAt // "")}' <<<"$view_out" 2>>"$LOG")"
+    if [[ -z "$calc" ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 响应形状异常（jq 解析失败），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    anchor_iso="$(jq -r '.anchor // ""' <<<"$calc")"
+    up_iso="$(jq -r '.updatedAt // ""' <<<"$calc")"
+    if [[ -z "$anchor_iso" ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 既无 commit 也无作者评论（停摆锚不可算），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    anchor_ep="$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$anchor_iso" "+%s" 2>/dev/null)" || true
+    if [[ ! "${anchor_ep:-}" =~ ^[0-9]+$ ]]; then
+      TTL_FAIL_REASON="gh pr view ${p} 停摆锚日期不可解析（anchor=${anchor_iso}），占坑判定 fail-closed"
+      IFS="$old_ifs"
+      return 2
+    fi
+    if (( now - anchor_ep > cutoff )); then
+      days=$(( (now - anchor_ep) / 86400 ))
+      log "stalled-occupier 豁免：#${p} 停摆 ${days} 天（anchor=${anchor_iso}，updatedAt=${up_iso}）"
+    else
+      IFS="$old_ifs"
+      return 1
+    fi
+  done
+  IFS="$old_ifs"
+  return 0
+}
+
 # TTL 复验四项（gh 只读；任一不过 → 不执行；机械筛选口径，语义级复核留给会话路）
 # 形状容错口径（09-06 红队验收）：gh 空响应/非 JSON/缺字段一律归「复验失败」并给明确原因，
 # 绝不误报成「非 OPEN」也绝不放行投递；仓库经 GH_REPO env 传递（argv 不带 repo 名，
 # 兼容 gh 官方用法，也消除调用账/下游按 argv 分派的字符碰撞面）
+# 第 2 项占坑判定带 stalled-occupier 豁免（occ_all_stalled，卡 t_b8ef4f58）：停摆 >21 天放行
 ttl_verify() {
   # 1) issue 仍 OPEN
   local gh_out="" rc_gh=0 st=""
@@ -163,8 +222,18 @@ ttl_verify() {
     done
     IFS="$old_ifs"
     if [[ -n "${foreign// /}" ]]; then
-      TTL_FAIL_REASON="issue #${ISSUE} 已有在途 PR（${foreign} ）占坑"
-      return 1
+      # 停摆豁免（卡 t_b8ef4f58）：占用 PR 全部停摆 >21 天 → 不判 premise 死亡，放行并留痕，
+      # 但只跳过占坑判死，第 3/4 项（premises 抽验/评论否决信号）照走；
+      # rc=2（gh 取证失败/锚不可算）时 TTL_FAIL_REASON 已带可诊断原因，直接 fail-closed 拦截。
+      local occ_rc=0
+      occ_all_stalled "$REPO" "${foreign// /}" || occ_rc=$?
+      if (( occ_rc == 2 )); then
+        return 1
+      elif (( occ_rc != 0 )); then
+        TTL_FAIL_REASON="issue #${ISSUE} 已有在途 PR（${foreign} ）占坑"
+        return 1
+      fi
+      log "TTL 占坑复验：issue #${ISSUE} 占用 PR 全部停摆超限，stalled-occupier 豁免放行"
     fi
   fi
   # 3) premises 抽验（机械筛选：dead / claim / evidence 空缺即失败）
