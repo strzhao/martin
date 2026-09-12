@@ -3,9 +3,11 @@
 # gate-cli-gates.acceptance.sh — 入库验收门 gate.sh CLI 黑盒验收（场景 1/2/3/4/5/6/7/10）
 # 覆盖谓词：1.P1 1.P2 1.P3 / 2.P1 2.P2 2.P3 / 3.P1 3.P2 / 4.P1 4.P2 /
 #           5.P1 5.P2 / 6.P1 6.P2 / 7.P1 7.P2 / 10.P1 10.P2 10.P3
-# SSOT：.autopilot/runtime/requirements/20260907-需要，实现这里的验收/state.md `## 验收场景`
+# SSOT：.autopilot/runtime/requirements/20260907-需要，实现这里的验收/state.md `## 验收场景`；
+#       +20260912 根集真源化卡：.autopilot/runtime/sessions/t_1d48fa2f/requirements/20260912-【目标：修掉-martin-仓/context.md
 # 纪律：黑盒视角——只经 `bash scripts/contrib/tests/gate.sh`（含 --target）观察 exit/stdout；
 #       缺陷样本一律注入 mktemp 临时树（绝不写仓内 scripts/ 真实树，不断言真实文件含缺陷）；
+#       覆盖集根集真源 = gate.sh 默认态 ROOTS 行派生；两路计数一致语义，绝对值退场；
 #       无 warn/skip 宽容，任一硬断言失败立即非零退出。
 # 契约锚点：exit 0=全绿 / 1=发现 / 2=依赖缺失；SCAN/COVERAGE/GATE/FAIL 行字面量见契约规约。
 # 产物：/tmp/autopilot-artifacts/s{1,2,3,4,5,6,7,10}.p*.out
@@ -66,14 +68,25 @@ gate_n(){ printf '%s' "$(gate_line "$1")" | sed -E 's/.*\(([0-9]+) files.*/\1/';
 gate_m(){ printf '%s' "$(gate_line "$1")" | sed -E 's/.*, ([0-9]+) findings\)/\1/'; }
 cleanup_trees(){ for d in "$@"; do [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"; done; }
 
-# 仓内事实（动态计数，不硬编码清单）
-FIND_N="$(find "$REPO_ROOT/scripts/contrib" "$REPO_ROOT/scripts/approval" -name '*.sh' -type f | wc -l | tr -d ' ')"
+# 仓内事实（根集真源唯一化：从 gate.sh 默认态 ROOTS 行提取派生，绝不手抄清单）
+GATE_ROOTS_SRC="$(grep -E '^[[:space:]]*ROOTS=\("\$REPO_ROOT/scripts/' "$GATE")"
+[ "$(grep -cE '^[[:space:]]*ROOTS=\("\$REPO_ROOT/scripts/' "$GATE")" -eq 1 ] \
+  || die "env" "覆盖集真源契约漂移：gate.sh 默认态 ROOTS 行应恰 1 行"
+GATE_ROOTS_SRC="${GATE_ROOTS_SRC/\\\$REPO_ROOT/$REPO_ROOT}"
+eval "${GATE_ROOTS_SRC/ROOTS=/GATE_ROOTS=}" || die "env" "gate.sh ROOTS 行 eval 失败"
+[ "${#GATE_ROOTS[@]}" -ge 1 ] || die "env" "gate.sh ROOTS 派生空根集"
+FIND_N="$(find "${GATE_ROOTS[@]}" -name '*.sh' -type f | wc -l | tr -d ' ')"
 ZSH_N=0
 while IFS= read -r f; do
   if head -n 1 "$f" | grep -q zsh; then ZSH_N=$((ZSH_N + 1)); fi
-done < <(find "$REPO_ROOT/scripts/contrib" "$REPO_ROOT/scripts/approval" -name '*.sh' -type f)
+done < <(find "${GATE_ROOTS[@]}" -name '*.sh' -type f)
 BASH_N=$((FIND_N - ZSH_N))
-TRACKED_N="$(git -C "$REPO_ROOT" ls-files 'scripts/contrib/*.sh' 'scripts/approval/*.sh' | wc -l | tr -d ' ')"
+TRACKED_N=0
+for _r in "${GATE_ROOTS[@]}"; do
+  _n="$(git -C "$REPO_ROOT" ls-files "${_r#"$REPO_ROOT"/}/*.sh" | wc -l | tr -d ' ')"
+  TRACKED_N=$((TRACKED_N + _n))
+done
+[ "$TRACKED_N" -ge 1 ] || die "env" "tracked 计数为 0，下界谓词失效"
 
 # =============================================================================
 # 场景 1：干净仓全绿 — 单命令门对两目录全量 shell 脚本 PASS
@@ -100,14 +113,14 @@ P="1.P3"
 art "s1.p3.out" "$S1_RC" "$S1_OUT" "$S1_ERR"
 GN="$(gate_n "$S1_OUT")"
 GM="$(gate_m "$S1_OUT")"
-ge "$GN" "$TRACKED_N" "$P 扫描文件数 >= git tracked .sh 数（tracked=${TRACKED_N}）"
-eq "$GN" "$FIND_N" "$P 扫描文件数 == find 圈定数（find=${FIND_N}；find 圈定无清单维护义务）"
+ge "$GN" "$TRACKED_N" "$P 扫描文件数 >= git tracked .sh 数（tracked=${TRACKED_N}，pathspec 从 gate ROOTS 派生）"
+eq "$GN" "$FIND_N" "$P 两路计数一致（gate 自报 == find 圈定@gate.sh ROOTS 派生）"
 eq "$GM" 0 "$P 干净仓 findings 数"
 has "$S1_OUT" "SCAN bash -n: $BASH_N files" "$P SCAN bash -n 汇总行（$BASH_N files）"
 has "$S1_OUT" "SCAN zsh -n: $ZSH_N files" "$P SCAN zsh -n 汇总行（$ZSH_N files）"
 has "$S1_OUT" "SCAN shellcheck: $BASH_N files" "$P SCAN shellcheck 汇总行（zsh 豁免后 $BASH_N files）"
 has "$S1_OUT" "SCAN 全角: $FIND_N files" "$P SCAN 全角汇总行（全量 $FIND_N files）"
-echo "PASS ${P}（files=${GN} tracked=${TRACKED_N} zsh=${ZSH_N}）"
+echo "PASS ${P}（files=${GN} tracked=${TRACKED_N} zsh=${ZSH_N} roots=${#GATE_ROOTS[@]}）"
 
 # =============================================================================
 # 场景 2：全角标点注入样本 FAIL — 门自证杀 No-op mutation（核心红线）
