@@ -944,7 +944,7 @@ _build_approval_page() {
       "",
       # 升级路专属（09-06 默认自动/例外升级）：AI 定不了的点置顶——用户只需裁决这几条
       ((if (($it.escalate_reasons // []) | length) > 0
-        then (["## 🤔 我需要什么才能决策（09-11 起：缺判断依据才升级，用户给依据/原则，不是替 AI 选）", ""],
+        then (["## 🤔 我需要什么才能决策（09-11 起：缺判断依据才升级，用户给依据/原则，不是替 AI 选）", ""]
               + [$it.escalate_reasons[] | "- " + .] + [""])
         else [] end)[]),
       (if $it.disposition == "release-gate" then "## 这次发版要提审什么" else "## 这条评论说了什么" end),
