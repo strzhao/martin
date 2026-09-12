@@ -202,6 +202,9 @@ make_item() { # <disposition> <lane> [--drill]
 正文第一段：这是 ${ID} 的机器稿正文，投递时须逐字保留。
 
 - premise 引用行：run_usage.py:111-116
+
+    goods: 无（沙箱演练稿；此行仅供 rq set-draft 的 goods 回退抓取——rq.sh set -e 下
+    grep 无命中会静默杀死 set-draft，09-12 基线修复实证，见 state.md）
 EOF
   rq set-draft "$ID" "$DRAFT" >/dev/null
   rq set "$ID" awaiting-approval >/dev/null
@@ -634,6 +637,239 @@ rq set "$ID" approved >/dev/null
 exec_in_sb "$ID"
 check_ne "D9 probe-salvage 遇占坑 PR 不执行" \
   "$(cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" TUNNEL_BIN="$SB/bin/tunnel" bash "$RQ" show "$ID" --json | jq -r .state)" "executed"
+sb_done
+
+# ================= D 组续：stalled-occupier 停摆豁免（卡 t_b8ef4f58） =================
+echo "===== D 组续：stalled-occupier 停摆豁免（execute/notify 孪生门） ====="
+
+# 可参数化占坑 gh stub：OCC_LIST_JSON（pr list 输出）/ OCC_VIEW_JSON[_<PR号>]（pr view 输出文件）
+# / OCC_VIEW_RC（pr view 失败注入）；其余行为同 bin/gh 默认 stub
+sb_new true
+cat > "$SB/bin/gh-occupier-param" <<'STUB'
+#!/bin/bash
+# 参数化占坑 stub（卡 t_b8ef4f58 停摆豁免用例）：
+#   OCC_LIST_JSON         → `pr list` 输出（缺省恒 [{"number":99999}]，外人占坑 PR）
+#   OCC_VIEW_JSON         → `pr view` 输出文件路径（缺省回 {}）
+#   OCC_VIEW_JSON_<PR号>  → 按 PR 号覆盖输出文件（多占用 PR 用例）
+#   OCC_VIEW_RC           → 非空则 `pr view` 以该 rc 失败（fail-closed 注入）
+LOG_DIR="${STUB_STATE:?STUB_STATE required}/calls"; mkdir -p "$LOG_DIR"
+printf '=== gh %s\n' "$*" >> "$LOG_DIR/gh-occ.log"
+for a in "$@"; do
+  case "$a" in body=@*) f="${a#body=@}"; [ -f "$f" ] && { printf -- '--- body-file %s ---\n' "$f"; cat "$f"; printf '\n'; } >> "$LOG_DIR/gh-occ.log" ;; esac
+done
+case "$*" in
+  *"issue view"*)
+    echo '{"state":"OPEN"}' ;;
+  *"pr list"*)
+    if [[ -n "${OCC_LIST_JSON:-}" ]]; then printf '%s\n' "$OCC_LIST_JSON"; else echo '[{"number":99999}]'; fi ;;
+  *"pr view"*)
+    if [[ -n "${OCC_VIEW_RC:-}" ]]; then
+      echo "gh-occupier-param: forced pr view failure" >&2
+      exit "${OCC_VIEW_RC}"
+    fi
+    _vf="${OCC_VIEW_JSON:-}"
+    if [[ $# -ge 3 ]]; then
+      _by_num="OCC_VIEW_JSON_${3}"
+      [[ -n "${!_by_num:-}" ]] && _vf="${!_by_num}"
+    fi
+    if [[ -n "$_vf" && -f "$_vf" ]]; then cat "$_vf"; else echo '{}'; fi
+    ;;
+  *"comments?per_page"*)
+    echo '[]' ;;
+  *"-X POST"*)
+    echo '{"html_url":"https://github.com/NousResearch/hermes-agent/issues/1#issuecomment-1"}' ;;
+  *)
+    echo '{}' ;;
+esac
+exit 0
+STUB
+chmod +x "$SB/bin/gh-occupier-param"
+
+exec_occ() { # <id> [KEY=VAL...] —— execute.sh 走参数化占坑 stub（OCC_* 经 env 参数注入）
+  local id="$1"; shift
+  ( cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" \
+      NOTIFY_LOCK="$SB/locks/notify2" TUNNEL_BIN="$SB/bin/tunnel" GH_BIN="$SB/bin/gh-occupier-param" \
+      HERMES_BIN="$SB/bin/hermes" NOTIFY_SEND_LAST="$SB/send-last.json" NOTIFY_DRY_RUN=true \
+      APPROVED_LOG="$SB/approved.log" STUB_STATE="$SB/stub" "$@" \
+      bash "$MARTIN/scripts/approval/execute.sh" "$id" approved ) >/dev/null 2>&1
+  return 0
+}
+notify_occ() { # <id> [KEY=VAL...] —— notify approve 走参数化占坑 stub（缺省非 dry 使轻复验真实执行）
+  local id="$1"; shift
+  ( cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" NOTIFY_LOCK="$SB/locks/notify" \
+      TUNNEL_BIN="$SB/bin/tunnel" HERMES_BIN="$SB/bin/hermes" NOTIFY_SEND_LAST="$SB/send-last.json" \
+      NOTIFY_DRY_RUN="${NDRY:-false}" GH_BIN="$SB/bin/gh-occupier-param" STUB_STATE="$SB/stub" "$@" \
+      bash "$NOTIFY" approve "$id" ) >/dev/null 2>&1
+  return 0
+}
+rq_state() { # <id> → 沙箱队列状态
+  ( cd "$SB" && env CONTRIB_DATA_DIR="$SB/contrib-data" RQ_LOCKDIR="$SB/locks/rq" TUNNEL_BIN="$SB/bin/tunnel" \
+      bash "$RQ" show "$1" --json | jq -r .state )
+}
+occ_view_json() { # <file> <commit_iso> <updated_iso> [作者login] [作者评论iso] [三方login] [三方评论iso]
+  local f="$1" c="$2" u="$3" login="${4:-occupier-nanami}" oc="${5:-}" p3="${6:-}" c3="${7:-}"
+  jq -n --arg c "$c" --arg u "$u" --arg login "$login" --arg oc "$oc" --arg p3 "$p3" --arg c3 "$c3" '
+    {author: {login: $login}, updatedAt: $u,
+     commits: (if $c == "" then [] else [{committedDate: $c}] end),
+     comments: ([if $oc == "" then empty else {author: {login: $login}, createdAt: $oc} end]
+      + [if $p3 == "" then empty else {author: {login: $p3}, createdAt: $c3} end])}' > "$f"
+}
+EXEC_LOG="$SB/contrib-data/logs/approval-execute.log"
+NOTIFY_LOG="$SB/contrib-data/logs/notify.log"
+occ_reset_logs() { # 用例间隔离：stub 调用账与域日志清零（防跨用例累积假阳/假阴）
+  [[ -d "$(dirname "$EXEC_LOG")" ]] && : > "$EXEC_LOG"
+  [[ -d "$(dirname "$NOTIFY_LOG")" ]] && : > "$NOTIFY_LOG"
+  local _f
+  for _f in gh-occ.log hermes.log tunnel.log tunnel-rm.log; do
+    [[ -f "$SB/stub/calls/$_f" ]] && : > "$SB/stub/calls/$_f"
+  done
+  return 0
+}
+
+# D10 旧锚放行：作者锚 40 天前（updatedAt 1 天前=被第三方顶新的真实形态）→ 豁免投递
+make_item probe-salvage probe
+D10_ID="$ID"
+rq set "$D10_ID" approved >/dev/null
+occ_view_json "$SB/occ-view.json" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+exec_occ "$D10_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "D10 停摆 40 天占用 → 豁免放行（终态 executed）" "$(rq_state "$D10_ID")" "executed"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "stalled-occupier 豁免：#99999" "D10 豁免 note 落 execute 日志（可 grep）"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "stalled-occupier 豁免放行" "D10 复验放行行落日志"
+check_contains "$(cat "$SB/stub/calls/gh-occ.log" 2>/dev/null)" "-X POST" "D10 评论已真实投递"
+
+# D11 新锚拦截：作者锚 3 天前（活跃占坑）→ 维持判死，reason 原文案
+make_item probe-salvage probe
+D11_ID="$ID"
+rq set "$D11_ID" approved >/dev/null
+occ_view_json "$SB/occ-view.json" "$(date -v-3d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+exec_occ "$D11_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "D11 活跃占坑 3 天 → 维持拦截（终态 failed）" "$(rq_state "$D11_ID")" "failed"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "已有在途 PR（ 99999 ）占坑" "D11 reason 含原占坑文案（一字不改）"
+check_not_contains "$(cat "$SB/stub/calls/gh-occ.log" 2>/dev/null)" "-X POST" "D11 未投递"
+
+# D12 gh 取证失败 → fail-closed 拦截，reason 可诊断
+make_item probe-salvage probe
+D12_ID="$ID"
+rq set "$D12_ID" approved >/dev/null
+occ_view_json "$SB/occ-view.json" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+exec_occ "$D12_ID" "OCC_VIEW_JSON=$SB/occ-view.json" "OCC_VIEW_RC=3"
+check_eq "D12 gh pr view 失败 → fail-closed 拦截" "$(rq_state "$D12_ID")" "failed"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "取证失败（rc=3），占坑判定 fail-closed" "D12 fail-closed reason 可诊断"
+check_not_contains "$(cat "$SB/stub/calls/gh-occ.log" 2>/dev/null)" "-X POST" "D12 未投递"
+
+# D13 回归锚（锁死「不得回退 updatedAt 口径」）：commit 50 天前 + 作者本人评论 40 天前 + 第三方评论 1 天前
+# （updatedAt 被顶到 1 天前）→ 锚=40 天前仍放行；第三方评论与 updatedAt 均不作锚
+make_item probe-salvage probe
+D13_ID="$ID"
+rq set "$D13_ID" approved >/dev/null
+occ_view_json "$SB/occ-view.json" "$(date -v-50d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')" \
+  "occupier-nanami" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "reviewer-x" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+exec_occ "$D13_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "D13 第三方评论顶新 updatedAt + 作者锚 40 天 → 仍放行（updatedAt 口径回归锚）" "$(rq_state "$D13_ID")" "executed"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "stalled-occupier 豁免：#99999" "D13 豁免 note 落日志"
+
+# D14 混合占用：一停摆（99999）一活跃（99998）→ 任一活跃即判死，原文案含两个 PR
+make_item probe-salvage probe
+D14_ID="$ID"
+rq set "$D14_ID" approved >/dev/null
+occ_view_json "$SB/occ-view-99999.json" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_view_json "$SB/occ-view-99998.json" "$(date -v-3d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+exec_occ "$D14_ID" "OCC_LIST_JSON=[{\"number\":99999},{\"number\":99998}]" \
+  "OCC_VIEW_JSON_99999=$SB/occ-view-99999.json" "OCC_VIEW_JSON_99998=$SB/occ-view-99998.json"
+check_eq "D14 一停一活 → 维持判死" "$(rq_state "$D14_ID")" "failed"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "已有在途 PR（ 99999, 99998 ）占坑" "D14 原文案含全部占用 PR"
+
+# D15 既无 commit 也无作者评论 → 锚不可算 fail-closed
+make_item probe-salvage probe
+D15_ID="$ID"
+rq set "$D15_ID" approved >/dev/null
+occ_view_json "$SB/occ-view.json" "" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')" "occupier-nanami" "" "reviewer-x" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+exec_occ "$D15_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "D15 无 commit 无作者评论 → fail-closed 拦截" "$(rq_state "$D15_ID")" "failed"
+check_contains "$(cat "$EXEC_LOG" 2>/dev/null)" "既无 commit 也无作者评论（停摆锚不可算）" "D15 reason 可诊断"
+sb_done
+
+# ---- notify 发卡路孪生用例（approve 轻复验；NDRY=false 使轻复验真实执行） ----
+sb_new true
+cat > "$SB/bin/gh-occupier-param" <<'STUB'
+#!/bin/bash
+LOG_DIR="${STUB_STATE:?STUB_STATE required}/calls"; mkdir -p "$LOG_DIR"
+printf '=== gh %s\n' "$*" >> "$LOG_DIR/gh-occ.log"
+case "$*" in
+  *"issue view"*)
+    echo '{"state":"OPEN"}' ;;
+  *"pr list"*)
+    if [[ -n "${OCC_LIST_JSON:-}" ]]; then printf '%s\n' "$OCC_LIST_JSON"; else echo '[{"number":99999}]'; fi ;;
+  *"pr view"*)
+    if [[ -n "${OCC_VIEW_RC:-}" ]]; then
+      echo "gh-occupier-param: forced pr view failure" >&2
+      exit "${OCC_VIEW_RC}"
+    fi
+    _vf="${OCC_VIEW_JSON:-}"
+    if [[ $# -ge 3 ]]; then
+      _by_num="OCC_VIEW_JSON_${3}"
+      [[ -n "${!_by_num:-}" ]] && _vf="${!_by_num}"
+    fi
+    if [[ -n "$_vf" && -f "$_vf" ]]; then cat "$_vf"; else echo '{}'; fi
+    ;;
+  *"comments?per_page"*)
+    echo '[]' ;;
+  *"-X POST"*)
+    echo '{"html_url":"https://github.com/NousResearch/hermes-agent/issues/1#issuecomment-1"}' ;;
+  *)
+    echo '{}' ;;
+esac
+exit 0
+STUB
+chmod +x "$SB/bin/gh-occupier-param"
+NOTIFY_LOG="$SB/contrib-data/logs/notify.log"   # 沙箱已换新，重钉日志路径（EXEC_LOG 同理）
+EXEC_LOG="$SB/contrib-data/logs/approval-execute.log"
+make_item probe-salvage probe
+N1_ID="$ID"
+occ_view_json "$SB/occ-view.json" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+notify_occ "$N1_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "N1 notify 停摆 40 天占用 → 豁免发卡（状态不被置 rejected）" "$(rq_state "$N1_ID")" "awaiting-approval"
+check_eq "N1 审批卡真实推送 1 次（hermes stub 记账）" "$(stub_count hermes 'contrib L2 审批')" "1"
+check_eq "N1 审批页部署 1 次（tunnel stub 记账）" "$(stub_count tunnel 'drops approve')" "1"
+check_contains "$(cat "$NOTIFY_LOG" 2>/dev/null)" "stalled-occupier 豁免：#99999" "N1 豁免 note 落 notify 日志（可 grep）"
+
+make_item probe-salvage probe
+N2_ID="$ID"
+occ_view_json "$SB/occ-view.json" "$(date -v-3d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+notify_occ "$N2_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "N2 notify 活跃占坑 3 天 → 置 rejected" "$(rq_state "$N2_ID")" "rejected"
+check_eq "N2 零审批卡零审批页" "$(stub_count tunnel 'drops approve')" "0"
+check_eq "N2 零审批卡推送" "$(stub_count hermes 'contrib L2 审批')" "0"
+check_contains "$(cat "$NOTIFY_LOG" 2>/dev/null)" "已被 PR 99999 占坑" "N2 原判死文案一字不改（占坑）"
+check_contains "$(cat "$SB/contrib-data/events.jsonl" 2>/dev/null)" "premise-dead" "N2 premise-dead 事件入账"
+
+make_item probe-salvage probe
+N3_ID="$ID"
+occ_view_json "$SB/occ-view.json" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+notify_occ "$N3_ID" "OCC_VIEW_JSON=$SB/occ-view.json" "OCC_VIEW_RC=1"
+check_eq "N3 notify gh 取证失败 → fail-closed 置 rejected" "$(rq_state "$N3_ID")" "rejected"
+check_eq "N3 零审批页（不发卡不误判）" "$(stub_count tunnel 'drops approve')" "0"
+check_contains "$(cat "$NOTIFY_LOG" 2>/dev/null)" "取证失败（rc=1），占坑判定 fail-closed" "N3 fail-closed reason 落日志可诊断"
+check_contains "$(cat "$SB/contrib-data/events.jsonl" 2>/dev/null)" "fail-closed" "N3 事件注明 fail-closed（不误报 premise 死亡）"
+
+make_item probe-salvage probe
+N4_ID="$ID"
+occ_view_json "$SB/occ-view.json" "$(date -v-50d '+%Y-%m-%dT%H:%M:%SZ')" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')" \
+  "occupier-nanami" "$(date -v-40d '+%Y-%m-%dT%H:%M:%SZ')" "reviewer-x" "$(date -v-1d '+%Y-%m-%dT%H:%M:%SZ')"
+occ_reset_logs
+notify_occ "$N4_ID" "OCC_VIEW_JSON=$SB/occ-view.json"
+check_eq "N4 notify 第三方评论顶新 updatedAt + 作者锚 40 天 → 仍发卡" "$(rq_state "$N4_ID")" "awaiting-approval"
+check_eq "N4 审批卡推送 1 次" "$(stub_count hermes 'contrib L2 审批')" "1"
+check_contains "$(cat "$NOTIFY_LOG" 2>/dev/null)" "stalled-occupier 豁免" "N4 豁免 note 落 notify 日志"
 sb_done
 
 # ================= C 组：静态门 + 生产零触碰 =================
