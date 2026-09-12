@@ -62,14 +62,14 @@
 - [2026-09-09] 双 shell 二象性：bash 脚本被 zsh 调用时 shebang 是谎言（compgen zsh 静默恒假） | tags: bash, zsh, shebang, dual-shell, silent-failure, vacuous-pass, contrib-watch, testing | → patterns.md
 - [2026-09-09] 账本写入方多形态 × 单格式 grep 幂等检查 = 同 key 重复入账 | tags: notify, ledger, idempotency, grep, json-dumps, format-drift, contrib-watch | → patterns.md
 - [2026-09-09] 时间依赖黑盒测试：影子 date stub 劫持裸调用（不依赖实现 seam 命名） | tags: testing, black-box, date, stub, sandbox, contrib-watch | → patterns.md
-- [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 + 分桶断言变体 | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md (evidence updated 2026-09-12)
+- [2026-09-10] 审计型「零 X」谓词正反两向实测（自败×空转）+ 不可满足断言的等价观测裁决 + 分桶断言变体 + 与功能自测结构性互斥的精化（行为学 stat+调用点分类+mutation 非空转） | tags: testing, predicate, vacuous-pass, audit-regex, contrib-watch | → patterns.md (evidence updated 2026-09-13)
 - [2026-09-12] GitHub PR updatedAt 是全体协作者动作的并集：当事方停摆判定必须锚定其自身最后动作 | tags: github, gh-cli, updatedAt, staleness, ttl, anchor, contrib-watch | → patterns.md
 - [2026-09-12] 同一判定逻辑多落点（孪生门）一致性靠机械手段：注释互指 + 双侧同契约测试 + 字节级守卫（③已落地 gate.sh 第 4 关，evidence updated 2026-09-12） | tags: approval, twin-gate, duplication, consistency, drift, contrib-watch | → patterns.md
 - [2026-09-12] BSD sed `\+` 是字面加号：归一化比对口径的「镜像掩盖」假绿（GNU 扩展禁入跨平台口径，POSIX 形态 [[:space:]][[:space:]]*） | tags: bash, macos, bsd-sed, normalization, mutation-testing, false-green, contrib-watch | → patterns.md
 - [2026-09-10] fixture 数据形态漂移诱发假红：错误根因三处固化（注释+补丁+台账）需全量勘误 | tags: testing, fixture, data-shape, mirror-production, erratum, contrib-watch | → patterns.md
 - [2026-09-10] 种子 config 隐式依赖三处齐红 + detect 维度不计总分但影响 exit code | tags: testing, shared-fixture, implicit-dependency, exit-code, contrib-watch | → patterns.md
 - [2026-09-10] autopilot 分级字段补判后必须重设 gate（AC-FIELD block 清空 gate 陷阱） | tags: autopilot, stop-hook, gate, state-machine | → patterns.md
-- [2026-09-11] kanban.db 只读唯一形态 python3 mode=ro URI（sqlite3 -readonly error 14）+ completed_at 是 epoch 整数 | tags: sqlite, kanban, readonly, python3, epoch, contrib | → patterns.md
+- [2026-09-11] kanban.db 只读唯一形态 python3 mode=ro URI（sqlite3 -readonly error 14）+ completed_at 是 epoch 整数（09-13 evidence update：CLI file: URI mode=ro 有 -shm 可用/无 -shm 回退 immutable=1 同函数优雅回退） | tags: sqlite, kanban, readonly, python3, epoch, contrib | → patterns.md (evidence updated 2026-09-13)
 - [2026-09-11] 本地修复→上游回馈机械边：回扫闸门幂等三件套（事件 key 预查+建卡幂等键+游标双成功才推进） | tags: contrib, upstream, idempotency, cursor, gate, fail-closed | → patterns.md
 - [2026-09-11] patch-id 判重机械边四坑：fork refs 千级流式早退缓存/空 diff 空 patch-id/删 tree 非删 commit/ref 头即判重集 | tags: git, patch-id, dedup, contrib, upstream, performance, testing | → patterns.md
 - [2026-09-11] HERMES_KANBAN_DB 优先级压过 --board：kanban 写调用一律 env -u 剥离（env 劫持同族第二例） | tags: hermes, kanban, env, board-pin, cross-context, contrib-watch | → patterns.md
@@ -78,3 +78,4 @@
 - [2026-09-12] shell IFS=$'\t' read 连续 tab 折叠吞空字段：jq @tsv 多列解析必须手动参数展开切分 | tags: bash, zsh, ifs, tsv, empty-field, red-team | → patterns.md
 - [2026-09-12] 默认态 fail-closed 分支黑盒测法：整树镜像沙箱（gate.sh 拷入 mktemp 仓根）+ 双缺失装配以断言集裁决 | tags: testing, black-box, sandbox, fail-closed, gate, contrib-watch | → patterns.md
 - [2026-09-12] 纯测试面卡 tree_sig=空集哈希属预期（lib.sh 排除 tests/acceptance 路径） | tags: autopilot, tree-sig, qa, operational | → patterns.md
+- [2026-09-13] 告警判据与阈值契约必须锚定病理本体（在飞≠占槽；计数分母 per-card vs 聚合写进契约，否则红蓝 Tier 0 必撞） | tags: alarm-criteria, duty-loop, contract, threshold, false-positive, red-blue, contrib-watch | → patterns.md

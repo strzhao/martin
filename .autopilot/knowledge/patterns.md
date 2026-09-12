@@ -447,6 +447,7 @@ gateway 哨兵初版选 `hermes kanban list` 作探活——但它是本地 SQLi
 ## [2026-09-10] 审计型「零 X」谓词的正反两向都要在真实产物形态上实测
 红线检测类 grep（如「零 gh 写」）有两个对称死法：①正则被自身合法查询的字段名命中（mergeable 命中 merge、comments 命中 comment）→ 合规实现必红（自败）；②token 锚定修正后未适配记账行格式（calls.log 整行=`gh|cwd|argv`，argv 前有 `|` 前缀，`(^| )` 锚失配）→ 写调用也零命中（空转恒绿）。防御：谓词定稿前对「应红样本（写调用）」与「应绿样本（真实只读 argv）」各实测一遍。另有不可满足类：观测面与被观测对象机制不相交（要求 production 代码把脚本名写进 stub 的 calls.log）→ 任何实现必红；处置=铁律例外 E1-E3 闭合 + 等价硬观测（被观测行为唯一发起方的调用行）+ 头注留痕 + 重锁。plan-reviewer 两轮各抓一个（先自败后空转），实测是唯一裁判。
 变体三（09-12 补轮实证，「零 X」全量断言与合法业务流结构性冲突）：「全程零 `-X POST`」在放行桶不可满足——放行路本来就要投递（审批卡推送本身是 POST）→ 裁决为分桶断言（拦截桶零 POST ∧ 放行桶 POST 仅限投递端点恰 1 次）。配套防空转铁律：负向审计（not contains）求值前必须先正证调用记录非空且含预期只读命令，否则空记录恒绿是假绿。
+变体四（09-13 补轮实证，审计谓词与功能自测结构性互斥）：「实现源码零写语句 grep」与「--selftest 必须自建 fixture（INSERT 建库）」不可同时满足——词面审计自败。精化=三层替代观测：①行为学证据（生产六源 stat(mtime,size) 快照在【真库实跑】与【--selftest】两模式前后零变化）；②调用点全分类（sqlite3 调用逐一归边：采集唯一入口 ro_sqlite 双 mode=ro URI ∨ selftest fixture DML 仅 mktemp 路径）；③mutation 注入证明 grep 非空转（副本追加违规行→命中数 +1，先证机制后证结论）。通则：词面「零 X」让位于「X 不触及受保护面」。
 <!-- tags: testing, predicate, vacuous-pass, false-red, red-line, audit-regex, contrib-watch, bucketed-assertion -->
 
 ## [2026-09-10] fixture 数据形态漂移诱发假红：错误根因会三处固化（注释+补丁+台账）
@@ -463,6 +464,8 @@ stop-hook 对 AC-FIELD-INVALID 的 block 会把 gate 清空（提示语「补判
 
 ## [2026-09-11] hermes kanban.db 只读查询唯一可用形态：python3 mode=ro URI + completed_at 是 epoch 整数
 本机 `sqlite3 -readonly <db>` 恒报 `error 14 unable to open database file`（不可用）；只读查 kanban.db 的唯一形态是 `python3 -c "sqlite3.connect('file:<路径>?mode=ro', uri=True)"`。tasks.completed_at 是 INTEGER epoch 秒（非 ISO 字符串，PRAGMA table_info 实证）——游标类增量扫描直接整数比较，勿按字符串日期设计。live db 上有真实写入者，任何非 ro 连接都是越界写。
+
+证据更新（09-13 state_brief 卡实测，CLI 形态面放宽）：sqlite3 CLI 的 `file:<db>?mode=ro` URI 并非全局不可用——板库目录有 `-shm`（contrib 板）时 CLI mode=ro 可读；WAL 头但目录无 -shm/-wal（主 board）才报 error 14，回退 `file:<db>?mode=ro&immutable=1` 可读（immutable=按文件快照读、忽略 WAL，无 -wal 场景恰配）。优选做法：把「先 mode=ro、非零退出回退 immutable=1」做成同一条只读函数的优雅回退，两形态皆败才降级（sqlite3 -json 输出 + jq 消费；空结果集输出空串需归一化 `[]`）。
 <!-- tags: sqlite, kanban, readonly, python3, epoch, contrib, macos -->
 
 ## [2026-09-11] 「本地修复≠上游资产」机械边：回扫闸门幂等三件套（事件 key 预查+建卡幂等键+游标双成功才推进）
@@ -509,3 +512,7 @@ gate.sh 这类「REPO_ROOT 从自身位置推导」的脚本，默认态分支�
 ## [2026-09-12] 纯测试面卡 tree_sig=空集哈希属预期：lib.sh tree_sig 排除全部测试面路径
 autopilot tree_sig 对 `*.acceptance.*`、`*/tests/*`、`acceptance-staging/*` 等一律跳过——纯测试面改动（测试/验收文件自身即交付物，卡 t_f5da07f7 全部改动都在 tests/ 树）的蓝队自检 tree_sig 恒为 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855（sha256("") 空集哈希），属机制内正确值而非异常；QA Tier 1 沿用判据「当前 sig 与首行一致」照常成立。误判为「哈希算坏了」会引发无谓重跑或错改自检区。
 <!-- tags: autopilot, tree-sig, qa, testing, worktree, operational -->
+
+## [2026-09-13] 告警判据与阈值契约必须锚定病理本体，而非可观测代理面
+值班环（state brief，卡 t_582e238b）两处同型翻车：①S1 深检槽告警初版按「flight 登记卡非终态」触发——健康在飞（ready/running）也告警，实跑 7 分钟前新建的深检卡即中招，值班环信噪比被常态操作打穿；病理本体是设计 §0 病例①「blocked 卡占槽死锁」，判据收敛为 status∈{blocked,gave_up} 才触发（健康在飞仅入清单）。②红队把「秒崩循环」阈值断言写成聚合计数（两卡各 gave_up×1 → 告警），契约本义是「某卡 gave_up ≥2 次」（§0 病例③同卡连崩）——跨卡聚合把两张卡各崩一次误报成崩溃循环，红队铁律例外 E1-E3 闭合后改测试重锁。通则：告警判据写「病理状态」不写「生命周期状态」；阈值类契约必须写明计数分母（per-card/per-item vs 全局聚合），否则红蓝各按一个分母实现/断言，Tier 0 必撞。
+<!-- tags: alarm-criteria, duty-loop, contract, threshold, per-card-vs-aggregate, false-positive, red-blue, contrib-watch -->
