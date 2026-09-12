@@ -76,3 +76,5 @@
 - [2026-09-11] 上游回馈闸门已投递判重选型：纯本地 git refs 头 patch-id（snapshot 扩展评估不走） | tags: contrib, upstream, patch-id, dedup, decision, gate | → decisions.md
 - [2026-09-12] 沙盒 e2e 三重击穿链：PATH-stub 被 PATH 重排击穿→env -u 送真 CLI 上真板→HERMES_* 读面重定向掩盖污染 | tags: testing, sandbox, path-stub, hermes-bin, env-redirect, contrib-board, pollution | → patterns.md
 - [2026-09-12] shell IFS=$'\t' read 连续 tab 折叠吞空字段：jq @tsv 多列解析必须手动参数展开切分 | tags: bash, zsh, ifs, tsv, empty-field, red-team | → patterns.md
+- [2026-09-12] 默认态 fail-closed 分支黑盒测法：整树镜像沙箱（gate.sh 拷入 mktemp 仓根）+ 双缺失装配以断言集裁决 | tags: testing, black-box, sandbox, fail-closed, gate, contrib-watch | → patterns.md
+- [2026-09-12] 纯测试面卡 tree_sig=空集哈希属预期（lib.sh 排除 tests/acceptance 路径） | tags: autopilot, tree-sig, qa, operational | → patterns.md

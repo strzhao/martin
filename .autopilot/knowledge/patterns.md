@@ -501,3 +501,11 @@ worker 会话上下文注入的 HERMES_KANBAN_DB 会让 `hermes kanban --board c
 ## [2026-09-12] 验收断言的圈定清单必须从被测对象源码派生：手抄清单 126→127→144 三连漂移；两路同源断言的红向差集只能裁根造
 gate-cli-gates.acceptance.sh「扫描文件数 == find 圈定数」谓词把 find 圈定清单手抄成 gate.sh ROOTS 的子集（contrib+approval 两根），ROOTS 纳入 hkstock 后 127 vs 144 恒红——数字没抄错、清单没抄错，错在「两份清单无同源机制」，抄得再准也必漂（126→127→144 三连红即漂移史）。修法（治框架不治现象）：acceptance 从 gate.sh 源码解析 ROOTS 行派生根集，谓词升级为「gate 自报 == find 圈定」两路一致（≥ tracked 下界保留防静默漏扫，TRACKED_N≥1 守卫防退化恒真）。三个实现坑全被 plan-reviewer 实跑抓出：①gate.sh 有 3 处 `ROOTS=(` 行（env 态/flag 态/默认态），`-m1` 必错抓 env 态——提取必须锚定默认态特征 `ROOTS=("\$REPO_ROOT/scripts/` 且 `grep -c`==1 唯一性守卫；②提取产物是带 `ROOTS=(` 前缀的完整赋值行，再包一层 `ARR=(…)` = 双重包裹语法炸——应改名直 eval（`${SRC/ROOTS=/ARR=}`）；③pathspec 双引号内写 `\*` 反斜杠不剥离，git wildmatch 解释为字面 `*` 文件名 → ls-files 恒 0 → 下界谓词退化恒真——双引号内写裸 `/*.sh`。mutation 自证教训：「覆盖集内增删 .sh」对两路同源断言造不出红向差集（两侧同向 ±1 恒绿，恰是「增长不红」的设计目标），必须裁断言自身的根集派生行（复刻残根集病灶）才有差集。同族：「契约字面量要锚定工具源码」（2026-09-08）——锚定真源原则从字面量推广到清单/根集；红队附注：源码锚正则要容忍转义形态（被检文件里的单引号 grep 模式含字面反斜杠，`ROOTS=\(` 匹配不了字节 `ROOTS=\(`——本卡红队 2.P1 首跑误报即此，锚应写 `ROOTS=.{0,6}REPO_ROOT/scripts/` 级别的宽容形态）。
 <!-- tags: acceptance, assertion, gate, derivation, drift, mutation-testing, red-team, false-green, vacuous, bash, eval, git-pathspec, contrib-watch -->
+
+## [2026-09-12] 默认态 fail-closed 分支的黑盒测法：整树镜像沙箱（gate.sh 拷入 mktemp 仓根，REPO_ROOT 随拷贝位置推导）
+gate.sh 这类「REPO_ROOT 从自身位置推导」的脚本，默认态分支（env/flag 双空）无法用 MARTIN_GATE_TARGET/--target 触达——TARGET 态语义是「无对 SKIP」，与默认态 fail-closed 是两条路。测法：mktemp 建最小仓根镜像（被测 gate.sh + lib 依赖真身拷贝 + 各覆盖根占位），在沙箱内跑——REPO_ROOT 落在沙箱，默认态分支即可纯黑盒驱动（卡 t_f5da07f7 T8/D5② 实证）。坑：①ROOTS 各根必须都 -d 存在（缺根走 bad_root rc=2，污染「期望恰=1」谓词）；②「双侧缺失」谓词的沙箱装配必须真的双侧都缺席——设计书若同时写「拷贝真身」与「断言缺席」即自相矛盾，以契约断言集为准、实跑双变体裁决（拷入→单 detail+3 files 断言必死；缺席→全契约吻合）。同族：「时间依赖黑盒测试：影子 date stub 劫持裸调用」（2026-09-09）——黑盒测分支不依赖实现 seam 命名。
+<!-- tags: testing, black-box, sandbox, default-state, fail-closed, gate, mirror-tree, acceptance, contrib-watch -->
+
+## [2026-09-12] 纯测试面卡 tree_sig=空集哈希属预期：lib.sh tree_sig 排除全部测试面路径
+autopilot tree_sig 对 `*.acceptance.*`、`*/tests/*`、`acceptance-staging/*` 等一律跳过——纯测试面改动（测试/验收文件自身即交付物，卡 t_f5da07f7 全部改动都在 tests/ 树）的蓝队自检 tree_sig 恒为 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855（sha256("") 空集哈希），属机制内正确值而非异常；QA Tier 1 沿用判据「当前 sig 与首行一致」照常成立。误判为「哈希算坏了」会引发无谓重跑或错改自检区。
+<!-- tags: autopilot, tree-sig, qa, testing, worktree, operational -->
