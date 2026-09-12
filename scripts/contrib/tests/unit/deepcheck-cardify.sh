@@ -384,6 +384,41 @@ seed_flight_dc "t_old2" "rq-20260909-5108" "deep" "$(date +%s)"
 run_helper harvest "STUB_KANBAN_STATUS_MAP={\"t_old2\":\"blocked\"}" "STUB_KANBAN_RUN_OUTCOME=completed"
 assert_eq "$(jq -r '.card_id // empty' "$(dc_flight)" 2>/dev/null)" "t_old2" "非重试耗尽 → 保留登记"
 
+t_case "harvest: blocked 失速（非闭集 outcome + age>阈值）→ 清登记放行；queued 项置 failed + refund"
+quiet_sb
+sb_config_set '.refund_failed_deep_check = true'
+sb_seed_queue_item "rq-20260909-5110" 5110 deep deep-check 40
+sb_rq budget reserve "rq-20260909-5110" --lane deep >/dev/null 2>&1
+seed_flight_dc "t_old3" "rq-20260909-5110" "deep" "$(( $(date +%s) - 3600 ))"
+seed_card_store "t_old3" "blocked"
+run_helper harvest "DEEPCHECK_BLOCK_STALE_SECS=60" "STUB_KANBAN_STATUS_MAP={\"t_old3\":\"blocked\"}" "STUB_KANBAN_RUN_OUTCOME=completed"
+assert_exit 0 $?
+assert_eq "$(rq_state_of "rq-20260909-5110")" "failed" "失速 → 深检自有态项置 failed"
+assert_eq "$(deep_used)" "0" "refund"
+assert_eq "$(ev_key_count '-deepcheck-stale')" "1" "-deepcheck-stale 入账"
+[[ ! -f "$(dc_flight)" ]] && _pass "登记已清" || _fail "登记已清" "残留"
+
+t_case "harvest: blocked 失速 + 项已 approved（L2 链介入）→ 清登记放行但不改判不 refund"
+quiet_sb
+sb_config_set '.refund_failed_deep_check = true'
+sb_seed_queue_item "rq-20260909-5111" 5111 deep approved 40
+seed_flight_dc "t_old4" "rq-20260909-5111" "deep" "$(( $(date +%s) - 3600 ))"
+seed_card_store "t_old4" "blocked"
+run_helper harvest "DEEPCHECK_BLOCK_STALE_SECS=60" "STUB_KANBAN_STATUS_MAP={\"t_old4\":\"blocked\"}" "STUB_KANBAN_RUN_OUTCOME=completed"
+assert_exit 0 $?
+assert_eq "$(rq_state_of "rq-20260909-5111")" "approved" "L2 态项不动（防误杀已批项）"
+assert_eq "$(deep_used)" "0" "账本零变化（无 reserve 可退）"
+[[ ! -f "$(dc_flight)" ]] && _pass "登记已清" || _fail "登记已清" "残留"
+
+t_case "harvest: blocked 未失速（age<阈值）→ 保留登记（瞬时 block 不杀链）"
+quiet_sb
+sb_seed_queue_item "rq-20260909-5113" 5113 deep deep-check 40
+seed_flight_dc "t_old5" "rq-20260909-5113" "deep" "$(date +%s)"
+seed_card_store "t_old5" "blocked"
+run_helper harvest "DEEPCHECK_BLOCK_STALE_SECS=7200" "STUB_KANBAN_STATUS_MAP={\"t_old5\":\"blocked\"}" "STUB_KANBAN_RUN_OUTCOME=completed"
+assert_eq "$(jq -r '.card_id // empty' "$(dc_flight)" 2>/dev/null)" "t_old5" "未失速 → 保留"
+assert_eq "$(rq_state_of "rq-20260909-5113")" "deep-check" "状态不变"
+
 t_case "harvest: 非终态超 DEEPCHECK_STALE_SECS（独立 24h 阈值，缺省不复用 6h）→ 清 + failed + -deepcheck-stale"
 quiet_sb
 sb_config_set '.refund_failed_deep_check = true'

@@ -49,6 +49,9 @@ FLIGHT="$CONTRIB/kanban-flight-deepcheck.json"
 CARD_LOCK="$CONTRIB/locks/deepcheck-card.lock"
 TARGET_FILE="${DEEPCHECK_TARGET_FILE:-/tmp/.deepcheck-target}"
 STALE_SECS="${DEEPCHECK_STALE_SECS:-86400}"
+# blocked 卡失速阈值：worker 主动 block（含误派自止）非重试耗尽时原实现无限保留登记——
+# 09-12/13 实证 release-gate 误派卡 blocked 8.5h+ 占死全局单深检槽，真候选全部饿死
+BLOCK_STALE_SECS="${DEEPCHECK_BLOCK_STALE_SECS:-7200}"
 FLIGHT_TIMEOUT="${FLIGHT_TIMEOUT:-30}"
 LOG="$CONTRIB/logs/deepcheck.log"
 HERMES_BIN="${HERMES_BIN:-hermes}"
@@ -259,6 +262,21 @@ harvest_locked() {
           return 0
           ;;
         *)
+          # 非重试耗尽的 blocked 同样不得无限占槽：超过 BLOCK_STALE_SECS 视为失速，清登记放行。
+          # 仅当队列项仍处深检自有态（queued/deep-check）才置 failed——L2 链已介入的态
+          # （awaiting-approval/approved）归审批链所有，深检卡路无权改判（防误杀已批项）
+          local _age=0 _st=""
+          _age=$(( $(date +%s) - $(jq -r '.created_epoch // 0' "$FLIGHT" 2>/dev/null || echo 0) ))
+          if (( _age > BLOCK_STALE_SECS )); then
+            _st="$(jq -r --arg id "$rq_id" '.items[] | select(.id == $id) | .state' "$QUEUE" 2>/dev/null || true)"
+            if [[ "$_st" == "queued" || "$_st" == "deep-check" ]]; then
+              "$RQ" set "$rq_id" failed --note "preflight 卡 blocked 失速（age=${_age}s > ${BLOCK_STALE_SECS}s，outcome=${outcome:-未知}）" >>"$LOG" 2>&1 || true
+              refund_once "$rq_id" "$lane"
+            fi
+            rm -f "$FLIGHT"
+            emit_event "deepcheck-stale" "深检卡 $card_id blocked 失速（age=${_age}s，item 态=${_st:-未知}）→ 清登记放行（L2 态项不动）"
+            return 0
+          fi
           log "preflight 卡 $card_id blocked（outcome=${outcome:-未知}，非重试耗尽）→ 保留登记"
           return 10
           ;;

@@ -66,11 +66,9 @@ L1 硬底座（收窄不废除） L2 授权闸 / approved.log / 预算硬顶 / �
 - 动作：collect.sh 对 `tunnel rm` 失败先 `tunnel list` 复核——slug 已不存在→视为成功、标记 done 终态；tunnel-cli 仓 `drops rm` 对不存在 slug 幂等成功（独立小改，upstream 是自己）。
 - 验收：collect.log 不再出现同 slug 连续失败对；`bash scripts/approval/tests/run.sh` 全绿。
 
-### B1 dispatcher per-kind 并发上限（hermes-agent，1 张卡）
-- 落点：`hermes_cli/kanban_db_dispatch.py`，仿 #21582 per-profile 模式。
-- 交付：config `kanban.max_in_progress_per_kind`（map：kind→int）；resolve 链（显式配置 > 不限）；tick 内超限 skip 记录（`skipped_per_kind_capped`，对齐现有 `skipped_per_profile_capped`）；单测。
-- 验收：超限 kind 的 ready 卡不 spawn 且可稍后拾起；其他 kind 不受影响；未配置 kind 零行为变化。
-- 红线（上游贡献规范）：单关注点、mutation 自证、基于 current main、commit 不带 Co-Authored-By、**只做本地分支绝不 push**，offer 走 L2 闸门。
+### B1 ~~dispatcher per-kind 并发上限~~（已裁定取消，2026-09-13 凌晨）
+- **裁定依据**：资源闸已在本地栈（commit 92007446e5，上游 PR #108006）——`--resources deepcheck:global` 排他锁即深检单飞的原生表达，且语义更优：blocked/gave_up 卡不持有资源（held=仅 running），t_f8c0d470 那类死锁结构性消失。另加 per-kind 配额是造第二个平行概念，违背正交原则。
+- **原 B1 交付物去向**：深检卡接线（deepcheck 建卡加 `--resources deepcheck:global` + 废除 flight json 单飞检查）并入 C2；`max_in_progress_per_kind` 计数容量语义留作未来独立评估（仅当真出现「同资源需 N>1 并发」场景再立项）。
 
 ### B2 create-time 校验（hermes-agent，1 张卡）
 - 落点：`hermes_cli/kanban_ops.py` create 入口。
