@@ -22,7 +22,11 @@
 set -u
 
 FW_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(git -C "$FW_HERE" rev-parse --show-toplevel 2>/dev/null || echo "${MARTIN_DIR:-$HOME/workspace/martin}")"
+REPO_ROOT="$(git -C "$FW_HERE" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
+  echo "ACCEPTANCE-FAIL[env]: REPO_ROOT 不可解析——git rev-parse --show-toplevel 在 ${FW_HERE} 无输出（非 git 仓库 / git 不可用）；本套件禁静默兜底到生产主 checkout" >&2
+  exit 1
+fi
 FW_GATE="$REPO_ROOT/scripts/contrib/tests/gate.sh"
 FW_STATIC="$REPO_ROOT/scripts/contrib/tests/static/gate-fullwidth.sh"
 FW_TWIN="$REPO_ROOT/scripts/contrib/tests/acceptance/gate-twin-consistency.acceptance.sh"

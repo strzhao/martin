@@ -46,7 +46,11 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 安装位深度：scripts/contrib/tests/acceptance/ → 被测 gate.sh 即 "$HERE/../gate.sh"；
 # 调用锚沿用 gate-cli-gates.acceptance.sh 先例（git 仓根推导），staging 试跑与安装位两态皆可运行。
-REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || echo "${MARTIN_DIR:-$HOME/workspace/martin}")"
+REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
+  echo "ACCEPTANCE-FAIL[env]: REPO_ROOT 不可解析——git rev-parse --show-toplevel 在 ${HERE} 无输出（非 git 仓库 / git 不可用）；本套件禁静默兜底到生产主 checkout" >&2
+  exit 1
+fi
 GATE="$REPO_ROOT/scripts/contrib/tests/gate.sh"   # 安装位深度等价于 "$HERE/../gate.sh"
 ART="/tmp/autopilot-artifacts"
 TMPBASE="${TMPDIR:-/tmp}"

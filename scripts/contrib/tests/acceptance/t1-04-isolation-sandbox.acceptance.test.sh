@@ -12,7 +12,12 @@
 # 红队纪律：黑盒；每断言硬失败；无 skip。
 # =============================================================================
 set -u
-REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel 2>/dev/null || echo /Users/stringzhao/workspace/martin)"
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$SELF_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
+  echo "ACCEPTANCE-FAIL[env]: REPO_ROOT 不可解析——git rev-parse --show-toplevel 在 ${SELF_DIR} 无输出（非 git 仓库 / git 不可用）；本套件禁静默兜底到生产主 checkout" >&2
+  exit 1
+fi
 TESTS_ROOT="$REPO_ROOT/scripts/contrib/tests"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ART="/tmp/autopilot-artifacts"
