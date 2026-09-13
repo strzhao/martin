@@ -87,3 +87,10 @@ v1 三层架构（L1 硬底座/L2 看板控制面/L3 值班 agent 环）方向�
 ## 附录 B — AI 视角推演暴露的 10 缺口（本版的修正依据）
 
 P1 判断必落卡（板=记忆）；P2 operator=路由器（双层铁律）；P3 「以后」必须 schedule 卡；P4 等外部必须有卡；P5 agent 起草链落笔（审批链与 rq 解耦前不动 L2）；P6 钳夹收缩为小工具面；P7 新旧状态先迁移再交班；P8 知识整编是主工程；P9 每周 fresh-context auditor；P10 journal 四行软契约。
+
+
+## 附录 C — 座位修正（2026-09-13 晚，用户已批）
+
+kanban 三层角色（内核/worker/外部 actor）复审发现：operator 是**策展人（外部 actor）**，v1 的 shift worker 形态是范畴错误——今天四个 workaround 里三个（收口钳夹/watch-due 唤醒/triage 代行归档）都是这一错位的利息，且 framework 的「no second scheduler」明示编排归外层。
+
+**终态座位**：operator = default profile 的 agent cron（`3e5c6e23e260`，每小时 :02，skill pin + 模型 pin deepseek-flash + deliver local），看板全权，收口/归档/schedule/unblock 原生直做；heartbeat.sh 与班卡仪式退役；L2/预算/账本/五卡约定不变。kernel 作用域白名单提案撤回（外部 actor 无需 fence 豁免），留上游候选备忘。首班实证：run completed、增量分诊+巡检全做、零 gh 写、operator 自主消化换座通告并订正 skill 部署口径。

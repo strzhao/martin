@@ -61,7 +61,7 @@
 
 ### 机会流水线 contrib-watch（09-13 起 AI Native operator 形态）
 
-contrib 域共建由 **operator** 运营：每小时心跳（hermes cron `94cb4b0779fd` → `scripts/contrib/heartbeat.sh`，脚本真源在本仓、部署拷贝在 `~/.hermes/scripts/`）拉起 contrib board 班卡，operator 宪法 = `~/.hermes/profiles/contrib/skills/github/contrib-operator/SKILL.md`（Charter/领域知识/工具面/路由知识）。六节点 感知→分诊→造→过闸→守候→学习 全 AI 主导；代码只做钳夹（L2 闸/预算/心跳/watch-due 唤醒）+ 三账本（看板/approved.log/ops-journal）。
+contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **default profile 的 agent cron**（`3e5c6e23e260`，每小时 :02，`--skill contrib-operator`，kanban 原生外部 actor 全权看板操作），宪法真源 = `deploy/contrib-operator/SKILL.md`（部署双点：`~/.hermes/skills/github/` + contrib profile；改真源后 cp 双点 + diff 自证）。班卡/心跳脚本/收口与唤醒钳夹均已退役——operator 以 cron agent 身份原生执行全部编排动作。六节点 感知→分诊→造→过闸→守候→学习 全 AI 主导；代码只做钳夹（L2 闸/预算/心跳/watch-due 唤醒）+ 三账本（看板/approved.log/ops-journal）。
 
 - **排查入口**：operator 行为 → `contrib-data/ops-journal.md` + contrib board 班卡；架构宪法与迁移史 → [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)
 - **能力面**：新命中→[sig] 卡分诊三路（出手/[watch]/放行）；造货走 forge+coder lane（claude-run §⑨）；深检走 kanban swarm+`--resources deepcheck:global`；对外动作一律 L2 提案（agent 起草链落笔）

@@ -40,7 +40,7 @@
 - [2026-08-23] hermes 事件落库(T1)架构四决策(懒启动 atexit/不设 WAL/config 链分叉/check_same_thread) | tags: hermes, observability, sqlite, config-chain, events-sink | → decisions.md
 - [2026-08-24] weixin context token v2(issued_at 落盘+双 dict 分离+回滚自愈) | tags: hermes, weixin, token, forensics | → decisions.md
 - [2026-09-05] jq `//` 把 false 当 falsy：布尔配置静默失效事故根因 | tags: bash, jq, boolean, config-parsing, incident, contrib-watch | → patterns.md
-- [2026-09-05] bash `$var` 紧跟全角标点并入变量名：三方同踩 12+ 处 | tags: bash, unicode, fullwidth, variable-name, testing | → patterns.md
+- [2026-09-05] bash `$var` 紧跟全角标点并入变量名：三方同踩 12+ 处（09-13 五方+1：块级重定向吞 set -u 报错呈零输出假象） | tags: bash, unicode, fullwidth, variable-name, testing | → patterns.md
 - [2026-09-05] 第三方工具链遮蔽系统 diff：stdout 空的静默假绿 | tags: macos, toolchain-shadow, diff, PATH, testing | → patterns.md
 - [2026-09-05] 变异测试 vs 纵深防御：注入必须剥离全部同类防御层 | tags: testing, mutation-testing, defense-in-depth, false-green | → patterns.md
 - [2026-09-06] bash 3.2 case 大小写不敏感撞 stub 分支 | tags: bash, macos, stub, false-null | → patterns.md
@@ -84,3 +84,4 @@
 - [2026-09-13] 判定词断言必须用唯一标记子串（正/负样本可分）+ mutation 命中场景须排在同层防御门之前（fail-fast 首死归因） | tags: testing, assertion, unique-marker, vacuous-pass, false-green, mutation-testing, fail-fast, attribution, contrib-watch | → patterns.md
 - [2026-09-13] 值班环 L1 特权动作分工：worker 只判定声明（台账 archive-request）、编排层 duty_card.sh apply 代行执行（fence 下白名单二分） | tags: hermes, kanban, fence, duty-loop, privilege-split, contrib-watch | → decisions.md
 - [2026-09-13] 运行时产物的红队断言求值根：gitignore 产物只在生产仓存在，REPO_ROOT 求值必假红；同源 seam 回退（两根皆缺仍硬失败） | tags: testing, acceptance, runtime-artifact, evaluation-root, seam, contrib-watch | → patterns.md
+- [2026-09-13] CC 会话沙箱放行 /tmp 写、拦 /tmp 读：QA artifact 主落 workspace + 镜像 /tmp 双落位 | tags: qa, autopilot, artifact, sandbox, tmp, dual-write, silent-failure | → patterns.md

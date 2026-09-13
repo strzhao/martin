@@ -318,6 +318,7 @@ hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 h
 `echo "PASS $P（cases=...）"` 中全角 `（` 直接并入变量名（`P（cases` unbound）——set -u 下脚本中途炸。本任务蓝队、红队、编排器三方共踩 12+ 处（知识库 09-02 坑③的三次复发证明「知道」防不住「手写」）。治法：交付前统一 regex sweep `\$(\w+)(?=[（）｜：；，「」等全角集])` → `${\1}` 固化成测试套件静态门；写作习惯用 `${var}` 只是缓解不是防线。
 **[2026-09-07 已固化]** 静态门落地：`scripts/contrib/tests/gate.sh`（三关聚合秒级门）+ `static/gate-fullwidth.sh`（run.sh 维度）+ `lib/fullwidth-pattern.txt`（regex 单源，perl 字节模式冻结）+ `.githooks/pre-commit`（staged 触及两域 *.sh 才跑，MARTIN_GATE_SKIP=1 逃生阀留台账）。13 处存量整改后全仓零命中。配套实证：shellcheck 0.11 的 SC2086 是 **info** 级，`-S warning` 阈值下放行——warning 级注入样本要用 SC2034。
 **[2026-09-13 四方+1 复证]** gate 扫描域**外**的脚手架仍会中招：drill 脚手架 `out "登记: … rc=$DC_ACC（契约…"`（LC_ALL=en_US.UTF-8 下 set -u 必炸，卡 t_4a97e410）——静态门只护 contrib/approval/hkstock 两域 *.sh，.autopilot 会话目录里的临时脚本不设防；横切知识「知道」依然防不住「手写」，域外 bash 脚本交付前建议沿用同款 regex sweep。
+**[2026-09-13 五方+1 + 吞错变体]** autopilot QA 沙箱驱动器 `echo "### sandbox=$SB（独立…）"` 同款中招（卡 t_6065e04e）；新增危害形态：set -u 报错发生在 `{...} > artifact` **块级重定向内**——报错被写进 artifact 而主流程 stdout 零输出 rc=1，比直接炸栈更难归因（本轮绕行 cat/沙箱假设数轮才定位到 artifact 里的报错原文）。门外脚本除 regex sweep 外，set -u 脚本的报错可见性也要设计（关键块别整块重定向，或收尾 cat artifact 自证）。
 
 <!-- tags: macos, toolchain-shadow, diff, PATH, sandbox, testing -->
 ## [2026-09-05] 用户机器第三方工具链遮蔽系统命令：diff 不支持 -r 的静默假绿
@@ -529,3 +530,7 @@ autopilot tree_sig 对 `*.acceptance.*`、`*/tests/*`、`acceptance-staging/*` �
 ## [2026-09-13] 运行时产物的红队断言求值根：gitignore 产物只在生产仓存在，REPO_ROOT 求值必假红；同源 seam 回退（两根皆缺仍硬失败）
 值班环 apply 卡（t_00ec41f4）红队 t9-02 W11.P0「duty-ledger.md 存在且非空」在 worktree 首跑假红：台账是 gitignore 运行时产物（BRIEFING 交付三），只被生产根（主仓 contrib-data）的 run-watch/duty_card 产出，worktree 检出面按设计永不可能有——断言钉在 `$REPO_ROOT/contrib-data` 上则 dev worktree 必然假红，且任何实现改动都无法使其变绿（唯一「解法」=伪造运行时数据，更不可为）。修法（红队铁律例外 E1-E3 闭合 AI 自决）：求值根加同源 seam 回退 `[[ -s "$LEDGER" ]] || LEDGER="${MARTIN_DIR:-$HOME/workspace/martin}/contrib-data/duty-ledger.md"`（与 duty_card.sh:39 同 seam 同缺省），断言语义不动——两根皆缺仍硬失败不空转放行；合并进生产仓后 REPO_ROOT 即运行时根、回退不触发、行为不变。通用律：对 gitignore 运行时产物的存在性断言，求值根必须是「产物实际被产出的那棵树」；测试头注释应载明求值序依赖（本例「前置=真库场景 2/3 先行」）。同族：「QA 验收谓词 artifact 必须每谓词独立观测」（2026-09-07）、「默认态 fail-closed 分支的黑盒测法」（2026-09-12）。
 <!-- tags: testing, acceptance, runtime-artifact, evaluation-root, seam, false-red, worktree, martin-dir, contrib-watch -->
+
+## [2026-09-13] CC 会话沙箱放行 /tmp 写、拦 /tmp 读：autopilot QA artifact 双落位
+stop-hook §5.7 按 /tmp/autopilot-artifacts/<pred-id>.out 校验谓词 artifact 存在性，但本机 CC 会话沙箱对 /tmp **写放行、读静默拒绝**（cat 读 /tmp 无声 rc=1、零报错输出——与 jq 跨目录读被拒同族但更隐蔽：无错误文本可归因，极易误判成被测脚本问题，本轮实测先绕行「cat 死因」假设数轮）。治法：artifact **主落 workspace 内**（.autopilot/runtime/<task>/artifacts/，可读可归档可引用），`cp` 镜像一份到 /tmp 供 stop-hook 机械校验；人读展示一律走 workspace 副本。同族：「运行时产物的红队断言求值根」（2026-09-13）——产物的读路径与写路径都要锚到会话可及的树。
+<!-- tags: qa, autopilot, artifact, sandbox, tmp, dual-write, silent-failure, evidence-integrity, contrib-watch -->

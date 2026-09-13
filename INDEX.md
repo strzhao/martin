@@ -31,6 +31,16 @@
 |---|---|---|
 | [oss-ops.md](oss-ops.md) | 审批分层红线（L1/L2 无 L3）、渠道规则、9 仓台账、ai-todo 打样 playbook | **任何开源运营动作前** |
 
+## Operator 赋权设计（值班 agent 的自主边界与修复判断）
+
+| 文档 | 一句话 | 何时读 |
+|---|---|---|
+| [operator-autonomy-design.md](docs/operator-autonomy-design.md) | v1：分级授权 L0–L4 + 许可表（路径白名单）——**已被 v2/v3 取代，留档对照** | 追溯「为什么白名单被否」 |
+| [operator-autonomy-design-v2.md](docs/operator-autonomy-design-v2.md) | v2：AI First 修复闭环 + 三件套（只读 token / 回退点通道 / 哈希链账本）——**三件套已被 v3 删**，骨架与三态判词沿用 | 追溯「机制化为何反噬」 |
+| [operator-autonomy-design-v3.md](docs/operator-autonomy-design-v3.md) | v3：四原则判断脚手架（机械层归零、git 即基建、不修论证、周议程门）——**议程门与流血三判据已被 v3.1 删** | 三方对比 / 回看议程门的由来 |
+| [operator-autonomy-design-v3.1.md](docs/operator-autonomy-design-v3.1.md) | **v3.1（现行）：四问模板 + 红队协议 + 当班修复流 + 可逆性红线 + 已知缺陷清单**；用户 09-13 晚全量拍板 11 项 | **判断一个缺口该不该修、或改任何域内机制之前** |
+| [operator-autonomy-design-v3-dogfood.md](docs/operator-autonomy-design-v3-dogfood.md) | v3.1 的验证报告：5 缺口回放 + v1/run-watch 历史回放 + 两路 fresh-context 红队原文 + 定稿结论 | 想知道 v3.1 凭什么定稿 / 复验红队判词时 |
+
 ## 维护规则
 
 1. 新增沉淀文档 → 在本索引对应分区加一行（文档名链接 + 一句话 + 何时读）
