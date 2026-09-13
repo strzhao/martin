@@ -175,3 +175,24 @@ exit-0 假影子 `SB_SHADOW` **前置到 PATH** ⇒ 被断言的裸 `diff` 无�
   唯一例外按 autopilot 框架既定路由披露：知识提取写入**共享知识库**（`.autopilot/knowledge/` 是主仓符号链接源），
   与 r1 同款处理、单独提交主仓、未 push。
 - **两态均绿**已实证（上表），`failed=0` 且 `rc=0` 两态同时成立。
+
+## 提交与收口
+
+- 本卡提交：`7491571 fix(acceptance): 修复守卫套件 C3 非遮蔽态假红`（3 路径 / +386 −2：套件修复 + 新增红队验收套件 + 本文件），**未 push**；工作树干净。
+- 知识提取：并入共享知识库既有 `[2026-09-14]` diff 遮蔽条目（④ 断言求值环境被污染 ⇒ 假红）+ 新增 `core.hooksPath` 作用域条目，主仓提交 `42d666c` / 本轮追加，**未 push**。
+- 提交后复核（`evidence/post-commit-verify.out`）：非遮蔽 `53/53 failed=0` rc=0；遮蔽 `51/51 failed=0` rc=0；`gate.sh` `GATE: PASS (75 files, 0 findings)` rc=0；`run.sh` `667/667 failed=0` rc=0；红队套件 47/47 rc=0。
+
+## 范围外发现移交（本段未动，请 worker 转达）
+
+1. **pre-commit 门校验的是主检出、不是当前 worktree**：`core.hooksPath` 是**绝对路径**
+   （`/Users/stringzhao/workspace/martin/.githooks`）⇒ hook 内由 `BASH_SOURCE[0]` 推出的 `REPO_ROOT`
+   是主检出，本次提交时 hook 报 `GATE: PASS (73 files, 0 findings)` 实为**主检出**的 73 个 `.sh`；
+   本 worktree 的 75 个 `.sh`（含本轮受管改动）**未被 hook 校验**。已由编排器在目标树内手跑补齐
+   （`GATE: PASS (75 files, 0 findings)`）。**跨卡通用**：worktree 工作流下「hook 报 PASS」不构成
+   「本次提交内容已过关」的证据，须以「目标树内手跑门 + 记录文件数」为入库证据（覆盖计数 N 即作用域指纹）。
+   候选修法：`core.hooksPath` 改相对路径 + hook 内改用 `git rev-parse --show-toplevel` 推根。建议单独立卡。
+   （附：r1 同卡 commit-agent 也报 73，当时被记为「转写错误」；本轮量测证实**是作用域错位**。）
+2. **红队套件谓词 R2.P4 的守卫衰减**：其基线是 `git show HEAD:<套件>`，本轮修复**落成提交后**
+   HEAD 已含修复 ⇒ 该谓词再跑退化为自比对（遮蔽分支判别力归零）。QA 期证据（`r2-p4.out`）有效，
+   提交后失效。红队已在套件头以 `CONTRACT_AMBIGUOUS` 自记。建议后续改为锚定 r1 提交 sha 或显式预期块快照。
+3. 未改任何 hook / `core.hooksPath` / 第四路径文件（本卡约束「本轮只允许在 C3 分支上做最小修复」）。
