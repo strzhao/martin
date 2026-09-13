@@ -33,3 +33,19 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
 
 # L2 链事件 flush（旧 run-watch flush 段退役后由心跳顺带承载；幂等，内部自带限额/去重）
 bash "${MARTIN:-$HOME/workspace/martin}/scripts/contrib/notify.sh" flush >>"${HOME}/workspace/martin/contrib-data/logs/heartbeat-flush.log" 2>&1 || true
+
+# [watch] 到期唤醒钳夹（零判断：scheduled 卡上有 operator 落的机器行 `watch-due: YYYY-MM-DD`，
+# 到期即 unblock 交 dispatcher；未到期不动。schedule 是终态停放无唤醒 actor——operator 12 班
+# 源码实证 kanban_db.py:3767-3790 + dispatch _lane_rows，缺口由本钳夹闭合）
+DB="$HOME/.hermes/kanban/boards/contrib/kanban.db"
+due_ids="$(sqlite3 "file:${DB}?mode=ro" \
+  "select distinct t.id from tasks t join task_comments c on c.task_id=t.id
+   where t.status='scheduled' and c.body like '%watch-due:%'
+   and substr(trim(replace(c.body,char(13),'')), instr(trim(replace(c.body,char(13),'')),'watch-due:')+11, 10) <= date('now','localtime')" 2>/dev/null || true)"
+if [[ -n "$due_ids" ]]; then
+  while IFS= read -r wid; do
+    [[ -n "$wid" ]] || continue
+    env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
+      "$HB" kanban --board contrib unblock "$wid" --reason "watch-due 到期唤醒（心跳钳夹）" >/dev/null 2>&1 || true
+  done <<<"$due_ids"
+fi
