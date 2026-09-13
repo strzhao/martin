@@ -86,3 +86,4 @@
 - [2026-09-13] 值班环 L1 特权动作分工：worker 只判定声明（台账 archive-request）、编排层 duty_card.sh apply 代行执行（fence 下白名单二分） | tags: hermes, kanban, fence, duty-loop, privilege-split, contrib-watch | → decisions.md
 - [2026-09-13] 运行时产物的红队断言求值根：gitignore 产物只在生产仓存在，REPO_ROOT 求值必假红；同源 seam 回退（两根皆缺仍硬失败） | tags: testing, acceptance, runtime-artifact, evaluation-root, seam, contrib-watch | → patterns.md
 - [2026-09-13] CC 会话沙箱放行 /tmp 写、拦 /tmp 读：QA artifact 主落 workspace + 镜像 /tmp 双落位 | tags: qa, autopilot, artifact, sandbox, tmp, dual-write, silent-failure | → patterns.md
+- [2026-09-14] git worktree × `core.hooksPath` 绝对路径：pre-commit 门校验的是**主检出**而非当前 worktree（hook 报 PASS 的覆盖计数 N 是作用域指纹，先比对 N 再采信；"hook PASS ≠ 本次提交内容已过关"） | tags: git, worktree, hooks, pre-commit, core.hooksPath, gate, scope-mismatch, false-validation, evidence | → patterns.md

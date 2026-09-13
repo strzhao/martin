@@ -553,3 +553,13 @@ stop-hook §5.7 按 /tmp/autopilot-artifacts/<pred-id>.out 校验谓词 artifact
 - **未越权改动的机械判据**：抽取「不可动的那一段」（本例 = C3 遮蔽分支块）与 `git show HEAD:<file>` 的同段做 sha256 对照（相等且抽取非空才 PASS）；配 `git diff HEAD --` 逐文件为空的三生产文件清单。
 - **mutation 真伪判据**：把分支变异回缺陷形态（仓内 gitignored 沙箱副本，跑完即删 + `git check-ignore` 自证），要求复现出**逐字相同**的失败原文（本例 `failed=3 rc=1` 且三条 FAIL detail 与原始缺陷一致）——只断言「变红」不够，要断言「红成同一个样子」。
 - **证据链闭合模板**（AI 自决改红队测试用）：E1 复现原文（两态跑出的 `##SUMMARY` + 失败行）、E2 机制定位（污染源函数 + 标签与实际求值对象的错位）、E3 授权（卡 body 显式指令 + 自带验收标准）。
+
+<!-- tags: git, worktree, hooks, pre-commit, core.hooksPath, gate, scope-mismatch, false-validation, evidence -->
+## [2026-09-14] git worktree × `core.hooksPath` 绝对路径：pre-commit 门校验的是**主检出**，不是当前 worktree
+
+本仓 `core.hooksPath=/Users/stringzhao/workspace/martin/.githooks`（**绝对路径**）⇒ 从 linked worktree 提交时，hook 脚本用 `BASH_SOURCE[0]` 推出 `REPO_ROOT=主检出`，于是它执行的 `scripts/contrib/tests/gate.sh` 扫描的是**主检出的工作树**（实测 73 个 `.sh`），而**当前 worktree 的受管内容（75 个 `.sh`，含本轮新增的验收套件）从未被 hook 校验**。
+
+- **识别信号**：hook 报告的覆盖计数 ≠ 「在 worktree 内手跑同一门」的计数（73 vs 75）。hook 输出里那行 `GATE: PASS (N files, 0 findings)` 的 N 是作用域指纹，**先比对 N 再采信 PASS**。
+- **教训**：**hook 报的 PASS 不能当作「本次提交的内容已过关」的证据**——它的作用域可能是另一个树。worktree 工作流下，入库证据须是「在目标树内手跑门 + 记录文件数」（本轮：`bash scripts/contrib/tests/gate.sh` → `GATE: PASS (75 files, 0 findings)`）。
+- **排查次序**：hook 输出异常先验**作用域**（`git config core.hooksPath` 是绝对还是相对、hook 内 `REPO_ROOT` 怎么推的、两树计数各是多少），别先怀疑「转写错误」。本坑本卡连续两轮踩中：r1 的 commit-agent 报 73，被编排器记为「转写错误」（复跑 74）；r2 直接量测 hooksPath（绝对路径）+ 两树计数（73 / 75）证实**是作用域错位而非转写**。
+- **未修（如实登记）**：本轮卡约束「只允许在 C3 分支做最小修复」，故未动 hook / `core.hooksPath`；候选修法 = 相对路径 `core.hooksPath`（git 按当前 worktree 解析）+ hook 侧改用 `git rev-parse --show-toplevel` 推根。
