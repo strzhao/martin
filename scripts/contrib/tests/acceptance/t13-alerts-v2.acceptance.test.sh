@@ -53,9 +53,16 @@
 # =============================================================================
 set -uo pipefail
 
-REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel 2>/dev/null || echo /Users/stringzhao/workspace/martin)"
+# REPO_ROOT 解析失败即 fail-fast（禁静默兜底到生产主 checkout）：
+# 兜底硬编码会把「解析失败」静默转成「指向生产主 checkout」，使被测对象与实际被测树错位。
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$SELF_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
+  echo "ACCEPTANCE-FAIL[env]: REPO_ROOT 不可解析——git rev-parse --show-toplevel 在 ${SELF_DIR} 无输出（非 git 仓库 / git 不可用）；本套件禁静默兜底到生产主 checkout" >&2
+  exit 1
+fi
 TESTS_ROOT="$REPO_ROOT/scripts/contrib/tests"
-SELF_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SELF_FILE="$SELF_DIR/$(basename "${BASH_SOURCE[0]}")"
 export CONTRIB_TEST_TARGET="${CONTRIB_TEST_TARGET:-$REPO_ROOT/scripts/contrib}"
 export CONTRIB_TEST_STUBS="${CONTRIB_TEST_STUBS:-$TESTS_ROOT/stubs}"
 export DIM=acceptance
@@ -906,14 +913,46 @@ if scene_on 14; then
   # 判据 = 「是否纳入版本控制」，非「文件是否存在」（2026-09-14 修正，卡 t_a9ed7383）：
   # 生产数据 contrib-data/ 按设计不入仓且被 .gitignore 忽略，主 checkout 里该文件在位属正常生产态
   # ⇒ 存在性判据在主 checkout 恒红（环境脆性误报）；真红线 = 被 git 纳入版本控制（索引命中）。
-  if git -C "$REPO_ROOT" ls-files --error-unmatch contrib-data/config.json >/dev/null 2>&1; then
+  # 真值源 = 索引 ∪ 版本库历史（三面各自求值；禁「只看索引」）
+  CFG_REL="contrib-data/config.json"
+  IDX_HIT=0; HEAD_HIT=0; REF_HIT=0
+  git -C "$REPO_ROOT" ls-files --error-unmatch "$CFG_REL" >/dev/null 2>&1 && IDX_HIT=1
+  git -C "$REPO_ROOT" cat-file -e "HEAD:${CFG_REL}" >/dev/null 2>&1 && HEAD_HIT=1
+  if [[ -n "$(git -C "$REPO_ROOT" rev-list --all -- "$CFG_REL" 2>/dev/null | head -1 || true)" ]]; then REF_HIT=1; fi
+
+  # (1) 索引面（原断言原样保留：label 与 PASS 证据文案逐字不变）
+  if [[ "$IDX_HIT" -eq 1 ]]; then
     _fail "s14-p1 生产 config 不入仓" "contrib-data/config.json 已纳入版本控制（git ls-files 索引命中；生产配置面泄漏进仓）"
   else
     IGN_EVID="$(git -C "$REPO_ROOT" check-ignore -v contrib-data/config.json 2>/dev/null | head -1 | cut -f1 || true)"
     _pass "s14-p1 生产 config 未纳入版本控制（git ls-files 未命中；忽略规则证据：${IGN_EVID:-无}）"
   fi
+  # (2) 版本库历史面
+  if [[ "$HEAD_HIT" -eq 1 || "$REF_HIT" -eq 1 ]]; then
+    _fail "s14-p1 生产 config 未进版本库历史" "版本库历史命中（HEAD 树=${HEAD_HIT} refs=${REF_HIT}）：git cat-file -e HEAD:${CFG_REL} / git rev-list --all -- ${CFG_REL} 命中——已从暂存区移除但 blob 仍随版本库分发（push 即外泄）"
+  else
+    _pass "s14-p1 生产 config 未进版本库历史（HEAD 树与全部 refs 均未命中）"
+  fi
+  # (3) 真值源探针健康（防空转假绿）
+  PROBE_OK=0
+  if git -C "$REPO_ROOT" cat-file -e "HEAD:scripts/contrib/notify.sh" >/dev/null 2>&1; then
+    PROBE_OK=1
+    _pass "s14-p1 真值源探针健康（已知在位路径 HEAD:scripts/contrib/notify.sh 可解析）"
+  else
+    _fail "s14-p1 真值源探针健康" "git cat-file -e HEAD:scripts/contrib/notify.sh 未命中——版本库/HEAD 树不可读，此时 s14-p1 三面零命中不是「未入仓」而是「探针坏」，判定无意义"
+  fi
+  # (4) 忽略规则守护（生产数据目录按设计不入仓的可执行守护面）
+  # 注：check-ignore 默认不报告已入索引的路径 ⇒「config 在索引里」的态下本断言会与索引面同红；
+  #     本卡三条 mutation 均不落该态（A 以 rm --cached 收尾），故归因不受影响。
+  if git -C "$REPO_ROOT" check-ignore -q contrib-data/config.json 2>/dev/null; then
+    IGN_RULE="$(git -C "$REPO_ROOT" check-ignore -v contrib-data/config.json 2>/dev/null | head -1 | cut -f1 || true)"
+    _pass "s14-p1 生产数据目录忽略规则在位（check-ignore 命中：${IGN_RULE:-无}）"
+  else
+    _fail "s14-p1 生产数据目录忽略规则在位" "git check-ignore contrib-data/config.json 未命中——.gitignore 的 contrib-data/ 忽略规则缺失/被移除，生产数据目录失去「按设计不入仓」的守护面"
+  fi
   art s14-p1 "merge-base=${MERGE_BASE}" "diff 行数=$(printf '%s' "$DIFF_OUT" | wc -l | tr -d ' ')" \
     "变更行含 notify_target 计数=${NT_HITS:-0}" "命中行：" \
+    "索引=${IDX_HIT} HEAD 树=${HEAD_HIT} refs=${REF_HIT}" "探针健康=${PROBE_OK:-0}" \
     "$(printf '%s' "$DIFF_CHANGED" | grep -n 'notify_target' || true)"
 
   # --- s14-p2 [det-machine] 上限数值语义与基线相等（键名逐字 + 死缺省不下降 + 行为总闸不变） ---
