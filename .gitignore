@@ -33,3 +33,4 @@ approved.log
 contrib-94862/
 cron_*
 l4-juejin-*.md
+.worktrees/

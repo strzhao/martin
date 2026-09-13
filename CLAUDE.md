@@ -59,29 +59,13 @@
 
 **lane 模式接入（2026-09-07 实施；09-08 lane 改造，详见 [`hermes-lane-protocol.md`](hermes-lane-protocol.md) §8）**：contrib 域 lane 现状——①`contrib` profile（hermes worker，只读研判专家：premise 复验/状态核查/报告解读；gh 只读红线，SOUL.md 含 hermes-contribution.md 知识源路由）；②own-PR 执行走 **coder lane 全自动**（09-08 起，`contrib-cc` lane 已下线：execute.sh own-PR 已批分支自动建 coder 卡，dispatcher spawn worker 驱动 claude -p 完成 push fork + gh pr create，rq set executed 由 worker 收尾）。escalate 审批项**不建卡**（消费者是用户非 worker，防双消费）。流水线主链与三路 L2 审批全部原样保留。
 
-### 机会流水线 contrib-watch（⚠ 09-13 起 AI Native operator 接管，下述旧骨架已停搏退役）
+### 机会流水线 contrib-watch（09-13 起 AI Native operator 形态）
 
-**当前形态**：每小时心跳（hermes cron `94cb4b0779fd` → `scripts/contrib/heartbeat.sh`）拉起 contrib board 班卡，operator（宪法 `~/.hermes/profiles/contrib/skills/github/contrib-operator/SKILL.md`）自主执行 感知（gh 增量+邮件）→分诊三路→造/路由→L2 起草→ops-journal。旧 run-watch 五段骨架/scan_gate/mail_gate/deepcheck 快车道等已卸载停搏（代码留存待 E 波删除）；**L2 审批链（approval-collect/execute/notify approve/rq/预算）不变**。设计宪法与迁移状态 → 看 [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)；排查 operator 行为 → 看 `contrib-data/ops-journal.md` 与 contrib board 班卡。以下为历史记录（旧骨架架构，供追溯）：
+contrib 域共建由 **operator** 运营：每小时心跳（hermes cron `94cb4b0779fd` → `scripts/contrib/heartbeat.sh`，脚本真源在本仓、部署拷贝在 `~/.hermes/scripts/`）拉起 contrib board 班卡，operator 宪法 = `~/.hermes/profiles/contrib/skills/github/contrib-operator/SKILL.md`（Charter/领域知识/工具面/路由知识）。六节点 感知→分诊→造→过闸→守候→学习 全 AI 主导；代码只做钳夹（L2 闸/预算/心跳/watch-due 唤醒）+ 三账本（看板/approved.log/ops-journal）。
 
-### 机会流水线 contrib-watch（09-02 上线；09-09 起卡化架构，T1-T6 交付）
-
-主轴 2.0 的执行层，**卡化架构**：launchd `com.stringzhao.contrib-watch`（每小时 :07）跑 `scripts/contrib/run-watch.sh` 五段骨架（scan 闸门→mail 闸门→radar→notify flush→深检快车道），**每段=廉价闸门（零 LLM）→ 建 hermes contrib 研判卡（`kanban_card.sh` 唯一建卡口，卡 on contrib 专用 board，`export KANBAN_BOARD` 切换/回退一个开关）→ flight 登记终态跟踪 → flush**；批量研判由 contrib profile worker 按 `.claude/skills/contrib-watch/SKILL.md` 六模式执行（scan/radar/build/deep-check/mail/digest），**claude -p 降级为兜底路**（建卡失败/QC 开闸时才走）。待研判唯一数据源=`contrib-data/pending-batches/` 批次文件（pending-hits.json 兼容写已于 09-10 撤销，旧 77 条中 39 条独有条目一次性迁移并入批次，双写重复项自然收敛）。产物全落 `contrib-data/`（gitignore）：briefs / radar / runs / ledger.md / pending-batches。手动入口：`/contrib-watch scan|radar|build|deep-check|mail|digest`。
-
-**gateway 存活哨兵（09-10 新增，未装载）**：`scripts/contrib/gateway_sentinel.sh` + `com.stringzhao.contrib-gateway-sentinel.plist`（每 15min；pgrep 死→event `<日期>-gateway-down` 日级幂等，探针异常只日志；检测≠送达，恢复后随 flush 送达）。**装载是人工步骤**：`launchctl bootstrap gui/$(id -u) ~/workspace/martin/scripts/contrib/com.stringzhao.contrib-gateway-sentinel.plist`（命令在脚本头注释）。何时用：怀疑「消息没发/cron 全败」时先查哨兵日志 `contrib-data/logs/sentinel.log`。
-
-**own-PR 小时级机械盯梢（09-10 新增，随 run-watch 自动生效）**：`scripts/contrib/own_pr_watch.sh`（run-watch 段 2.5 每小时，零 LLM 机械 diff）——strzhao 名下 open PR 对快照 `contrib-data/own-pr-watch-snapshot.json` 比对：高级事件（外部评论/merged/closed→微信，子上限 `config.own_pr_alert_per_day`=2/日）/低级 `own-pr-info`（mergeable 翻转/停滞→简报）/静默（含 UNKNOWN 翻转、本人评论）；gh 失败连败 2 断路 `pipeline-failure`（`-ownpr-watch-down` 日级幂等）、快照损坏自动重建基线。own-pr-activity 唯一生产者（radar 事件产出已移交，见 SKILL.md 模式二）。何时用：问「我的 PR 有没有新动静/为什么没收到 PR 告警」→ 看脚本头注释 + `contrib-data/logs/own-pr-watch.log`。
-
-**coder 卡上游回馈评估闸门（09-11 新增，随 run-watch 自动生效；洞察6 dogfood 已实跑走通）**：`scripts/contrib/coder_upstream_gate.sh`（run-watch 段 2.6 每小时，零 LLM 机械回扫）——done coder 卡中 workspace_path 落 hermes-agent worktree 且本地领先 origin/main 的修复卡 → contrib board 建「上游回馈评估」卡（`kanban_card.sh` kind=upstream）+ `coder-upstream-candidate` 事件 + `contrib-data/coder-upstream-cursor.json` 游标增量；三层幂等（events key/建卡 idempotency-key/游标）+ fail-closed（任一步失败零推进，不拖死 hourly 链）。已投递判重（09-12 D4）：候选领先 commit 的 patch-id 对 own-PR snapshot 面（`own-pr-watch-snapshot.json` 条目 headRefOid 直项 + headRefName 派生精确 refname `refs/heads/<name>`/`refs/remotes/fork/<name>` 解析项，硬上界 400，snapshot 缺失/损坏 fail-open 放行）比对，命中记 `coder-upstream-delivered` 零建卡——替代第二段的全量 fork refs 扫描（1073 refs 单候选 ≈19s），7 卡 sweep 72s → <2s。绝不自动 push：评估卡 verdict=值得才走既有 forge/L2 链（L2 闸门不豁免），不值得记理由终态 expired/shelved。何时用：问「本地修了的东西为什么没变成上游 PR」→ 看脚本头注释 + `contrib-data/logs/coder-upstream-gate.log`。
-
-**边界**：scan/radar 严格 L1 只读（gh 读+本地写）；build 产出本地 worktree 分支 + PR-DRAFT 草稿，**绝不 push / 绝不 gh pr create**——提交永远人工，L2 闸门不豁免；自动构建旋钮在 `contrib-data/config.json`（auto_build / min_build_score=12 / 每日上限 1）。观察真实运转质量后再评估是否放开自动提交。
-
-**入库验收门（2026-09-07 上线）**：`scripts/contrib/**.sh` ∪ `scripts/approval/**.sh` 的变更在 pre-commit 由 `scripts/contrib/tests/gate.sh` 统一验收（bash -n/zsh -n 语法 + shellcheck -S warning + 全角 regex 门，聚合不短路；exit 0/1/2=全绿/有发现/依赖缺失）；装载：`bash scripts/contrib/tests/install-hooks.sh`；逃生阀 `MARTIN_GATE_SKIP=1`（台账 `.autopilot/runtime/gate-skip.log`，不静默）。口径与豁免见 `scripts/contrib/tests/README.md`。
-
-**goods-gate 与造货引擎（2026-09-09 升级，机制层强制 commit 进仓优先）**：深检 preflight 新增「Goods 判定」必答节（三态：offered=库存带 offer / forge-lane=可造就造、评审照发+存活期内补 offer / none=纯 review 计数）；verdict.json `goods.status` 必填、`auto-gate.sh` fail-closed 校验（09-09 前的旧指南把 offer 取舍列为 escalate 事由=根因已修）。造货入口 `scripts/contrib/forge.sh`（worktree 建单关注点分支→mutation 自证→入 `contrib-data/inventory.json` 机读台账，绝不 push）；`goods-metrics.json` 记账 + radar 巡检（连续 3 次 none=goods-drought 报警回炉造货；库存 stale 进简报）。设计全文见 hermes-contribution.md §11.2。
-
-**commit trailer 规范**：上游 hermes PR 的 commit message **一律不带 `Co-Authored-By: Claude` trailer**（用户 2026-08-14 拍板，沿用上游惯例）；Claude Code 默认加 trailer 的行为在此仓库的上游贡献场景被显式覆盖。本地 martin 仓库自身 commit 不受影响。
-
-**AI Native 架构改造（2026-09-13 立项，W1 当夜落地）**：contrib-watch「影子工作流引擎」收敛——三层架构（L1 硬底座/L2 看板即控制面/L3 值班 agent 环）。**已生效**：①值班环（`scripts/contrib/duty_card.sh` + contrib-watch SKILL 模式七 duty + run-watch 尾部 2h 节流段 + `contrib-data/duty-ledger.md`）——值班卡按 state_brief（`scripts/contrib/state_brief.sh`，零 LLM 六源伤情聚合）白名单内自愈（archive 超龄卡/清陈旧 flight/rq expired/refund），禁触 L2 态项，动作带 decisionReason；②hermes 框架件（本地分支待合并/offer：`feat/kanban-create-validate` 建卡 skill 硬校验、`feat/kanban-dead-letter` 死信车道）；③martin 侧 deepcheck blocked 失速收割（88a8b54）+ 幽灵 slug 幂等回收（2926c72）。何时读：值班环改造/扩展 L1 白名单、研判 duty-ledger 异常、推进 D1/D2/E1 收敛、或把 B 系分支 offer 上游前 → 看 [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)。
+- **排查入口**：operator 行为 → `contrib-data/ops-journal.md` + contrib board 班卡；架构宪法与迁移史 → [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)
+- **能力面**：新命中→[sig] 卡分诊三路（出手/[watch]/放行）；造货走 forge+coder lane（claude-run §⑨）；深检走 kanban swarm+`--resources deepcheck:global`；对外动作一律 L2 提案（agent 起草链落笔）
+- **旧的五段骨架（run-watch/scan_gate/mail_gate/deepcheck 快车道等）09-13 退役删除**，git 历史可溯；本日最高实证：#109641 感知→深研→forge→L2-A→PR #109758 单日全链闭环
 
 ### 快车道与 L2-A 微信审批环（09-04 上线）
 

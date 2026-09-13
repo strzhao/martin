@@ -1,6 +1,7 @@
 #!/bin/bash
 # contract-drift.sh — Tier S：对外 API 契约漂移守卫（场景11.P1）
-# 断言两个 SKILL.md（hermes 侧 contrib-l2 + martin 侧 contrib-watch）引用的
+# 断言 SKILL.md（hermes 侧 contrib-l2，L2 链在役件）引用的
+# （martin 侧 contrib-watch skill 已随旧五段骨架退役，09-13 clean-sheet E 波）
 # rq.sh / notify.sh 子命令 ⊆ 被测脚本 case 分支实现集合。删名/改名 = FAIL。
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +17,6 @@ t_init "contract-drift.sh"
 RQ_SCRIPT="$TARGET/rq.sh"
 NOTIFY_SCRIPT="$TARGET/notify.sh"
 SKILL_HERMES="${HOME:-$MARTIN_REPO}/.hermes/skills/github/hermes-contrib-l2/SKILL.md"
-SKILL_MARTIN="$MARTIN_REPO/.claude/skills/contrib-watch/SKILL.md"
 
 # --- 从被测脚本提取 case 分支实现集合 ---
 dispatch_labels() { # <script> → case "$cmd" in 顶层分支标签
@@ -79,20 +79,6 @@ if [[ -f "$SKILL_HERMES" ]]; then
   check_refs "$SKILL_HERMES"
 else
   t_skip "hermes 侧 SKILL.md 不在默认位置（${SKILL_HERMES}）"
-fi
-
-t_case "martin 侧 SKILL.md（contrib-watch skill）引用 ⊆ 实现"
-if [[ -f "$SKILL_MARTIN" ]]; then
-  check_refs "$SKILL_MARTIN"
-else
-  _fail "SKILL.md 缺失" "$SKILL_MARTIN"
-fi
-
-t_case "scan_gate.sh --drain / scan_gate 入口引用存在"
-if grep -qF -- '--drain' "$TARGET/scan_gate.sh"; then
-  _pass "scan_gate --drain 实现"
-else
-  _fail "scan_gate --drain" "SKILL.md 引用的手动兜底入口缺失"
 fi
 
 t_case "全角门 regex 单源（gate.sh / gate-fullwidth.sh 同读 fullwidth-pattern.txt，禁内嵌字面量）"

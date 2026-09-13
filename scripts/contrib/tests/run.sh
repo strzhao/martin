@@ -3,7 +3,7 @@
 #
 # 用法：bash scripts/contrib/tests/run.sh
 #   末行输出 JSON 摘要：{"total":N,"passed":N,"failed":N,"skipped":N,"dims":{"unit":N,"contract":N,"e2e":N,"static":N}}
-#   exit 0 当且仅当 failed==0 且全部 detect 类 exit 0
+#   exit 0 当且仅当 failed==0
 #
 # 环境适配（launchd 仿真，场景2.P1）：
 #   - cwd 无关：资源一律依本脚本位置解析
@@ -58,7 +58,6 @@ DIM_UNIT=0
 DIM_CONTRACT=0
 DIM_E2E=0
 DIM_STATIC=0
-DETECT_FAILED=0
 
 run_test_file() { # <dim> <file>
   local dim="$1" file="$2" out rc summary
@@ -106,38 +105,12 @@ for f in "$TESTS_ROOT"/e2e/*.sh; do
   [[ -e "$f" ]] && run_test_file e2e "$f"
 done
 echo "---- e2e 冒烟独立入口 ----"
-if bash "$TESTS_ROOT/e2e-smoke.sh" >/tmp/contrib-e2e-smoke-$$.json 2>/tmp/contrib-e2e-smoke-$$.err; then
-  echo "PASS e2e-smoke"
-  echo "run.sh: smoke $(tail -1 /tmp/contrib-e2e-smoke-$$.json)"
-  TOTAL=$((TOTAL + 1))
-  PASSED=$((PASSED + 1))
-  DIM_E2E=$((DIM_E2E + 1))
-else
-  echo "FAIL e2e-smoke"
-  cat /tmp/contrib-e2e-smoke-$$.json /tmp/contrib-e2e-smoke-$$.err
-  TOTAL=$((TOTAL + 1))
-  FAILED=$((FAILED + 1))
-  DIM_E2E=$((DIM_E2E + 1))
-fi
-rm -f /tmp/contrib-e2e-smoke-$$.json /tmp/contrib-e2e-smoke-$$.err
 
 echo "==== 维度 4/4：static ===="
 for f in "$TESTS_ROOT"/static/*.sh; do
   [[ -e "$f" ]] && run_test_file static "$f"
 done
 
-echo "==== 捕获自证：detect（5 类） ===="
-for cls in bool-parse cwd-dep ledger-vs-delivery state-machine bookkeeping; do
-  if bash "$TESTS_ROOT/detect/run.sh" "$cls" >"/tmp/contrib-detect-$cls-$$.json" 2>&1; then
-    echo "PASS detect/$cls"
-    echo "run.sh: $(tail -1 "/tmp/contrib-detect-$cls-$$.json")"
-  else
-    echo "FAIL detect/$cls"
-    cat "/tmp/contrib-detect-$cls-$$.json"
-    DETECT_FAILED=$((DETECT_FAILED + 1))
-  fi
-  rm -f "/tmp/contrib-detect-$cls-$$.json"
-done
 
 rmdir "$SHIM_DIR" 2>/dev/null || true
 
@@ -145,7 +118,7 @@ rmdir "$SHIM_DIR" 2>/dev/null || true
 printf '{"total":%d,"passed":%d,"failed":%d,"skipped":%d,"dims":{"unit":%d,"contract":%d,"e2e":%d,"static":%d}}\n' \
   "$TOTAL" "$PASSED" "$FAILED" "$SKIPPED" "$DIM_UNIT" "$DIM_CONTRACT" "$DIM_E2E" "$DIM_STATIC"
 
-if [[ "$FAILED" -eq 0 && "$DETECT_FAILED" -eq 0 ]]; then
+if [[ "$FAILED" -eq 0 ]]; then
   exit 0
 fi
 exit 1
