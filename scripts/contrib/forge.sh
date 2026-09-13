@@ -11,7 +11,7 @@
 #                   打印 worktree 路径；--dir 覆盖上游仓根（缺省 HERMES_AGENT_DIR，~/workspace/hermes-agent）
 #   forge.sh register <slug> --branch <b> --sha <sha> --domain <d> [--proof <path>] [--notes <s>]
 #                   成品入库（inventory.json，status=ready, kind=fork-commit）
-#   forge.sh set-status <id> <ready|stale|in-flight|spent|needs-decision>
+#   forge.sh set-status <id> <ready|stale|in-flight|spent|needs-decision|dead|idea>
 #   forge.sh check [--stale-days <n>]
 #                   新鲜度巡检：列各项 base_sha 与 checked 距今天数（缺省 14 天标 STALE；
 #                   base 落后量由 radar 每日研判对上游仓 rev-list 实查）
@@ -141,8 +141,8 @@ case "$cmd" in
     id="${1:-}"; st="${2:-}"
     inv_require
     [[ -n "$id" && -n "$st" ]] || usage
-    case "$st" in ready|stale|in-flight|spent|needs-decision) ;;
-      *) die "status 只许 ready|stale|in-flight|spent|needs-decision" 2 ;;
+    case "$st" in ready|stale|in-flight|spent|needs-decision|dead|idea) ;;
+      *) die "status 只许 ready|stale|in-flight|spent|needs-decision|dead|idea" 2 ;;
     esac
     inv_write --arg id "$id" --arg st "$st" --arg t "$(today)" \
       '.items = ((.items // []) | map(if .id == $id then .status = $st | .checked = $t else . end))
