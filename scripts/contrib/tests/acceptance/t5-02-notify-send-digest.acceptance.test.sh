@@ -31,7 +31,12 @@
 #   检查删→S2 红；幂等快路删→S5 重复发送红；空卡守卫删→S6 红；账本标记与发送删→S1 红。
 # =============================================================================
 set -u
-REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel 2>/dev/null || echo /Users/stringzhao/workspace/martin)"
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$SELF_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
+  echo "ACCEPTANCE-FAIL[env]: REPO_ROOT 不可解析——git rev-parse --show-toplevel 在 ${SELF_DIR} 无输出（非 git 仓库 / git 不可用）；本套件禁静默兜底到生产主 checkout" >&2
+  exit 1
+fi
 TESTS_ROOT="$REPO_ROOT/scripts/contrib/tests"
 export CONTRIB_TEST_TARGET="${CONTRIB_TEST_TARGET:-$REPO_ROOT/scripts/contrib}"
 export CONTRIB_TEST_STUBS="${CONTRIB_TEST_STUBS:-$TESTS_ROOT/stubs}"
