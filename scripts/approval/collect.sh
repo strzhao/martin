@@ -31,7 +31,7 @@ RQ="$MARTIN/scripts/contrib/rq.sh"
 NOTIFY="$MARTIN/scripts/contrib/notify.sh"
 EXECUTE="$MARTIN/scripts/approval/execute.sh"
 # tunnel CLI 装在 nvm node bin（launchd PATH 极简找不到——09-06 装载后实证 rc=127）：
-# env seam 优先 → PATH 查找 → nvm 布局探测（同 run-watch.sh 的 claude 探测先例）
+# env seam 优先 → PATH 查找 → nvm 布局探测（与 claude 探测同一三级范式）
 TUNNEL_BIN="${TUNNEL_BIN:-}"
 if [[ -z "$TUNNEL_BIN" ]]; then
   TUNNEL_BIN="$(command -v tunnel 2>/dev/null || true)"

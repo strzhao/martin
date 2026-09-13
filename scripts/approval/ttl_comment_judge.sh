@@ -13,7 +13,7 @@
 #
 # 判读者选择（成本从低到高，首个可用者胜出）：
 #   1. HERMES_BIN -z（hermes 单次任务，主模型已有 key，与 contrib 流水线同源）
-#   2. claude -p（nvm 探测，同 run-watch.sh 三级解析范式）
+#   2. claude -p（nvm 探测，三级解析范式）
 #   双双不可用 → exit 3，调用方回退机械判定（fail-closed 不放行）
 #
 # 快照契约（防幻觉）：评论原文经文件传入判读者，prompt 只给规则与路径，不给窗口
@@ -71,7 +71,7 @@ run_verdict() {
     out="$("$HERMES_BIN" -z "读取文件 $SNAP 的全文，然后按以下规则判读并只输出 PASS 或 BLOCK 一个词：判断 issue 最新有效状态是否已被否决。BLOCK 条件=存在重复/不修/关闭信号且窗口内无任何后续撤销/改判/反驳（re-triaged/not a duplicate/related 等改判算撤销）；PASS 条件=最新状态 issue 仍成立或无否决信号。只依据快照，不猜窗口外。快照: $(cat "$SNAP" | head -c 6000)" 2>>"$LOG" | tail -5 | grep -Eo "PASS|BLOCK" | tail -1)"
     [[ -n "$out" ]] && { echo "$out"; return 0; }
   fi
-  # 判读者 2: claude -p（nvm 三级探测，同 run-watch.sh 范式）
+  # 判读者 2: claude -p（nvm 三级探测范式）
   local CLAUDE_BIN
   CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
   [[ -z "$CLAUDE_BIN" ]] && CLAUDE_BIN="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1 || true)"

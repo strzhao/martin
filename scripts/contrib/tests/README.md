@@ -1,6 +1,6 @@
 # contrib-watch 基建测试套件
 
-为 `scripts/contrib/` 的 7 个生产脚本（notify.sh / rq.sh / scan_gate.sh / deep_check_gate.sh / deep-check.sh / run-deepcheck.sh / run-watch.sh）建立的多维回归测试。起因：2026-09-05 事故（notify.sh cfg() 用 jq `//` 把 `notify_dry_run:false` 读成默认 true、run-deepcheck.sh 缺 `cd` 导致 launchd 下 claude 找不到项目 skill），同类静默失效必须**在合入前被确定性捕获**。
+为 `scripts/contrib/` 的 6 个生产脚本（notify.sh / rq.sh / forge.sh / kanban_card.sh / l2_ledger.sh / gateway_sentinel.sh）建立的多维回归测试。起因：2026-09-05 事故（notify.sh cfg() 用 jq `//` 把 `notify_dry_run:false` 读成默认 true、脚本在 launchd 下缺 `cd` 导致 claude 找不到项目 skill），同类静默失效必须**在合入前被确定性捕获**。
 
 零外部依赖：纯 bash 3.2 + jq + python3 + shellcheck（全部本机已有），拒绝 bats/pytest——launchd 极简 PATH 下必须自足。
 
@@ -89,31 +89,29 @@ t_finish
 
 | seam | 默认值（=现状） | 用途 |
 |---|---|---|
-| `MARTIN_DIR` | `$HOME/workspace/martin` | 7 脚本的项目根（notify/rq 的 RQ/NOTIFY 路径跟随） |
-| `CONTRIB_DATA_DIR` | `$MARTIN/contrib-data` | 数据目录（notify/rq/scan_gate/gate/deep-check/run-* 全部读写） |
+| `MARTIN_DIR` | `$HOME/workspace/martin` | 6 脚本的项目根（notify/rq 的 RQ/NOTIFY 路径跟随） |
+| `CONTRIB_DATA_DIR` | `$MARTIN/contrib-data` | 数据目录（6 脚本全部读写） |
 | `NOTIFY_LOCK` | `/tmp/contrib-notify.lock` | notify flush/approve 锁 |
 | `NOTIFY_SEND_LAST` | `/tmp/contrib-send-last.json` | hermes send 输出落点（success:true 判据读这里） |
 | `RQ_LOCKDIR` | `/tmp/contrib-rq.lock` | rq 写锁 |
-| `WATCH_LOCK` | `/tmp/contrib-watch.lock` | run-watch 防重入锁 |
+| `WATCH_LOCK` | `/tmp/contrib-watch.lock` | 旧 run-watch 防重入锁——**09-13 随 run-watch 退役**，生产面已无消费者（仅 tests/lib/sandbox.sh 仍导出该 env） |
 | `DEEPCHECK_TARGET_FILE` | `/tmp/.deepcheck-target` | gate→deep-check 目标传递文件 |
 | `DEEPCHECK_LOCK` | `/tmp/contrib-deepcheck.lock` | 深检防重入锁 |
 | `HERMES_BIN` / `GH_BIN` / `TUNNEL_BIN` / `OSASCRIPT_BIN` / `GATEWAY_PROBE_BIN` | `hermes` / `gh` / `tunnel` / `osascript` / `pgrep` | 外部命令注入点（影子 stub 双通道之一） |
 | `CLAUDE_BIN` | 空 → 现有两级探测（PATH → nvm 目录） | claude 注入点（notify/rq 之外的 3 个 LLM 调用方） |
 | `NOTIFY_SOURCE_ONLY` / `RQ_SOURCE_ONLY` | unset | source guard：=1 时只加载函数不执行 dispatch（单测复用纯函数） |
 
-run-watch.sh 的 radar 分支抽为 `maybe_radar [hour]`（缺省 `date +%H` = 现状），供时间窗测试注入。
-
 沙箱把 `HOME` 指向沙箱内 home 并将 `$HOME/workspace/martin` 软链回沙箱根——**万一哪处 seam 漏配，默认值也落在沙箱里，生产零风险**。另外：notify.sh 的审批卡/回执临时文件（`/tmp/contrib-approval-<id>.txt`、`/tmp/contrib-receipt-<id>.txt`）与 AI 摘要 prompt（`/tmp/contrib-digest-prompt-<pid>.txt`）保持现状（按 id/pid 命名、用后即删，不在冻结 seam 名单内）。
 
 ## 豁免清单
 
-- **zsh 脚本**（deep-check.sh / run-deepcheck.sh / run-watch.sh / quota_circuit.sh，按 shebang 动态识别）不做 shellcheck（SC1071 是工具对 zsh 的误报），以 `zsh -n` 语法门覆盖（static/syntax.sh 生产 3 个 + gate.sh 全部 zsh shebang）。
+- **zsh 脚本**（按 shebang 动态识别）不做 shellcheck（SC1071 是工具对 zsh 的误报），以 `zsh -n` 语法门覆盖（static/syntax.sh 生产 3 个 + gate.sh 全部 zsh shebang）。
 - **`scripts/approval/tests/*.bash`** 不在 gate.sh 覆盖集内（口径收窄到 `*.sh`），由 approval 套件自测覆盖（`bash scripts/approval/tests/run.sh`）。
-- **`stat -f %m`**（macOS 专属）出现在 deep_check_gate.sh 与 run-watch.sh 的锁滞留检测——macOS-only 语义，不跨平台。
+- **`stat -f %m`**（macOS 专属）出现在 notify.sh 的 send 回写新鲜度判读（`_send_result_fresh`）——macOS-only 语义，不跨平台。
 - **`jq -r '.success // false'`**（notify.sh `_send`）保留 `//` 运算符：这里语义正确（把非 true 输出一律当失败），与被修的 cfg 布尔塌缩不是同一形态。
 - **e2e-smoke 的前缀锚点行**以 python3 `json.dumps` 默认分隔符格式播种：flush 的账本重写会以同格式重序列化全部行，前缀字节不变断言锚定的是「未入批行不被破坏/丢失」这一真实保证。
 - **契约外观察项（现状固化，非缺陷断言）**：dry-run 演练轮会把批次事件标 `pushed=true`（演练消费语义）——契约规约只冻结「零传输调用 + stdout 含 [dry-run]」，是否应保留事件待后续拍板（tests/contract/notify-cli.sh 内有登记）。
-- `notify_min_interval_min` 拦截轮与限额拒绝轮 exit 0（属正常跳过/拒绝，非失败）；发送失败/摘要失败轮 rc≠0（契约：事件保留重试，上游 run-watch `|| echo`、deep_check_gate `|| true` 均容错）。
+- `notify_min_interval_min` 拦截轮与限额拒绝轮 exit 0（属正常跳过/拒绝，非失败）；发送失败/摘要失败轮 rc≠0（契约：事件保留重试，由调用方容错）。
 
 ## 与设计的对应
 
