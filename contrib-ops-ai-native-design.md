@@ -1,123 +1,89 @@
-# contrib-ops AI Native 改造设计（v1）
+# contrib 流水线 AI Native 设计 v2（clean-sheet 宪法）
 
-> 2026-09-13 立项。起因：09-12 四个活体缺陷暴露「卡化改造走了一半——工作上了看板，状态还留在 bash」。
-> 本文是并发执行的 shared spec：每个优化点含范围/落点/交付/验收/依赖/红线，可直接拆卡。
-> 关联：`harness-engineering-principles.md`（原则镜照）、`hermes-lane-protocol.md`（执行规范）、hermes-contribution.md §11（goods 标准）。
+> 2026-09-13 定稿，取代 v1（v1 的 W1 落地记录见文末附录，其中 C 系值班环/B1 裁定被本版吸收或取代）。
+> 定案历程：W1 交付后用户判定「还是很不 AI Native」→ 六轮对话收敛 → AI 视角用户故事推演暴露 10 缺口 → 本宪法。
+> 实施波次（P0/A-E）见 plan 文件 tidy-jumping-fiddle.md，本文记录不可变的架构裁定。
 
----
+## 0. 一句话
 
-## 0. 判题与证据
+**链上无脚本**：六个节点全部 AI 主导；代码降格为三副钳夹 + 两本账 + 运输管道。看板是唯一状态，operator 是唯一判断，一条心跳是唯一调度。
 
-**补丁跑步机的根因不是 guard 不够，是状态放错了层。** contrib-watch 在 bash 里长出了影子工作流引擎（ready-queue.json / flight-*.json / scan-cursor / own-pr-snapshot / budget / events.jsonl 七套账本），与它自己驱动的 hermes kanban 平行竞争。
+## 1. 节点与钳夹（宪法核心）
 
-09-12 四缺陷 → 通用引擎能力对照：
+**判据**：遇到没见过的情况应该现场判断的 → 节点（AI）；需要毫不动摇、错了必须拒绝而不是变通的 → 钳夹（代码）。
 
-| 缺陷（活体病例） | 影子引擎里的根因 | kanban 已有/应有的通用能力 |
-|---|---|---|
-| 深检单飞槽死锁 8.5h+（t_f8c0d470，flashcards 误派卡 blocked 占槽） | flight json 信号量无租约无回收 | worker claim 本有 `claim_expires` + stale reclaim（kanban_db_dispatch.py:362-380）；并发上限本有 per-profile #21582 |
-| 孤儿卡躺平 3 天（t_cb14f0ee，rq 早已 executed） | 无死后处理 | `gave_up` 事件已有，缺死信车道 |
-| 日报卡秒崩×2（t_92c903b0，pin 了 profile 没有的 skill） | kanban_create 不校验 skill 存在性 | create-time 校验 |
-| 幽灵 slug 重试 4125 次/5 天（tunnel rm c0i5s6514x） | rm 不幂等 + collect 无终态出口 | 幂等操作语义 |
-
-原则镜照：正交原则（A）被违反——同一编排语义两处状态；原则 B（模型不可靠→机制层）被过度应用——编排调度是判断密集型而非安全边界；反模式 2 同构——bash gate 失败≠确定性保证（09-12 notify flush 失败→事件静默延迟 9h）。
-
-## 1. 目标架构：三层
+### 六节点（全 AI，零脚本）
 
 ```
-L3 值班 agent 判断环   值班卡领 state brief（零 LLM 生成）→ 自主决定补跑/回收/升级/无事；
-                       新失败类归纳进失败分类学（SKILL.md checklist = 知识即代码）
-L2 看板即控制面        状态唯一真源 = board：rq→卡片列、flight→在途卡本身、
-                       深检槽→dispatcher per-kind 上限、死信→巡检列
-L1 硬底座（收窄不废除） L2 授权闸 / approved.log / 预算硬顶 / 外发 AI 整理层 / gh+邮件 IO
+感知 → 分诊 → 造 → 过闸 → 守候 → 学习
 ```
 
-正确性语义转变：bash 时代 = 不出错（防错）；agent 时代 = **错了能被发现 + 能修复 + 留痕迹**（自愈+审计）。
+- **感知**：operator 醒来扫全局（看板/gh/邮件），新信号物化为 `[sig]` 卡
+- **分诊**：轻判三路——出手（spawn specialist）/ 观察（物化为 `schedule` watch 卡）/ 放行（理由留卡）。判断必落卡（P1 铁律）
+- **造**：specialist 卡深研/forge（context 经济：operator 是路由器不是打工人，P2 双层铁律）
+- **过闸**：草稿 → 审批卡（模板化）→ 微信 → 人批
+- **守候**：已交付卡持续照看；等外部事项必须有卡（P4）
+- **学习**：ops-journal + 每周 auditor 对抗审计 → charter 判例沉淀
 
-## 2. 优化点分解：11 点 × 3 波
+### 三钳夹 + 两账本（代码，且只此）
 
-| 波 | 点 | 名称 | 落点 | 依赖 |
-|---|---|---|---|---|
-| W1 | A1 | 日报卡复活 | martin / kanban ops | 无 |
-| W1 | A2 | flashcards 发版审批落地 | launchd env + rq 重放 | 用户在场 |
-| W1 | A3 | 幽灵 slug 止血 | scripts/approval + tunnel-cli | 无 |
-| W1 | B1 | dispatcher per-kind 并发上限 | hermes-agent | 无 |
-| W1 | B2 | create-time 校验（skill/assignee） | hermes-agent | 无 |
-| W1 | B3 | 死信车道（gave_up/blocked 超龄标记） | hermes-agent | 无 |
-| W1 | C1 | state brief 生成器 | scripts/contrib | 无 |
-| W1 | C2 | 值班卡机制 + L1 修复白名单 | martin + SKILL.md | C1 |
-| W2 | D1 | rq 状态机→卡片列迁移 | martin | B3 |
-| W2 | D2 | events→board notify + channel 隔离 | martin + sku-pipeline | B 系落地 |
-| W3 | E1 | run-watch 五段骨架→纯采集器 | scripts/contrib | C2+D1 |
-
-并发建议：W1 共 8 点，其中 **5 张可派卡**（B1-B3 hermes 仓 + C1-C2 martin 仓）；A1/A3 太小，顺手修不开卡；A2 需用户在场。W2/W3 串行在后。
-
-## 3. 每点规格
-
-### A1 日报卡复活（ops，10min）
-- 动作：t_92c903b0 清 `skills` 字段重派（或按原 body 重建卡不带 skills——scan 卡即靠 SOUL 路由不 pin skill）。
-- 验收：卡终态 done；《09-12 共建运转日报》落在 comment + complete summary；用户收到微信推送。
-
-### A2 flashcards 1.3.0 发版审批落地（ops，需用户在场）
-- 动作：`HM_CREDENTIALS` 进 launchd 环境（`launchctl setenv` 或 plist EnvironmentVariables）→ 重放 rq-20260912-812574 execute（approved.log 已有批准记录，重放=完成既定授权）。
-- 验收：approval-execute.log 出现 executed + hm 侧提审成功回执。
-- 注意：发版时机本身是用户决策，重放前与用户确认；同时把 release-gate 类 disposition 排除出 deep lane（见 B 系落地后的 D1 校验规则）。
-
-### A3 幽灵 slug 止血（scripts/approval，30min）
-- 动作：collect.sh 对 `tunnel rm` 失败先 `tunnel list` 复核——slug 已不存在→视为成功、标记 done 终态；tunnel-cli 仓 `drops rm` 对不存在 slug 幂等成功（独立小改，upstream 是自己）。
-- 验收：collect.log 不再出现同 slug 连续失败对；`bash scripts/approval/tests/run.sh` 全绿。
-
-### B1 ~~dispatcher per-kind 并发上限~~（已裁定取消，2026-09-13 凌晨）
-- **裁定依据**：资源闸已在本地栈（commit 92007446e5，上游 PR #108006）——`--resources deepcheck:global` 排他锁即深检单飞的原生表达，且语义更优：blocked/gave_up 卡不持有资源（held=仅 running），t_f8c0d470 那类死锁结构性消失。另加 per-kind 配额是造第二个平行概念，违背正交原则。
-- **原 B1 交付物去向**：深检卡接线（deepcheck 建卡加 `--resources deepcheck:global` + 废除 flight json 单飞检查）并入 C2；`max_in_progress_per_kind` 计数容量语义留作未来独立评估（仅当真出现「同资源需 N>1 并发」场景再立项）。
-
-### B2 create-time 校验（hermes-agent，1 张卡）
-- 落点：`hermes_cli/kanban_ops.py` create 入口。
-- 交付：①skills 存在性——目标 profile skills 注册表查无 → **拒绝建卡**并列出 Unknown 清单（worker 必崩 = 数据损坏类，硬约束）；②assignee 存在性——profile 查无 → **警告不拒绝**（CC control-plane lane 语义：assignee=不存在 profile 是故意形态，软契约）。
-- 验收：未知 skill 建卡被拒且报错可读；假名 assignee 仍可建卡（警告）；两者均有测试。
-- 红线同 B1。
-
-### B3 死信车道（hermes-agent，1 张卡）
-- 落点：dispatcher tick（或 kanban_db sweep），config `kanban.dead_letter_after_hours`（默认 24，0=off）。
-- 交付：`gave_up`/`blocked` 状态超龄卡自动 append `dead_letter` task_event（幂等：已标记不重复）+ 可选状态列标记；不自动改终态——消费方是值班环（C2），框架只负责「让尸体可见」。
-- 验收：构造超龄 gave_up 卡 → 被标记一次且仅一次；未超龄不动；config=0 全关。
-- 红线同 B1。
-
-### C1 state brief 生成器（scripts/contrib，1 张卡）
-- 交付：`scripts/contrib/state_brief.sh`（零 LLM）：contrib board 各列计数、在途/超龄卡清单（含龄）、gave_up 计数、rq awaiting/approved 悬空项、budget 余量、flight json 残留、重复 claim/崩溃卡。输出单文件 md（值班卡 body 直接用）。
-- 验收：对当前库跑一次，**命中今天三个活体病例**（t_f8c0d470 超龄在飞、t_cb14f0ee 孤儿、t_92c903b0 gave_up）；空库/坏库不炸（fail-closed 输出降级 brief）。
-
-### C2 值班卡机制（martin，1 张卡，依赖 C1）
-- 交付：①值班卡建卡口（kind=duty，复用 kanban_card.sh）+ run-watch 挂段或独立入口；②`.claude/skills/contrib-watch/SKILL.md` 新增模式七（duty）：领 brief → 判伤情 → L1 修复白名单内动手 / 白名单外升级为事件；③L1 修复白名单：archive 卡、清 flight 登记、rq set expired、budget refund——**全部本地不可逆为零的操作**；④自愈台账 `contrib-data/duty-ledger.md`（动作 + decisionReason）。
-- 验收：值班卡真实回收 t_cb14f0ee（孤儿卡开业验收）；台账留痕；零外发零 push。
-
-### D1 rq 状态机→卡片列迁移（W2，依赖 B3）
-- rq 各状态映射 board 列/label；flight json 废除（在途=卡在某列，深检槽=B1 配置）；rq.sh 退化为薄适配或退役；**approved.log 台账不动**（授权账本永久机制层）。
-- 验收：深检候选从建卡到终态全程 board 状态可解释；旧 rq json 只读归档。
-
-### D2 events→board notify + channel 隔离（W2，依赖 B 系落地）
-- sku-pipeline/visual 事件迁独立 board 或独立 notify sub（`kanban_notify_subs` 已按 board 隔离）；contrib 告警预算独占。
-- 验收：sku 事件不再出现在 contrib 渠道推送；两侧告警预算独立计数。
-
-### E1 run-watch 收缩（W3，依赖 C2+D1）
-- 五段骨架退化：scan 采集（gh 增量）、mail 采集、state brief 生成、值班卡触发、flush。编排决策上移 L3。
-- 验收：删除的 guard 类代码行数 > 新增；故障注入演练（杀 worker/坏 json/断 gh）由值班环恢复而非脚本自愈。
-
-## 4. 迁移顺序与回退
-
-- W1 内部无相互依赖（C2 等 C1 交付物，可同卡接力）；B 系三卡在 hermes-agent 各自 worktree 天然并行，落地走本地 feature 分支 → 按升级机制合入常驻 observability-stack 栈（fetch+rebase 纪律不变）。
-- 每点独立回退：B 系 config 默认关闭即回退；C 系不建卡即回退；D/E 是迁移非新能力，回退=git revert。
-- 不做大爆炸：scan 研判链（质量在线）一行不动。
-
-## 5. 明确不迁移清单（机制层永久驻扎）
-
-L2 授权环（微信卡/tunnel 页/approved.log/48h 对账）、预算硬顶与配额告警、外发消息 AI 整理层与三段式结构、gh 写操作闸门、邮件 IMAP 拉取。理由：「模型不可靠」原则只在不可逆/对外/花钱的面上机制强制。
-
-## 6. 成功度量（月度复盘口径）
-
-| 指标 | 现状（09-12 基线） | 目标 |
+| 钳夹 | 不变量 | 失败语义 |
 |---|---|---|
-| 深检有效产出/周 | 0（当天全饿死） | ≥3 且零槽位死锁 |
-| 孤儿卡平均存活 | ≥3 天 | <2h（死信车道+值班环） |
-| 新失败类处置 | 新写一个 bash guard | 值班环捕获归类 ≥80%，guard 新增趋零 |
-| 框架特性 upstream offer | — | B 系 3 个 commit 进可 offer 库存 |
-| 账本数量 | 7 套 JSON | ≤3（board + approved.log + duty-ledger） |
+| L2 闸（collect/execute 链） | 对外动作必经机械复验（TTL/占坑/refspec） | 拒绝，人面前停 |
+| 预算 | 花钱不超配额 | 拒绝 |
+| 心跳 | 每小时拉起 operator | 空转自愈（下小时新卡） |
+| approved.log / ops-journal | 只记录，不决策 | — |
+
+### 钳夹三律（防脆弱的根）
+
+1. **失败语义显式且保守**：拒绝 + 告警，绝不变通、绝不重试傻转（幽灵 slug 4125 次教训）
+2. **无状态，或状态只在账本/看板上**：无私有 state 文件（flight 私有信号教训）
+3. **永不长大**：钳夹要长逻辑 = 该回收成节点的信号（auditor 每周查钳夹是否变胖）
+
+**反通道**：节点反复正确执行的例行判断，经用户批准可沉淀为新钳夹（能力升格制）。
+
+## 2. 卡的形态（五种，无一携带流程）
+
+| 卡种 | 标记 | 本体 | 归宿 |
+|---|---|---|---|
+| 信号 | `[sig]` | envelope 级事实，无预填结论 | triage 列（operator 收件箱） |
+| 问题 | `[q]` | specialist 任务 = 一个问题 + 产出契约 | ready（dispatcher 派） |
+| 草稿 | `[draft]` | 待人裁决的对外提案 | 等人列（notify-subscribe 推微信） |
+| 承诺 | `[watch]` | `schedule` 定时复查（「以后」的家，P3） | scheduled |
+| 已交付 | （状态列） | 守候笔记 | done 前 operator 照看 |
+
+旧系统「卡 = 带说明书的工单」废除。流程活在 skill 里，结果活在卡里。
+
+## 3. 权限模型（类别闸，非白名单枚举）
+
+- 研判/分诊/watch/本地可逆动作 → operator 自主
+- 一切对外（gh 写/push/发评论/发版）→ L2 提案；**agent 起草，链落笔**（P5 定海神针：execute.sh 机械复验是提案变现实的唯一通道）
+- 花钱 → 预算钳夹
+- 新动作类型 → 提案卡升格制（人批一次成原则）——信任旋钮
+
+## 4. 迁移与终态
+
+五波（P0/A/B/C/E→D 最后大扫除），每波以删除收官。终态：
+
+- **scripts/contrib ≈ 4 文件**：heartbeat.sh / gateway_sentinel.sh（基建）/ l2_ledger.sh + 精简 tests
+- **账本 3 本**：看板 / approved.log / ops-journal
+- 退役清单：run-watch、scan_gate、mail_gate、deepcheck 族、duty/state_brief、own_pr_watch、coder_upstream_gate、notify events 族、rq 管线职责、kanban_card、cursors/snapshots/flights/pending-batches
+
+## 5. 成功度量（月度口径）
+
+| 指标 | 09-13 基线 | 目标 |
+|---|---|---|
+| 账本数量 | 9 | 3 |
+| scripts/contrib 文件 | 16+ | ≤4 |
+| 深检有效产出/周 | 0（死锁）/ 恢复中 | ≥3 且零死锁 |
+| 积压腐烂 | 82 条含 3 天孤儿 | 零腐烂（watch 卡化 + operator 最老优先） |
+| 新失败类处置 | 写新 guard | operator 吸收 ≥80%，guard 零新增 |
+| KPI：commit 进仓 | 周产出波动 | operator 每日评估 forge 时机 |
+
+## 附录 A — v1 摘要（2026-09-13 晨，已被本版取代的部分）
+
+v1 三层架构（L1 硬底座/L2 看板控制面/L3 值班 agent 环）方向正确但保守：brief 冻结格式、白名单枚举、值班卡权限巴掌大——即「AI 的手、bash 的脑」。W1 实际交付：A1-A3（审批侧双修+日报卡复活）、B2/B3（hermes 分支，已 cherry-pick 进本地栈：ff6a4b3da0/cf8c3c38f3/e482ec93ae）、C1 state_brief + 断言加固、C2 值班环（duty_card/SKILL 模式七/L1 白名单）。其中 B2/B3 为本版直接复用的框架件；C 系与 state_brief 在 E 波被 operator 吸收退役。09-12 四活体缺陷全部闭环（详见 git log 88a8b54/2926c72 与 duty-ledger）。
+
+## 附录 B — AI 视角推演暴露的 10 缺口（本版的修正依据）
+
+P1 判断必落卡（板=记忆）；P2 operator=路由器（双层铁律）；P3 「以后」必须 schedule 卡；P4 等外部必须有卡；P5 agent 起草链落笔（审批链与 rq 解耦前不动 L2）；P6 钳夹收缩为小工具面；P7 新旧状态先迁移再交班；P8 知识整编是主工程；P9 每周 fresh-context auditor；P10 journal 四行软契约。
