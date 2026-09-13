@@ -36,7 +36,7 @@ Kimi 环境：       ⎇ main      │ · martin │ KIMI 5h:18% wk:15% │ k3[1
 |------|------|
 | **路径压缩** | 项目名 + worktree 优先。主仓库只显示项目名（`martin`），worktree 额外用 `⌥wt-name` 标注；不再裸露 `/Users/.../long/path` |
 | **git 状态** | 分支 / detached short-hash / dirty 计数 `●N` / ahead-behind `↑N↓N` / **worktree 自动识别**（基于 `--absolute-git-dir` vs `--git-common-dir`） |
-| **订阅限额** | **双 provider 按 `ANTHROPIC_BASE_URL` 域名自动识别**（`kimi.com`/`moonshot` → Kimi，其余 → GLM）：双窗口 token limit（短周期 `5h` + 长周期 `wk`）+ 套餐等级（GLM `max`/`pro`、Kimi `LEVEL_*`），60s 缓存 + 后台静默刷新；缓存带 provider 标记，切 provider 自动重取 |
+| **订阅限额** | **双 provider 按 `ANTHROPIC_BASE_URL` 主机名显式识别**（`kimi.com`/`moonshot.cn|ai` → Kimi，`bigmodel.cn`/`z.ai` → GLM，**其它端点整段隐藏**）：双窗口 token limit（短周期 `5h` + 长周期 `wk`）+ 套餐等级（GLM `max`/`pro`、Kimi `LEVEL_*`），60s 缓存 + 后台静默刷新；缓存带 provider 标记，切 provider 自动重取 |
 | **上下文** | context window 使用百分比，兼容 `used_percentage` / `remaining_percentage` 多版本字段 |
 | **模型** | 当前模型 `display_name` |
 | **性能** | 缓存命中 ~0.35s，冷启动一次性同步获取 ~0.85s；git 调用合并到 3 次 |
@@ -106,7 +106,7 @@ chmod +x ~/.claude/statusline-sage.sh
 
 ## 订阅限额原理（GLM / Kimi）
 
-脚本按 `ANTHROPIC_BASE_URL` 的域名自动识别 provider（`kimi.com` / `moonshot` → Kimi，其余 → GLM），两个 provider 的数据统一收敛为同构缓存 `{ ts, ok, provider, level, tokens: [{p, r}] }`（`p`=用量百分比，`r`=reset 时间），渲染层不感知差异。
+脚本按 `ANTHROPIC_BASE_URL` 的主机名**显式识别** provider（`kimi.com` / `moonshot.cn|ai` → Kimi，`bigmodel.cn` / `z.ai` → GLM）；**未命中白名单的端点（如 deepseek）→ 限额区整段隐藏**——判定先于一切网络请求（不发注定失败的请求）、不留占位符与分隔符，识别异常同样退化为隐藏（fail-open）。两个 provider 的数据统一收敛为同构缓存 `{ ts, ok, provider, level, tokens: [{p, r}] }`（`p`=用量百分比，`r`=reset 时间），渲染层不感知差异。
 
 ### GLM Coding Plan
 
@@ -215,6 +215,7 @@ PEAK_MODELS='glm-5\.2|glm-5-turbo'  # 受倍率影响的高阶模型（ERE）；
 | 现象 | 排查 |
 |------|------|
 | 一直显示 `GLM …` / `KIMI …` | API 未通或未配置 token。检查 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL` / `env.ANTHROPIC_AUTH_TOKEN`；手动测（GLM）：`curl -sH "Authorization: <token>" https://open.bigmodel.cn/api/monitor/usage/quota/limit`；（Kimi）：`curl -sH "Authorization: Bearer <token>" https://api.kimi.com/coding/v1/usages`；删缓存重试：`rm ~/.claude/.statusline-sage-quota.json` |
+| 限额区完全不显示 | 当前 `ANTHROPIC_BASE_URL` 不在支持列表（Kimi: `kimi.com` / `moonshot.cn` / `moonshot.ai`；GLM: `bigmodel.cn` / `z.ai`，均含子域），属**预期隐藏**（不发请求）；换到受支持端点即恢复 |
 | 限额区 provider 标签不对 | 缓存里存的是上一个 provider 的数据。删缓存即可：`rm ~/.claude/.statusline-sage-quota.json`（正常切换时会自动同步重取，一般无需手动） |
 | 颜色显示为乱码/原始码 | 终端不支持 truecolor。换用 iTerm2 / WezTerm / Ghostty / Kitty / 现代版 Terminal.app |
 | worktree 未识别 | git 版本需 ≥ 2.5（`--git-common-dir` 支持）。`git --version` 检查 |

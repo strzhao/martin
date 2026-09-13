@@ -5,11 +5,12 @@
 # 功能模块：
 #   1. 路径压缩  — 项目名 + worktree 优先（martin ⎇ feature-x），不再裸露长路径
 #   2. git 状态  — 分支 / dirty 计数 / ahead-behind / worktree 自动识别
-#   3. 订阅限额 — 双 provider 自动识别（按 ANTHROPIC_BASE_URL 域名）：
-#                  GLM（bigmodel/z.ai）→ quota/limit，双窗口 5h + weekly +
+#   3. 订阅限额 — 双 provider 显式识别（按 ANTHROPIC_BASE_URL 主机名白名单）：
+#                  GLM（bigmodel.cn / z.ai）→ quota/limit，双窗口 5h + weekly +
 #                  高峰期倍率提示（14-18点 ×3，仅 glm-5.2/5-turbo）；
-#                  Kimi（kimi.com/moonshot）→ /coding/v1/usages（Bearer 认证），
-#                  5h 窗口（limits[].window 300min）+ 周窗口（顶层 usage）。
+#                  Kimi（kimi.com / moonshot.cn|ai）→ /coding/v1/usages（Bearer 认证），
+#                  5h 窗口（limits[].window 300min）+ 周窗口（顶层 usage）；
+#                  未命中的端点（如 deepseek）→ 限额区整段隐藏（不发请求/不留占位）。
 #                  带 60s 缓存 + 后台刷新防阻塞
 #   4. 上下文    — context window 使用百分比（多版本字段兼容）
 #   5. 模型      — 当前模型名
@@ -107,6 +108,8 @@ ctx_remain="${_fields[5]:-}"
 [ -z "$cur_dir" ] && cur_dir="$PWD"
 
 # ---------- git + worktree（合并 git 调用以降低延迟）----------
+# 只读保障：跳过可选锁 —— git status 不刷新/不写 index，避免与并行 git 操作争抢 index.lock
+export GIT_OPTIONAL_LOCKS=0
 _git_part=""
 _proj_name=""
 # 一次 rev-parse 取多个值（is-inside-work-tree / git-dir / common-dir / toplevel / branch / short hash）
@@ -182,14 +185,23 @@ _read_glm_env() {
   [ -z "$ANTHROPIC_AUTH_TOKEN" ] && ANTHROPIC_AUTH_TOKEN="$(jq -r '.env.ANTHROPIC_AUTH_TOKEN // empty' "$sf" 2>/dev/null)"
 }
 
-# 按 ANTHROPIC_BASE_URL 域名识别订阅 provider：kimi / glm（未知网关默认 glm，保持旧行为）
+# 按 ANTHROPIC_BASE_URL 主机名显式识别订阅 provider：kimi / glm（白名单，不做 catch-all 回落）
+# 未命中白名单（如 deepseek 等其它端点）或识别失败 → 输出空串，调用方据此隐藏限额区（fail-open）
+# 白名单：Kimi = kimi.com / moonshot.cn / moonshot.ai；GLM = bigmodel.cn / z.ai（均含子域）
 # 需在 _read_glm_env 之后调用
 _detect_provider() {
-  local base_lc
-  base_lc="$(printf '%s' "${ANTHROPIC_BASE_URL:-}" | tr '[:upper:]' '[:lower:]')"
-  case "$base_lc" in
-    *kimi.com*|*moonshot*) printf 'kimi' ;;
-    *)                     printf 'glm' ;;
+  local base host
+  base="$(printf '%s' "${ANTHROPIC_BASE_URL:-}" | tr '[:upper:]' '[:lower:]')"
+  base="${base#*://}"   # 去协议前缀（无协议时原样保留）
+  host="${base%%/*}"    # 取主机段（去 path）
+  host="${host%%:*}"    # 去端口
+  case "$host" in
+    kimi.com|*.kimi.com|moonshot.cn|*.moonshot.cn|moonshot.ai|*.moonshot.ai)
+      printf 'kimi' ;;
+    bigmodel.cn|*.bigmodel.cn|z.ai|*.z.ai)
+      printf 'glm' ;;
+    *)
+      printf '' ;;
   esac
 }
 
@@ -202,6 +214,8 @@ _fetch_quota_sync() {
   [ -z "$domain" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ] && return 1
 
   local provider; provider="$(_detect_provider)"
+  # 未识别 provider（非 Kimi / GLM 系端点）→ 不发任何请求直接返回（防后台刷新空转）
+  [ -z "$provider" ] && return 1
   local resp ts; ts="$(date +%s)"
 
   if [ "$provider" = "kimi" ]; then
@@ -297,35 +311,40 @@ _render_glm_cache() {
 }
 
 # 渲染限额区（provider 与当前域名识别不符时同步重取一次——切换 provider 是一次性事件，可接受一次性阻塞）
+# 未识别 provider（非 Kimi / GLM 系端点，如 deepseek）→ 限额区整段隐藏：
+# 判定先于一切网络调用（不发注定失败的请求）、不留占位符与分隔符，渲染与「无此区段」完全一致；
+# 识别异常 / 变量缺失同样落到「隐藏」（fail-open），不打印错误、不影响其余区段。
 _glm_part=""
 _read_glm_env
 _provider="$(_detect_provider)"
-_provider_label="GLM"; [ "$_provider" = "kimi" ] && _provider_label="KIMI"
-if [ -f "$CACHE_FILE" ]; then
-  _c_ts="$(jq -r '.ts // 0' "$CACHE_FILE" 2>/dev/null)"
-  _c_ok="$(jq -r '.ok // 0' "$CACHE_FILE" 2>/dev/null)"
-  _c_provider="$(jq -r '.provider // "glm"' "$CACHE_FILE" 2>/dev/null)"
-  if [ "$_c_provider" != "$_provider" ]; then
-    # 缓存是另一个 provider 的数据：同步重取（一次性）；
-    # 仅当缓存已换成本 provider 才渲染，否则显示 … + 后台刷新（不展示错配数据）
-    _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
-    [ "$(jq -r '.provider // "glm"' "$CACHE_FILE" 2>/dev/null)" = "$_provider" ] && _render_glm_cache
-    [ -z "$_glm_part" ] && { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
+if [ -n "$_provider" ]; then
+  _provider_label="GLM"; [ "$_provider" = "kimi" ] && _provider_label="KIMI"
+  if [ -f "$CACHE_FILE" ]; then
+    _c_ts="$(jq -r '.ts // 0' "$CACHE_FILE" 2>/dev/null)"
+    _c_ok="$(jq -r '.ok // 0' "$CACHE_FILE" 2>/dev/null)"
+    _c_provider="$(jq -r '.provider // "glm"' "$CACHE_FILE" 2>/dev/null)"
+    if [ "$_c_provider" != "$_provider" ]; then
+      # 缓存是另一个 provider 的数据：同步重取（一次性）；
+      # 仅当缓存已换成本 provider 才渲染，否则显示 … + 后台刷新（不展示错配数据）
+      _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
+      [ "$(jq -r '.provider // "glm"' "$CACHE_FILE" 2>/dev/null)" = "$_provider" ] && _render_glm_cache
+      [ -z "$_glm_part" ] && { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
+    else
+      _ttl="$CACHE_TTL_OK"; [ "$_c_ok" = "0" ] && _ttl="$CACHE_TTL_FAIL"
+      _age="$(($_now - ${_c_ts:-0}))"
+      # 过期：仍输出旧缓存，同时后台刷新（不阻塞）
+      [ "$_age" -ge "$_ttl" ] && _refresh_bg
+      _render_glm_cache || { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
+    fi
   else
-    _ttl="$CACHE_TTL_OK"; [ "$_c_ok" = "0" ] && _ttl="$CACHE_TTL_FAIL"
-    _age="$(($_now - ${_c_ts:-0}))"
-    # 过期：仍输出旧缓存，同时后台刷新（不阻塞）
-    [ "$_age" -ge "$_ttl" ] && _refresh_bg
+    # 冷启动：无缓存，同步获取一次（一次性阻塞 ≤ GLM_FIRST_TIMEOUT），之后靠缓存 / 后台刷新
+    _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
     _render_glm_cache || { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
   fi
-else
-  # 冷启动：无缓存，同步获取一次（一次性阻塞 ≤ GLM_FIRST_TIMEOUT），之后靠缓存 / 后台刷新
-  _fetch_quota_sync "$GLM_FIRST_TIMEOUT"
-  _render_glm_cache || { _glm_part="$(_smoke)${_provider_label} …${c_reset}"; _refresh_bg; }
-fi
 
-# 高峰期倍率提示追加到 GLM 区尾部（独立于 quota 数据成败）
-_glm_part="${_glm_part}$(_glm_peak)"
+  # 高峰期倍率提示追加到 GLM 区尾部（独立于 quota 数据成败；未识别 provider 时随整段隐藏）
+  _glm_part="${_glm_part}$(_glm_peak)"
+fi
 
 # ---------- context window ----------
 _ctx_part=""
