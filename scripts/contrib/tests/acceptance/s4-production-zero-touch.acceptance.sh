@@ -34,6 +34,7 @@ ge(){ case "${1:-}" in ''|*[!0-9]*) die "$3" "非数值 [$1]（期望 >= ${2}）
 
 command -v jq >/dev/null 2>&1 || die "env" "jq 不可用"
 command -v shasum >/dev/null 2>&1 || die "env" "shasum 不可用"
+[ -x /usr/bin/diff ] || die "env" "缺 /usr/bin/diff（pin 绝对路径依赖前提；禁裸 diff——PATH 上第三方 diff 遮蔽系统 diff 会静默假绿）"
 [ -d "$REPO_ROOT/contrib-data" ] || die "env" "生产 contrib-data/ 不存在: $REPO_ROOT/contrib-data"
 [ -f "$SUITE/run.sh" ] || die "env" "套件入口缺失: $SUITE/run.sh"
 
@@ -55,7 +56,7 @@ snap_contrib > "$ART/.s4-snap.before" 2>&1
 RC_RUN=$?
 
 snap_contrib > "$ART/.s4-snap.after" 2>&1
-diff "$ART/.s4-snap.before" "$ART/.s4-snap.after" > "$ART/s4-p1.out" 2>&1
+/usr/bin/diff "$ART/.s4-snap.before" "$ART/.s4-snap.after" > "$ART/s4-p1.out" 2>&1
 DIFFN="$(wc -l < "$ART/s4-p1.out" | tr -d ' ')"
 eq "$DIFFN" 0 "$P 生产 contrib-data 快照逐字节一致（diff 行数）——套件运行 rc=$RC_RUN"
 # artifact 证据行：diff=0 时文件非空仍可判（快照文件数 + 判定结论）
@@ -133,7 +134,7 @@ echo "PASS ${P}（变更 $TOTAL 项全部在闭集内；merge-base=${MB}）"
 # -----------------------------------------------------------------------------
 P="4.P4"
 ( cd "$REPO_ROOT" && git status --porcelain scripts/contrib </dev/null ) > "$ART/.s4-porcelain.after" 2>&1
-diff "$ART/.s4-porcelain.before" "$ART/.s4-porcelain.after" > "$ART/s4-p4.out" 2>&1
+/usr/bin/diff "$ART/.s4-porcelain.before" "$ART/.s4-porcelain.after" > "$ART/s4-p4.out" 2>&1
 PD="$(wc -l < "$ART/s4-p4.out" | tr -d ' ')"
 eq "$PD" 0 "$P 套件运行前后 porcelain 新增脏项"
 {

@@ -85,7 +85,7 @@ snap_after="$(snap_briefs)"
 log_after="$(log_line_count)"
 p2_fail=""
 if [[ "$snap_before" != "$snap_after" ]]; then
-  p2_fail="briefs 目录快照有新增: $(diff <(printf '%s\n' "$snap_before") <(printf '%s\n' "$snap_after") | grep '^>' | head -3 | tr '\n' ' ')"
+  p2_fail="briefs 目录快照有新增: $(/usr/bin/diff <(printf '%s\n' "$snap_before") <(printf '%s\n' "$snap_after") | grep '^>' | head -3 | tr '\n' ' ')"
 fi
 if [[ "$log_after" -ne "$log_before" ]]; then
   p2_fail="${p2_fail:+$p2_fail | }guard-fail.log 行数变化: before=${log_before} after=${log_after}（非交易日 skip 分支不应留失败记录）"
@@ -112,7 +112,7 @@ p1_fail=""
 if [[ $ds_rc -eq 0 ]]; then
   p1_fail="数据源失败注入（HKSTOCK_GUARD_FAIL_SOURCE=1 --date ${TRADING_DATE}）后守卫 exit=0（要求非 0），stdout=[$(printf '%s' "$ds_out" | head -3 | tr '\n' ' ')]"
 elif [[ "$snap_before_ds" != "$snap_after_ds" ]]; then
-  new_files="$(diff <(printf '%s\n' "$snap_before_ds") <(printf '%s\n' "$snap_after_ds") | grep '^>' | head -3 | tr '\n' ' ')"
+  new_files="$(/usr/bin/diff <(printf '%s\n' "$snap_before_ds") <(printf '%s\n' "$snap_after_ds") | grep '^>' | head -3 | tr '\n' ' ')"
   p1_fail="守卫失败的同时 briefs 目录有新增产物（疑当日空简报）: $new_files"
 fi
 if [[ -z "$p1_fail" ]]; then

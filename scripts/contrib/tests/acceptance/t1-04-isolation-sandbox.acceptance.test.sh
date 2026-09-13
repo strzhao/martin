@@ -32,6 +32,7 @@ source "$TESTS_ROOT/lib/sandbox.sh"
 t_init "$T_FILE"
 
 [ -d "$REPO_ROOT/contrib-data" ] || { _fail "env 前置" "生产 contrib-data/ 不存在: $REPO_ROOT/contrib-data"; t_finish; }
+[ -x /usr/bin/diff ] || { _fail "env 前置" "缺 /usr/bin/diff（pin 绝对路径依赖前提，禁裸 diff：PATH 遮蔽静默假绿）"; t_finish; }
 
 snap_contrib() {
   ( cd "$REPO_ROOT" && find contrib-data -type f -print0 2>/dev/null | sort -z | xargs -0 shasum -a 256 2>/dev/null )
@@ -56,7 +57,7 @@ done
 assert_eq "$SIB_FAILED" "0" "4.1 前置：t1-01/02/03 三份验收测试自身全绿"
 
 snap_contrib > "$ART/t1-snap.after" 2>&1
-DIFFN="$(diff "$ART/t1-snap.before" "$ART/t1-snap.after" | wc -l | tr -d ' ')"
+DIFFN="$(/usr/bin/diff "$ART/t1-snap.before" "$ART/t1-snap.after" | wc -l | tr -d ' ')"
 assert_eq "$DIFFN" "0" "4.1 生产 contrib-data 前后快照 diff 行数=0（CONTRIB_DATA_DIR 沙箱隔离零污染）"
 
 # =============================================================================
