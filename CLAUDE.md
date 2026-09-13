@@ -59,6 +59,10 @@
 
 **lane 模式接入（2026-09-07 实施；09-08 lane 改造，详见 [`hermes-lane-protocol.md`](hermes-lane-protocol.md) §8）**：contrib 域 lane 现状——①`contrib` profile（hermes worker，只读研判专家：premise 复验/状态核查/报告解读；gh 只读红线，SOUL.md 含 hermes-contribution.md 知识源路由）；②own-PR 执行走 **coder lane 全自动**（09-08 起，`contrib-cc` lane 已下线：execute.sh own-PR 已批分支自动建 coder 卡，dispatcher spawn worker 驱动 claude -p 完成 push fork + gh pr create，rq set executed 由 worker 收尾）。escalate 审批项**不建卡**（消费者是用户非 worker，防双消费）。流水线主链与三路 L2 审批全部原样保留。
 
+### 机会流水线 contrib-watch（⚠ 09-13 起 AI Native operator 接管，下述旧骨架已停搏退役）
+
+**当前形态**：每小时心跳（hermes cron `94cb4b0779fd` → `scripts/contrib/heartbeat.sh`）拉起 contrib board 班卡，operator（宪法 `~/.hermes/profiles/contrib/skills/github/contrib-operator/SKILL.md`）自主执行 感知（gh 增量+邮件）→分诊三路→造/路由→L2 起草→ops-journal。旧 run-watch 五段骨架/scan_gate/mail_gate/deepcheck 快车道等已卸载停搏（代码留存待 E 波删除）；**L2 审批链（approval-collect/execute/notify approve/rq/预算）不变**。设计宪法与迁移状态 → 看 [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)；排查 operator 行为 → 看 `contrib-data/ops-journal.md` 与 contrib board 班卡。以下为历史记录（旧骨架架构，供追溯）：
+
 ### 机会流水线 contrib-watch（09-02 上线；09-09 起卡化架构，T1-T6 交付）
 
 主轴 2.0 的执行层，**卡化架构**：launchd `com.stringzhao.contrib-watch`（每小时 :07）跑 `scripts/contrib/run-watch.sh` 五段骨架（scan 闸门→mail 闸门→radar→notify flush→深检快车道），**每段=廉价闸门（零 LLM）→ 建 hermes contrib 研判卡（`kanban_card.sh` 唯一建卡口，卡 on contrib 专用 board，`export KANBAN_BOARD` 切换/回退一个开关）→ flight 登记终态跟踪 → flush**；批量研判由 contrib profile worker 按 `.claude/skills/contrib-watch/SKILL.md` 六模式执行（scan/radar/build/deep-check/mail/digest），**claude -p 降级为兜底路**（建卡失败/QC 开闸时才走）。待研判唯一数据源=`contrib-data/pending-batches/` 批次文件（pending-hits.json 兼容写已于 09-10 撤销，旧 77 条中 39 条独有条目一次性迁移并入批次，双写重复项自然收敛）。产物全落 `contrib-data/`（gitignore）：briefs / radar / runs / ledger.md / pending-batches。手动入口：`/contrib-watch scan|radar|build|deep-check|mail|digest`。
