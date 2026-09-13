@@ -6,6 +6,7 @@
 # --resources shift:contrib 在 dispatcher 侧保证（上一班未收工则本班排队）。
 # 失败语义：kanban create 失败=本轮无班（下小时自然重试），绝不循环重试。
 # 装载：hermes cron（no-agent），计划 2 * * * *；卸载即停（旧 run-watch 并行期互不干扰）。
+# 部署：cron 只认 ~/.hermes/scripts/ 下的相对路径——改本文件后须 cp 到 ~/.hermes/scripts/contrib-heartbeat.sh（本仓为唯一真源）。
 set -u
 export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
 if [[ -z "${HEARTBEAT_KANBAN:-}" ]]; then
@@ -19,8 +20,9 @@ export PATH="${HB_DIR}:${PATH}"
 
 KEY="shift-$(date +%Y%m%d-%H)"
 BODY="operator 班卡。本班流程按 contrib-operator skill 执行（survey→分诊→造/路由→journal）。
-当前生效面（迁移期 A 波）：本班主任务 = 分诊 contrib board triage 列存量 [sig] 信号卡（最老优先，三路：出手/[watch]/放行）；深潜取证一律起 [q] 卡委派；判断与放行理由全落卡 + contrib-data/ops-journal.md。
-边界：新命中 gh survey 暂不启用（B 波交接）；deepcheck/通知/own-PR 盯梢仍由旧管道负责（C/D 波交接前勿重复处理）；对外动作只起草提案（L2 链落笔）。"
+生效面（B 波起全量）：①感知——gh issue list 增量（与 triage 列/已有卡集合差 → 新 [sig] 卡）+ himalaya 未读 GitHub 通知分诊（坑位见 skill §4.4，不确定只建卡不动邮箱）；②分诊 triage 收件箱最老优先三路；③守候——scheduled 到期 [watch]、own-PR（gh pr list --author strzhao）动静、rq awaiting 项 premise 推前实查；④对外只起草提案（L2 链落笔）。
+暂缓：深检（swarm 接线明日验证后开；W37 配额 30/30 本就回血前不可用）。
+收尾：journal 四行契约 + complete 双传。"
 
 env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
   "$HB" kanban --board contrib create \
@@ -28,3 +30,6 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
   --resources shift:contrib --idempotency-key "$KEY" \
   --created-by heartbeat \
   "operator shift ${KEY#shift-}" --body "$BODY" >/dev/null 2>&1 && echo "ok ${KEY}" || echo "skip/fail ${KEY}"
+
+# L2 链事件 flush（旧 run-watch flush 段退役后由心跳顺带承载；幂等，内部自带限额/去重）
+bash "${MARTIN:-$HOME/workspace/martin}/scripts/contrib/notify.sh" flush >>"${HOME}/workspace/martin/contrib-data/logs/heartbeat-flush.log" 2>&1 || true
