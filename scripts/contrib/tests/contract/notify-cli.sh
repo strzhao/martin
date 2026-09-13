@@ -20,8 +20,8 @@ EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
 STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
 
 # ---------------- 子命令闭集 ----------------
-t_case "子命令闭集：6 个入口全部在实现中"
-for sub in "event)" "flush)" "approve)" "receipt)" "fallback)" "help"; do
+t_case "子命令闭集：7 个入口全部在实现中"
+for sub in "event)" "flush)" "resolve)" "approve)" "receipt)" "fallback)" "help"; do
   if grep -qF -- "$sub" "$SB_ROOT/scripts/contrib/notify.sh"; then
     _pass "子命令 ${sub)}"
   else
@@ -139,6 +139,41 @@ assert_contains "$guard_line" "'^🟠'" "排除报头"
 assert_contains "$guard_line" "'^（明细'" "排除明细尾注"
 assert_contains "$guard_line" "'^$'" "排除空行"
 
+# ---------------- resolve：闭环（修复④契约面：标记 resolved + ✅ 收尾卡 + 显式失败）----------------
+t_case "resolve：命中已推送告警 → resolved/resolved_at/resolution + ✅ 收尾卡 + resolution_sent"
+sb_seed_event "pipeline-failure" "c-resolve-1" "会闭环的告警" contrib 0 true
+before_hermes="$(stub_count hermes)"
+out="$(sb_notify resolve --key c-resolve-1 --summary "根因已消除（沙箱）")"
+rc=$?
+assert_exit 0 $rc "命中 → exit 0"
+assert_eq "$(( $(stub_count hermes) - before_hermes ))" "1" "跟进收尾卡恰一次外发"
+rbody="$(stub_last_body hermes)"
+if [[ -n "$rbody" && -f "$rbody" ]]; then
+  assert_file_contains "$rbody" "✅" "收尾卡含 ✅"
+  assert_file_contains "$rbody" "已解决" "收尾卡含「已解决」"
+  assert_file_contains "$rbody" "c-resolve-1" "收尾卡含告警 key"
+else
+  _fail "收尾卡外发载荷" "hermes stub 未捕获消息体"
+fi
+assert_eq "$(jq -r 'select(.key == "c-resolve-1") | .resolved' "$EVENTS_FILE")" "true" "账本 resolved=true"
+assert_eq "$(jq -r 'select(.key == "c-resolve-1") | ((.resolved_at // "") | length > 0)' "$EVENTS_FILE")" "true" "resolved_at 落值"
+assert_eq "$(jq -r 'select(.key == "c-resolve-1") | .resolution' "$EVENTS_FILE")" "根因已消除（沙箱）" "resolution 落值"
+assert_eq "$(jq -r 'select(.key == "c-resolve-1") | .resolution_sent' "$EVENTS_FILE")" "true" "resolution_sent=true（收尾卡真发出）"
+
+t_case "resolve：未命中 → 非零退出 + 输出回显目标 + 账本与推送零副作用"
+lines_before="$(wc -l <"$EVENTS_FILE" | tr -d ' ')"
+before_hermes="$(stub_count hermes)"
+out="$(sb_notify resolve --key c-nope-404 --summary "不存在的告警")"
+rc=$?
+if [[ "$rc" != "0" ]]; then
+  _pass "未命中 → 非零退出（exit=${rc}；显式失败优于静默幂等）"
+else
+  _fail "未命中 → 非零退出" "exit=0（假回执会让根因继续烧）"
+fi
+assert_contains "$out" "c-nope-404" "输出回显该 key"
+assert_eq "$(wc -l <"$EVENTS_FILE" | tr -d ' ')" "$lines_before" "账本行数不变（零副作用）"
+assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "零推送（零副作用）"
+
 # ---------------- receipt：独立计数（回执不占告警限额）----------------
 t_case "receipt：成功后 receipts 计数 +1，不触发 flush 限额"
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" receipt rq-20260905-999 --summary "已完成"' >/dev/null 2>&1
@@ -153,6 +188,15 @@ before_osascript="$(stub_count osascript)"
 sb_notify fallback "人工兜底文案" >/dev/null
 assert_exit 0 $?
 assert_eq "$(( $(stub_count osascript) - before_osascript ))" "1" "osascript 恰一次"
+
+# ---------------- 契约扩展点：--channel 空串哨兵 + class 域映射（修复①）----------------
+t_case "channel 空串哨兵：--channel '' 视为未传 → class 域映射 / 缺省 contrib"
+sb_notify event own-pr-activity --key c-empty-ch --summary "空串渠道（缺省类）" --channel "" >/dev/null
+assert_exit 0 $?
+assert_eq "$(jq -r 'select(.key == "c-empty-ch") | .channel' "$EVENTS_FILE")" "contrib" "空串视为未传 → 缺省 contrib"
+sb_notify event visual-run-done --key c-empty-fc --summary "空串渠道（flashcards 类）" --channel "" >/dev/null
+assert_exit 0 $?
+assert_eq "$(jq -r 'select(.key == "c-empty-fc") | .channel' "$EVENTS_FILE")" "flashcards" "空串视为未传 → class 域映射 flashcards"
 
 sb_cleanup
 t_finish
