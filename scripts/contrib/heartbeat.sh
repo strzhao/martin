@@ -36,26 +36,45 @@ bash "${MARTIN:-$HOME/workspace/martin}/scripts/contrib/notify.sh" flush >>"${HO
 
 # ── 钳夹读取器（两个钳夹共用；2026-09-13 结构件，同形两处一次收敛）──────────
 # 为什么需要这一层（实查证据，勿删注释）：
-#   ① 读取：本 board 库是 WAL（文件头 18/19 字节 = 02 02）。静止时刻（-wal/-shm 不在场，
-#      dispatcher 按 tick 开关库、不常驻持有）`sqlite3 "file:<DB>?mode=ro"` rc=14
-#      `unable to open database file`，旧写法 `2>/dev/null || true` 把它吞成空串 = 静默失败
-#      （用无 sidecar 的库副本可复现；`?immutable=1` 在任何状态下 rc=0，只读快照、不产生写）。
+#   ① 读取：本 board 库是 WAL（文件头 18/19 字节 = 02 02）。`-wal` **不在场时刻**（dispatcher 按
+#      tick 开关库、不常驻持有；clean close 后 sidecar 仍在、此时 `mode=ro` rc=0，别按「静止态必失败」记）
+#      `sqlite3 "file:<DB>?mode=ro"` rc=14 `unable to open database file`，旧写法 `2>/dev/null || true`
+#      把它吞成空串 = 静默失败（用无 sidecar 的库副本可复现；`?immutable=1` 不依赖 sidecar、
+#      任何状态下都不报 rc=14——快照语义见 ④）。
 #   ② 失败不再无声：rc != 0 追加一行到 logs/heartbeat-clamp.log。
 #   ③ 到期窗口先过日期形状守卫：token 首次出现后 10 字符必须 glob `YYYY-MM-DD`。散文里复述该
 #      token 会被取到（实测误命中 [draft] t_8bc51715 的窗口 `[ 行请编排层 unb]`，首字符空格
 #      0x20 字典序 < 数字 0x32 ⇒ 恒判「已到期」⇒ 每次心跳误唤醒一张非到期卡）。
+#   ④ 快照语义（红队 Q8 实证 09-13，勿按「WAL 一致当前态」读）：`?immutable=1` **忽略 `-wal`**——
+#      写者持库造出非空 WAL 时，读到的是「最后一次 checkpoint 的快照」（该形态实测报 `no such table`；
+#      plain / `mode=ro` 同刻正确）。⇒ 本次修复把读取语义从「WAL 一致当前态」换成「快照」；对钳夹 1
+#      （日粒度）/ 钳夹 2（30 分钟宽限），失效形态 = **延迟 ≤1 个心跳周期、非错判**（下一轮自愈）。
+#   ⑤ 漏账可见（09-13 收口）：命中 token 但窗口不过形状守卫的行此前被静默丢弃；现在 SQL 给这类行打
+#      `|len=<n> first=0x<hh>` 标签，`_clamp_read` 各落一行 `clamp parse SKIP <id> win=[…]`（只记形状
+#      元信息、不复述窗口原文——防日志被粘回 blocked 卡评论后反被钳夹自己误读）。
+#   ⑥ 三态可判（读日志即可）：无行 = 读到 0 张 / `clamp read FAILED` = 读断 / `clamp parse SKIP` = 有
+#      token 但格式坏 / `woke` / `unblock FAILED` = 调用结果。
 DB="$HOME/.hermes/kanban/boards/contrib/kanban.db"
 CLAMP_LOG="$HOME/workspace/martin/contrib-data/logs/heartbeat-clamp.log"
 
-# $1 = SQL（只返回 id 列）；stdout = 合法 id 行（无命中则空）
+# $1 = SQL。stdout = 合法 id 行（无命中则空）。
+# SQL 可用 `|len=… first=0x…` 标签标注「形状不过」的行（见 ⑤）：这类行落 SKIP 漏账日志、不进 stdout。
 _clamp_read() {
-  local raw rc
+  local raw rc line tid note
   raw="$(sqlite3 "file:${DB}?immutable=1" "$1" 2>&1)"; rc=$?
   if [[ "$rc" != 0 ]]; then
     printf '%s clamp read FAILED rc=%s: %s\n' "$(date '+%F %T')" "$rc" "$raw" >>"$CLAMP_LOG"
     return 0
   fi
-  printf '%s\n' "$raw" | grep -E '^t_[0-9a-f]+$' || true
+  while IFS= read -r line; do
+    tid="${line%%|*}"; note="${line#"$tid"}"
+    [[ "$tid" =~ ^t_[0-9a-f]+$ ]] || continue
+    if [[ -n "$note" ]]; then
+      printf '%s clamp parse SKIP %s win=[%s]\n' "$(date '+%F %T')" "$tid" "${note#|}" >>"$CLAMP_LOG"
+    else
+      printf '%s\n' "$tid"
+    fi
+  done <<<"$raw"
 }
 
 # ── 钳夹 1：[watch] 到期唤醒（到期即 unblock 交 dispatcher；未到期不动）──
@@ -65,10 +84,11 @@ watch_sql="with w as (
    select t.id as id,
      substr(trim(replace(c.body,char(13),'')), instr(trim(replace(c.body,char(13),'')),'watch-due:')+11, 10) as due
    from tasks t join task_comments c on c.task_id=t.id
-   where t.status in ('scheduled','blocked') and c.body like '%watch-due:%')
- select distinct id from w
-  where due glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-    and due <= date('now','localtime')"
+   where t.status in ('scheduled','blocked') and c.body like '%watch-due:%'),
+ g as (select id, due, due glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' as ok from w)
+ select distinct id || case when ok then '' else '|len=' || length(due) || ' first=0x' || hex(substr(due,1,1)) end
+ from g
+ where coalesce(ok,0)=0 or due <= date('now','localtime')"
 due_ids="$(_clamp_read "$watch_sql")"
 if [[ -n "$due_ids" ]]; then
   while IFS= read -r wid; do
