@@ -7,20 +7,8 @@
 ## 怎么跑
 
 ```bash
-# 一条命令：unit + contract + e2e + static 四维度 + 5 类 detect 捕获自证；末行 JSON 摘要
+# 一条命令：unit + contract + e2e + static 四维度；末行 JSON 摘要
 bash scripts/contrib/tests/run.sh
-
-# e2e 冒烟独立入口（mktemp 沙箱 + 影子 stub 全链路）
-bash scripts/contrib/tests/e2e-smoke.sh
-E2E_STUB_FAIL=hermes bash scripts/contrib/tests/e2e-smoke.sh   # 注毒：必须非零退出且账本零新增成功记录
-E2E_KEEP=1 bash scripts/contrib/tests/e2e-smoke.sh             # 保留沙箱并在 JSON 报 sandbox 路径
-
-# 捕获自证（5 类缺陷注入，核心验收：pristine 绿 / mutated 红 / diff>=1）
-bash scripts/contrib/tests/detect/run.sh bool-parse
-bash scripts/contrib/tests/detect/run.sh            # 全 5 类
-DETECT_KEEP=1 bash scripts/contrib/tests/detect/run.sh bookkeeping
-# → 用保留的沙箱独立复现（不信任 harness 自述）：
-CONTRIB_TEST_TARGET=<JSON 里的 sandbox 路径> bash scripts/contrib/tests/run.sh   # 必须非零退出
 
 # launchd 仿真（cwd=/ + env -i 极简 PATH + 临时 HOME）
 cd / && env -i HOME=$(mktemp -d) TMPDIR=$(mktemp -d) PATH=/usr/bin:/bin:/usr/sbin:/sbin \
@@ -48,7 +36,7 @@ bash scripts/contrib/tests/unit/cfg-semantics.sh
 
 `static/gate-fullwidth.sh`（run.sh static 维度自动发现）是同一全角门的套件形态：命中即 `_fail` 并打印 file:L<行号> 定位行；沙箱语义——`CONTRIB_TEST_TARGET` 指向沙箱树时只扫 target 树内 .sh，`scripts/approval` 缺失按 N/A skip 显式计数，**target 树零 .sh 文件必须 FAIL**（保负对照）。
 
-每个测试文件**末行**输出 `##SUMMARY {…}`，run.sh 据此聚合；`exit 0 当且仅当 failed==0 且全部 detect 类 exit 0`。
+每个测试文件**末行**输出 `##SUMMARY {…}`，run.sh 据此聚合；`exit 0 当且仅当 failed==0`。
 
 ## 怎么加测试
 
@@ -95,8 +83,8 @@ t_finish
 | `NOTIFY_SEND_LAST` | `/tmp/contrib-send-last.json` | hermes send 输出落点（success:true 判据读这里） |
 | `RQ_LOCKDIR` | `/tmp/contrib-rq.lock` | rq 写锁 |
 | `WATCH_LOCK` | `/tmp/contrib-watch.lock` | 旧 run-watch 防重入锁——**09-13 随 run-watch 退役**，生产面已无消费者（仅 tests/lib/sandbox.sh 仍导出该 env） |
-| `DEEPCHECK_TARGET_FILE` | `/tmp/.deepcheck-target` | gate→deep-check 目标传递文件 |
-| `DEEPCHECK_LOCK` | `/tmp/contrib-deepcheck.lock` | 深检防重入锁 |
+| `DEEPCHECK_TARGET_FILE` | `/tmp/.deepcheck-target` | 旧 gate→deep-check 目标传递——**09-13 随深检族退役**，生产面已无消费者（仅 tests/lib/sandbox.sh 仍导出该 env；见下方退役件登记） |
+| `DEEPCHECK_LOCK` | `/tmp/contrib-deepcheck.lock` | 旧深检防重入锁——**09-13 随深检族退役**，同上（仅 sandbox 仍导出） |
 | `HERMES_BIN` / `GH_BIN` / `TUNNEL_BIN` / `OSASCRIPT_BIN` / `GATEWAY_PROBE_BIN` | `hermes` / `gh` / `tunnel` / `osascript` / `pgrep` | 外部命令注入点（影子 stub 双通道之一） |
 | `CLAUDE_BIN` | 空 → 现有两级探测（PATH → nvm 目录） | claude 注入点（notify/rq 之外的 3 个 LLM 调用方） |
 | `NOTIFY_SOURCE_ONLY` / `RQ_SOURCE_ONLY` | unset | source guard：=1 时只加载函数不执行 dispatch（单测复用纯函数） |
@@ -109,12 +97,31 @@ t_finish
 - **`scripts/approval/tests/*.bash`** 不在 gate.sh 覆盖集内（口径收窄到 `*.sh`），由 approval 套件自测覆盖（`bash scripts/approval/tests/run.sh`）。
 - **`stat -f %m`**（macOS 专属）出现在 notify.sh 的 send 回写新鲜度判读（`_send_result_fresh`）——macOS-only 语义，不跨平台。
 - **`jq -r '.success // false'`**（notify.sh `_send`）保留 `//` 运算符：这里语义正确（把非 true 输出一律当失败），与被修的 cfg 布尔塌缩不是同一形态。
-- **e2e-smoke 的前缀锚点行**以 python3 `json.dumps` 默认分隔符格式播种：flush 的账本重写会以同格式重序列化全部行，前缀字节不变断言锚定的是「未入批行不被破坏/丢失」这一真实保证。
 - **契约外观察项（现状固化，非缺陷断言）**：dry-run 演练轮会把批次事件标 `pushed=true`（演练消费语义）——契约规约只冻结「零传输调用 + stdout 含 [dry-run]」，是否应保留事件待后续拍板（tests/contract/notify-cli.sh 内有登记）。
 - `notify_min_interval_min` 拦截轮与限额拒绝轮 exit 0（属正常跳过/拒绝，非失败）；发送失败/摘要失败轮 rc≠0（契约：事件保留重试，由调用方容错）。
 
 ## 与设计的对应
 
 - 设计文档：`.autopilot/runtime/requirements/20260905-对这些关键基建做下单/state.md`
-- 测试内容矩阵五类失效 → detect 五类：`bool-parse`（配置布尔误读）/ `cwd-dep`（launchd cwd 依赖）/ `ledger-vs-delivery`（账面成功≠送达）/ `state-machine`（非法迁移）/ `bookkeeping`（限额/幂等/重试/兜底）
-- 验收谓词 SSOT：同文档 `## 验收场景`（场景 1-12）；本 README 即「豁免清单」登记处
+- 验收谓词 SSOT：同文档 `## 验收场景`（场景 1-12）；本 README 即「豁免清单」与「E 波退役件登记」的登记处
+
+## E 波退役件登记（引用面清单）
+
+09-13 `fc46a71` 一次性退役 12 个脚本 + detect 族 + e2e 深检族。**删件后文档/注释仍以现在时描述已删件**这件事已两次形成修复卡（run-watch 一次、其余件一次）——本表是**单一登记处**：要查「某个退役名现在归谁」只看这里，别在注释里逐处复述历史。
+
+| 退役件（09-13 E 波） | 现行替代面 |
+|---|---|
+| `run-watch.sh` | operator 班次（default profile agent cron，每小时 :02）；六节点 感知→分诊→造→过闸→守候→学习 |
+| `scan_gate.sh` / `mail_gate.sh` | operator 班次 survey（gh issue 增量 / himalaya 只读邮件面）；建卡走 `kanban_card.sh` |
+| `deep-check.sh` / `deep_check_gate.sh` / `run-deepcheck.sh` / `deepcheck_card.sh` | kanban swarm 深检（`--resources deepcheck:global`）。**注意区分**：深检**产物路径** `contrib-data/runs/deep-check/` 未退役，仍被 `scripts/approval/auto-gate.sh` 与 `rq.sh` 消费 |
+| `own_pr_watch.sh` | 无自动调用方——own-PR 由 operator 守候（gh 实查 + default 板执行卡）；`l2_ledger.sh check` 子命令保留供巡检调用 |
+| `e2e-smoke.sh` / `detect/`（5 类捕获自证） | 覆盖并入 `run.sh` 四维度（unit / contract / e2e / static）；全链黑盒由 `e2e/` 承载 |
+| `quota_circuit.sh` / `state_brief.sh` / `duty_card.sh` / `coder_upstream_gate.sh` | operator 班次（同 `run-watch.sh` 行） |
+
+**引用面清单（删件提交同批自检）**：`git rm` 一个被引用的脚本时，同一提交必须扫这四个面，并把「现在时」引用改成替代面或直接删句——
+① `CLAUDE.md` ② `scripts/**/*.md` ③ `scripts/**/*.sh` 的注释 ④ `scripts/contrib/tests/stubs/*` 头注释。
+自检命令 `grep -rn "<已删脚本名>" CLAUDE.md scripts/`：命中只应剩两种合法形态——**本表**，或下方豁免面。
+
+**豁免面（命中不修）**：`scripts/contrib/tests/acceptance/**`（冻结的存量验收脚本，不在 `run.sh` 四维度覆盖集内）+ `scripts/contrib/tests/lib/sandbox.sh`（seam 导出与注释）——这两面随退役整批处置，不在逐件修复卡里单独动。
+
+**存量待办**：`CLAUDE.md` 两处（邮件检查段、快车道段）仍以现在时描述已退役编排，改写被人批闸拦下（写保护名单），未绕过。

@@ -14,14 +14,14 @@
 # 本脚本给 own-PR 类对外动作（push fork + gh pr create）一个**唯一受控入口**：
 #   publish = 批准证据闸（fail-closed）→ fork push → gh pr create → 同刻落 approved.log
 #   record  = 单条台账写入（已有 push/评论动作的补记；5 列格式与 execute.sh 兼容）
-#   check   = 只读判定「该分支/PR 是否已有台账」（供 own_pr_watch.sh 差集巡检调用）
+#   check   = 只读判定「该分支/PR 是否已有台账」（零副作用，供巡检差集判定）
 #
 # 语义边界（与既有链兼容，不重写）：
 #   - 台账只追加（append-only），不改历史行；写前对本脚本可判定的重复项幂等跳过（exit 0）
 #   - 批准证据无法机械验证（L2-B 是人类会话明示）：本脚本的要求是把证据**记录在案**——
 #     --approval 为空即 fail-closed 拒绝；证据原文（截断+转义）落台账第 3 列
 #   - 绝不 force push、绝不 push 上游仓（remote URL 含 NousResearch/ 即拒）、绝不动 main/master
-#   - push 成功但台账写入失败 → exit 9（现场保留，巡检 own_pr_watch.sh 差集会兜底发现）
+#   - push 成功但台账写入失败 → exit 9（现场保留：退出码即信号，由调用方/巡检兜底发现）
 #   - check 零副作用（不写日志、不写状态），可被小时级巡检安全调用
 #
 # 用法:

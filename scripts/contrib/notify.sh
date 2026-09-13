@@ -289,7 +289,7 @@ _ai_digest() {
   local in_file="$1" out_file="$2" ch="${3:-contrib}"
   local claude_bin="$CLAUDE_BIN"
   [[ -z "$claude_bin" ]] && claude_bin="$(command -v claude 2>/dev/null)"
-  # launchd 环境兜底：PATH 里没有 claude 时按 nvm 安装布局探测（同 deep-check.sh）
+  # launchd 环境兜底：PATH 里没有 claude 时按 nvm 安装布局探测
   [[ -z "$claude_bin" ]] && claude_bin="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1)"
   if [[ -z "$claude_bin" ]]; then
     log "AI 摘要失败：claude 不可达（PATH 与 nvm 布局均未命中）"
@@ -487,7 +487,7 @@ for l in open(p):
 open(p, "w").write("\n".join(out) + "\n")
 PYEOF
   # 连续 3 败 → osascript 本地机械提示（每至多一次/日，非 raw dump）
-  # （缩进保持原 cmd_flush 内联形态：detect 变异锚点 bk-alert-fallback-idempotency-removed 逐字命中）
+  # （缩进保持原 cmd_flush 内联形态，减少无谓 diff）
   local maxed
   maxed=$(jq -s '[.[] | select(.pushed == false and (.channel // "contrib") == "contrib" and (.attempts // 0) >= 3)] | length' "$EVENTS" 2>/dev/null || echo 0)
     if (( maxed > 0 )) && [[ "$(state_get fallback_notice "$(today)")" != "1" ]]; then

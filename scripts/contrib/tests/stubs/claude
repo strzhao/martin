@@ -1,5 +1,5 @@
 #!/bin/bash
-# 影子 stub：claude —— 记录调用与 cwd；对 deep-check 的 preflight 阶段产出草稿并经 rq.sh set-draft 登记
+# 影子 stub：claude —— 记录调用与 cwd；`--phase preflight` 提示产出草稿并经 rq.sh set-draft 登记（seam 保留）
 # 行为旋钮：
 #   STUB_CLAUDE_FAIL=1        → exit 1（preflight/redteam/AI 摘要失败链共用）
 #   STUB_CLAUDE_OUT=<text>    → 自定义 stdout（AI 摘要输出不合格用例可注入空串/超长/Unknown command）

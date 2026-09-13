@@ -1,5 +1,5 @@
 #!/bin/bash
-# run.sh — 套件一条命令入口：聚合 unit/contract/e2e/static 四维度 + 全部 detect 捕获自证
+# run.sh — 套件一条命令入口：聚合 unit/contract/e2e/static 四维度
 #
 # 用法：bash scripts/contrib/tests/run.sh
 #   末行输出 JSON 摘要：{"total":N,"passed":N,"failed":N,"skipped":N,"dims":{"unit":N,"contract":N,"e2e":N,"static":N}}
@@ -104,7 +104,6 @@ echo "==== 维度 3/4：e2e ===="
 for f in "$TESTS_ROOT"/e2e/*.sh; do
   [[ -e "$f" ]] && run_test_file e2e "$f"
 done
-echo "---- e2e 冒烟独立入口 ----"
 
 echo "==== 维度 4/4：static ===="
 for f in "$TESTS_ROOT"/static/*.sh; do

@@ -5,7 +5,7 @@
 #   STUB_GH_ISSUES_FILE=<f> → stdout 输出该文件内容（issue JSON 数组，驱动 scan_gate）
 #   STUB_GH_LATEST=<n>      → 对 `--jq '.[0].number'` 的 --init 调用输出该数字
 # own-PR 盯梢新增旋钮（09-10；不设时既有行为 byte 级保留——pr list 落回 ISSUES_FILE/[] 通用尾）：
-#   STUB_GH_PRS_FILE=<f>    → `pr list` 输出该文件内容（own PR JSON 数组，驱动 own_pr_watch）
+#   STUB_GH_PRS_FILE=<f>    → `pr list` 输出该文件内容（own PR JSON 数组；消费方 = unit/l2-ledger.sh 的台账存在性判定）
 #   STUB_GH_VIEW_DIR=<dir>  → `pr view <N>` 输出 <dir>/pr-<N>.json；文件缺失 → exit 1
 #                             （可模拟单 PR 终态核实失败）
 #   STUB_GH_PR_CREATE_URL=<u> → `pr create` 输出该 URL（l2_ledger.sh publish 用）
