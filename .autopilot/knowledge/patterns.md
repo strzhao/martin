@@ -534,3 +534,13 @@ autopilot tree_sig 对 `*.acceptance.*`、`*/tests/*`、`acceptance-staging/*` �
 ## [2026-09-13] CC 会话沙箱放行 /tmp 写、拦 /tmp 读：autopilot QA artifact 双落位
 stop-hook §5.7 按 /tmp/autopilot-artifacts/<pred-id>.out 校验谓词 artifact 存在性，但本机 CC 会话沙箱对 /tmp **写放行、读静默拒绝**（cat 读 /tmp 无声 rc=1、零报错输出——与 jq 跨目录读被拒同族但更隐蔽：无错误文本可归因，极易误判成被测脚本问题，本轮实测先绕行「cat 死因」假设数轮）。治法：artifact **主落 workspace 内**（.autopilot/runtime/<task>/artifacts/，可读可归档可引用），`cp` 镜像一份到 /tmp 供 stop-hook 机械校验；人读展示一律走 workspace 副本。同族：「运行时产物的红队断言求值根」（2026-09-13）——产物的读路径与写路径都要锚到会话可及的树。
 <!-- tags: qa, autopilot, artifact, sandbox, tmp, dual-write, silent-failure, evidence-integrity, contrib-watch -->
+
+<!-- tags: macos, toolchain-shadow, diff, PATH, false-green, fail-closed, vacuous-pass, scanner-calibration, testing -->
+## [2026-09-14] diff 遮蔽三升级：ambient 默认态 / 影子对任意输入 rc=0 / pin 后仍有残留假绿路径（须配 -x fail-closed 前置）
+本条**升级并入** 2026-09-05「第三方工具链遮蔽系统命令：diff 不支持 -r 的静默假绿」，把三条认知坐实（卡 t_23b17603 三处判据实测）：
+①**遮蔽是 ambient 默认态，不是需要注入的假设场景**——`command -v diff` 在 Claude Code bash 与用户登录 zsh 下**都**首解到 `~/.local/harmony/command-line-tools/sdk/default/openharmony/toolchains/diff`（ambient PATH 位次 #2，`/usr/bin/diff` 在 #18；该影子目录仅 19 项，对本仓工具集只遮蔽 diff 一个）。⇒ 凡未 pin 的 `diff` 判据在本机**当下就在恒假绿**，不是潜在风险。
+②**影子行为比原记录更宽**：对**任意**输入 rc=0 零输出——含不存在文件、含 `-r`（stderr 报 `illegal option -- r` 而 **rc 仍 0**）。故不能靠 rc 兜底，只能 pin。
+③**pin 之后仍有残留假绿路径**：`cmd > "$OUT"` 的**重定向先于 exec 失败**建立空文件 ⇒ `wc -l < "$OUT"` = 0 ⇒ `eq 0 0` 仍绿。**pin 必须配套 fail-closed 依赖前置**：`[ -x /usr/bin/diff ] || die/_fail "env" ...`，用 `-x` 探**可执行位**而非 `command -v`（后者走 PATH 解析，正是要绕开的机制）。本仓先例 `gate.sh:44-46`、`gate-twin-consistency.acceptance.sh:72`。
+**处置口径**：全仓按**命令位**扫描——剥「词首 #」行内注释 + 严格分隔符 `(^|[$][(]|[|]|&&|;|[{])`，排除①注释字样②消息串字样③`git -C <path> diff` 的参数位（git 子命令不受 PATH 遮蔽影响，**绝不误改**）。真调用共 5 处（s4×2 + t1-04×1 + hkstock/t2_guard×2）；**非假绿向量的调用也一并 pin**（其判定靠字符串不等，diff 仅拼失败 detail，但遮蔽态下 detail 塌成空串、排障误导）。判据由真空绿转为真求值后**可能真红**——那是真实产出，如实登记不回退。
+
+**[扫描器自身必须过正控]** 声称「裸调用数 == 0」的静态扫描器与它要防的假绿同构：正则写松会把注释/消息串/`git diff` 数成命中（本次实测 6 处假阳），**写严则可能整段剥空后恒 0（真空 PASS）**。三件套：①剥注释但**别剥字符串**（`$(diff …)` 常位于双引号命令替换内，整段剥会连真实调用一起剥掉——本次正控因此漏抓 3/5）；②严格命令位分隔符，不用「前有空白」这种松口径；③**正控 = 同一扫描器作用于「改前」版本必须命中预期条数**（本次 HEAD 版恰 5 处），正控不过则「改后 0 处」不构成证据。附同族两例 harness 自伤：矩阵文件与汇总输出**同路径** → 末尾重定向先截断矩阵再读，artifact 段全空；`$TMP（全角括号紧贴）` 被 bash 并入变量名 → unbound variable（见本库「bash `$var` 紧跟全角标点」条目，本次为第 7 方复证）。
