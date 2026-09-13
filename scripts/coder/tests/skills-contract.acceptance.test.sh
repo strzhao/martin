@@ -42,6 +42,10 @@ assert_grep_any() { # <ERE pattern> <契约点> <file...>（union 命中即可�
   done
   fail "$desc —— 候选文件均未命中 pattern: $pat"
 }
+assert_not_grep() { # <ERE pattern> <契约点> <file>（反向断言：不得命中，防回潜）
+  grep -qE "$1" "$3" && fail "${2}（不得命中 pattern: $1, file: ${3}）"
+  ok "$2"
+}
 
 echo "== claude-run SKILL 文本契约 =="
 
@@ -74,11 +78,9 @@ assert_grep_f 'process(action=kill)' "claude-run 含 process(action=kill) 卡死
 assert_grep '90([[:space:]]*min|分钟)' "claude-run 含 90min state.md mtime 无增长卡死判据（v1.2.0：活性信号换源，45min 日志判据已废）" "$CR"
 assert_grep 'state\.md.*mtime|mtime.*state\.md' "claude-run 活性信号 = state.md mtime（非日志行数）" "$CR"
 
-# --- R3b: 引擎选择（v1.2.0 zcode 优先、claude 兜底）+ --headless + 孤儿收养 ---
+# --- R3b: 引擎唯一 = claude（v1.4.0，2026-09-13 摘除 zcode）+ --headless + 孤儿收养 ---
 assert_grep_f '--headless' "claude-run 启动配方含 --headless（无人值守档位必传）" "$CR"
-assert_grep 'command[[:space:]]+-v[[:space:]]+zcode' "claude-run 含 zcode 事前探测（command -v zcode）" "$CR"
-assert_grep_f 'captcha verify failed' "claude-run 含 zcode 运行时失败签名（captcha）" "$CR"
-assert_grep_f 'Model config is missing' "claude-run 含 zcode 运行时失败签名（config missing）" "$CR"
+assert_not_grep 'command[[:space:]]+-v[[:space:]]+zcode|run-zcode\.sh|claude_fallback_from_zcode|~/.zcode/' "claude-run 已无 zcode 引擎机制（探测/发车脚本/降级记账/config 路径均不得出现，防回潜）" "$CR"
 assert_grep_f '孤儿收养' "claude-run 含孤儿收养前置步骤（两卡实证）" "$CR"
 assert_grep_f '轮级不设 alarm' "claude-run 含轮级 alarm 废除语义（限额只做极限兜底）" "$CR"
 

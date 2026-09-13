@@ -50,7 +50,7 @@
 - [2026-09-08] 契约字面量要锚定工具源码：速记进契约 → 红队锁死速记 → 实现被逼教错语法 | tags: contract, autopilot, tool-syntax, red-team, hermes | → patterns.md
 - [2026-09-07] bash 产线统一入库验收门选型：三关聚合薄壳 + regex 单源 + pre-commit 路径守卫 | tags: testing, gate, bash, pipeline, contrib-watch | → decisions.md
 - [2026-09-08] hermes 复杂编码委派 coder profile 选型：真 profile 内转调 + 单条 claude -p 长进程 | tags: hermes, kanban, profile, claude-code, autopilot, delegation, headless | → decisions.md
-- [2026-09-11] zcode 插件手动四件套脚本化 sync-autopilot-to-zcode.sh（registry upsert 保留字段/installedAt 仅版本变化刷/旧版本实体并存） | tags: zcode, plugin, sync-script, registry-upsert, idempotency | → decisions.md
+- [2026-09-11] zcode 插件手动四件套脚本化 sync-autopilot-to-zcode.sh（registry upsert 保留字段/installedAt 仅版本变化刷/旧版本实体并存；**09-13 已随 zcode 摘除退役，脚本已删条目留档**） | tags: zcode, plugin, sync-script, registry-upsert, idempotency, deprecated | → decisions.md
 
 - [2026-09-08] kanban CLI 建卡零订阅→终态不推微信（notify-subscribe 补订三解） | tags: hermes, kanban, subscribe, weixin, hkstock | → patterns.md
 - [2026-09-08] 遥测弱断言 vacuous PASS：推送正证据=订阅存在∧终态窗口 send ok 双闸 | tags: qa, vacuous-assertion, telemetry, hkstock | → patterns.md
