@@ -892,8 +892,12 @@ fi
 if scene_on 14; then
   t_case "场景14 红线守护（s14-p1/p2）"
   MERGE_BASE="$(git -C "$REPO_ROOT" merge-base HEAD main 2>/dev/null || git -C "$REPO_ROOT" merge-base HEAD origin/main 2>/dev/null || printf 'HEAD')"
-  DIFF_OUT="$(git -C "$REPO_ROOT" diff "$MERGE_BASE" -- . 2>/dev/null)"
-  # 只计「变更行」（+/- 本体行；context 行不算）——谓词口径 = diff 里改动到 notify_target 的行数
+  DIFF_OUT="$(git -C "$REPO_ROOT" diff "$MERGE_BASE" -- . ":(exclude)scripts/contrib/tests/acceptance/t13-alerts-v2.acceptance.test.sh" 2>/dev/null)"
+  # 只计「变更行」（+/- 本体行；context 行不算）——谓词口径 = diff 里改动到 notify_target 的行数。
+  # 自指修正（2026-09-14 QA 自决，情形③「grep 命中注释」，E3 闭合）：本套件一旦入库，其注释与
+  # s14-p1 自身机制（grep 模式串）就构成 diff 中该字面量的全部 10 处命中（`git diff <base> | grep -E '^[+-]'`
+  # 可逐行指认，生产面 0 命中），使断言对任何实现恒红 ⇒ 扫描面排除谓词定义文件自身；生产面
+  # （scripts/contrib/*.sh、deploy/** 等）仍全量受扫，红线不变。
   DIFF_CHANGED="$(printf '%s' "$DIFF_OUT" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
   NT_HITS="$(printf '%s' "$DIFF_CHANGED" | grep -c 'notify_target' || true)"
 
