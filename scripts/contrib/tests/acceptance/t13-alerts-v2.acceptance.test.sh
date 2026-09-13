@@ -903,10 +903,14 @@ if scene_on 14; then
 
   # --- s14-p1 [det-machine] 全量 diff 零 notify_target 行 ---
   assert_eq "${NT_HITS:-0}" "0" "s14-p1 工作树全量 diff 零 notify_target 行（基线 ${MERGE_BASE}）"
-  if [[ -f "$REPO_ROOT/contrib-data/config.json" ]]; then
-    _fail "s14-p1 生产 config 不入仓" "工作树出现 contrib-data/config.json（生产配置面被纳入版本控制）"
+  # 判据 = 「是否纳入版本控制」，非「文件是否存在」（2026-09-14 修正，卡 t_a9ed7383）：
+  # 生产数据 contrib-data/ 按设计不入仓且被 .gitignore 忽略，主 checkout 里该文件在位属正常生产态
+  # ⇒ 存在性判据在主 checkout 恒红（环境脆性误报）；真红线 = 被 git 纳入版本控制（索引命中）。
+  if git -C "$REPO_ROOT" ls-files --error-unmatch contrib-data/config.json >/dev/null 2>&1; then
+    _fail "s14-p1 生产 config 不入仓" "contrib-data/config.json 已纳入版本控制（git ls-files 索引命中；生产配置面泄漏进仓）"
   else
-    _pass "s14-p1 生产 config 不在仓内（本体佐证）"
+    IGN_EVID="$(git -C "$REPO_ROOT" check-ignore -v contrib-data/config.json 2>/dev/null | head -1 | cut -f1 || true)"
+    _pass "s14-p1 生产 config 未纳入版本控制（git ls-files 未命中；忽略规则证据：${IGN_EVID:-无}）"
   fi
   art s14-p1 "merge-base=${MERGE_BASE}" "diff 行数=$(printf '%s' "$DIFF_OUT" | wc -l | tr -d ' ')" \
     "变更行含 notify_target 计数=${NT_HITS:-0}" "命中行：" \
