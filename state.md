@@ -109,3 +109,69 @@ D1/D2 落码前：approval 124/124 绿（rc=0）。
    run.sh 加「MARTIN_DIR 未设且存在 .lane-exclude 时 warn」之类的护栏（另行立卡）。
 4. PATH 里的第三方 `diff` 遮蔽系统 diff（本次实证 diff 报 illegal option）——run.sh 已 pin
    /usr/bin/diff，其它消费点未审计。
+
+---
+---
+
+# state.md — 卡 t_23b17603 轮次 r2：修 C3 假红缺陷（守卫套件验收闭环）
+
+日期：2026-09-14 ｜ lane：wt/t_23b17603（只 commit 不 push）｜ 驱动：autopilot --headless（fast_mode=true）
+（上一节属卡 t_b8ef4f58，随工作区带过来的历史内容，本次未动；本节为 t_23b17603 r2。）
+
+## 修了什么
+
+**工件**：`scripts/contrib/tests/acceptance/diff-pin-canary.acceptance.test.sh`（上一轮 r1 交付的守卫套件）。
+
+**缺陷**：C3 的「S1.P3 非遮蔽态」分支用内部探针 `_diffprobe` 求值 ambient 裸 `diff`，而该探针会把自建
+exit-0 假影子 `SB_SHADOW` **前置到 PATH** ⇒ 被断言的裸 `diff` 无论 ambient 首解是谁都命中假影子
+（rc=0、0 行）⇒ 三条断言在非遮蔽态下**必然假红**（断言标签自述「ambient」，求值对象却是影子）。
+
+**改法（1 hunk，+4/−2，唯一改动）**：该分支内
+
+```bash
+-    _diffprobe diff "$FX_A" "$FX_B" "$SB/c3-naked.out"
++    diff "$FX_A" "$FX_B" > "$SB/c3-naked.out" 2>&1
+```
+
+（附 2 行注释说明为何不得经 `_diffprobe`）——改在**顶层真 ambient PATH 语义**下求值；
+三条断言的标签、字面量、条数逐字未动；**未** skip、**未** warn 降级、**未**删断言、**未**放宽。
+
+**红线零改动（机械判据）**：C3 遮蔽分支抽取块 sha256 与 HEAD 版相同（`ea654c02a3329b5f…`）；
+`s4` / `t1-04` / `hkstock t2_guard` 三文件 `git diff HEAD` **输出为空**；命令位 pin 调用点 5、裸 diff 调用 0、
+`-x /usr/bin/diff` fail-closed 前置 2。
+
+## 两次环境态证据（##SUMMARY 原文 + 退出码，逐字）
+
+| 环境态 | 命令 | ##SUMMARY 原文（末行） | 退出码 |
+|---|---|---|---|
+| 非遮蔽 | `PATH=/usr/bin:/bin:/usr/sbin:/sbin bash scripts/contrib/tests/acceptance/diff-pin-canary.acceptance.test.sh` | `##SUMMARY {"dim":"acceptance","file":"diff-pin-canary.acceptance.test.sh","total":53,"passed":53,"failed":0,"skipped":0}` | **0** |
+| 遮蔽 | `<toolchains>:/usr/bin:/bin:/usr/sbin:/sbin bash <同上>` | `##SUMMARY {"dim":"acceptance","file":"diff-pin-canary.acceptance.test.sh","total":51,"passed":51,"failed":0,"skipped":0}` | **0** |
+
+`<toolchains>` = `/Users/stringzhao/.local/harmony/command-line-tools/sdk/default/openharmony/toolchains`。
+两态断言总数 53 / 51 **与修复前一致**（遮蔽分支 2 条 / 非遮蔽分支 4 条为既有设计）——作为防误删的机械锚。
+修复前对照：非遮蔽态 `total=53 passed=50 failed=3` rc=1（失败原文 `actual=[0] expected=[1]`×2 /
+`actual=[0] expected=[4]`×1），遮蔽态 51/51 rc=0。
+
+## 回归门（收口复跑）
+
+| 门 | 命令 | 末行 | 退出码 |
+|---|---|---|---|
+| 静态入库门 | `bash scripts/contrib/tests/gate.sh` | `GATE: PASS (75 files, 0 findings)` | **0** |
+| 四维套件 | `MARTIN_DIR=$PWD bash scripts/contrib/tests/run.sh` | `{"total":667,"passed":667,"failed":0,"skipped":0,...}` | **0** |
+
+## 本轮新增工件
+
+- `scripts/contrib/tests/acceptance/diff-pin-canary-c3-ambient.acceptance.test.sh`（红队独立验收套件，
+  47 断言 / 7 用例，`47 passed / 0 failed / 0 skipped` rc=0）——黑盒驱动被测套件两态 + 遮蔽分支
+  sha256 冻结 + 三生产文件零改动 + mutation 敏感度（注入回缺陷形态复现 `failed=3 rc=1`，失败原文逐字一致）。
+- 证据目录：`$TASK_DIR/evidence/`（`r2-p1.out` … `r2-p7.out` + `tier0-c3-ambient.out`），
+  同步镜像 `/tmp/autopilot-artifacts/r2-*.out`。
+
+## 约束遵守声明
+
+- **只 commit 不 push**：本轮无任何 push / PR / 对外动作。
+- **只在本 worktree 内改动**：代码与测试改动 100% 落在 `/Users/stringzhao/.hermes/kanban/workspaces/t_23b17603`
+  内；`tree_sig` = 空集哈希 `e3b0c442…`（改动面全在 `*.acceptance.*` / `tests/*` 排除面，非测试面零变更）。
+  唯一例外按 autopilot 框架既定路由披露：知识提取写入**共享知识库**（`.autopilot/knowledge/` 是主仓符号链接源），
+  与 r1 同款处理、单独提交主仓、未 push。
+- **两态均绿**已实证（上表），`failed=0` 且 `rc=0` 两态同时成立。

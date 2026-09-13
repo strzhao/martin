@@ -145,8 +145,10 @@ case "$C3_RESOLVED" in
       "S1.P3 遮蔽态：ambient 首解命中影子（本机默认态，判据未 pin 即恒假绿）"
     ;;
   *)
-    # 非遮蔽态：裸 diff 与 pin diff 对同一对文件必须行为一致且都能检出差异
-    _diffprobe diff "$FX_A" "$FX_B" "$SB/c3-naked.out"
+    # 非遮蔽态：裸 diff 与 pin diff 对同一对文件必须行为一致且都能检出差异。
+    # ⚠️ 此处裸 diff 必须在**真 ambient PATH 语义**下求值——不得经 _diffprobe：它把自建
+    # 影子 SB_SHADOW 前置到 PATH，会把「ambient 裸 diff」偷换成影子 ⇒ rc 恒 0 假红本分支。
+    diff "$FX_A" "$FX_B" > "$SB/c3-naked.out" 2>&1
     C3N_RC=$?
     _diffprobe /usr/bin/diff "$FX_A" "$FX_B" "$SB/c3-pin.out"
     C3P_RC=$?
