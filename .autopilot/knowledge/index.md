@@ -36,6 +36,7 @@
 
 ## Domain Knowledge
 - [Hermes Agent 安装与配置](domains/hermes-agent.md) — 在 macOS ARM64 上安装 Hermes Agent 的关键决策和踩坑记录
+- [skill 开发最佳实践](../../skill-authoring-guide.md) — Anthropic 官方 SKILL.md authoring 规范整理入库（description 选择器/自由度分级/渐进披露/eval-first/验收 checklist），CC 与 hermes skill 通用 | tags: skill, claude, hermes, best-practices
 - [2026-08-23] hermes 事件落库(T1)架构四决策(懒启动 atexit/不设 WAL/config 链分叉/check_same_thread) | tags: hermes, observability, sqlite, config-chain, events-sink | → decisions.md
 - [2026-08-24] weixin context token v2(issued_at 落盘+双 dict 分离+回滚自愈) | tags: hermes, weixin, token, forensics | → decisions.md
 - [2026-09-05] jq `//` 把 false 当 falsy：布尔配置静默失效事故根因 | tags: bash, jq, boolean, config-parsing, incident, contrib-watch | → patterns.md

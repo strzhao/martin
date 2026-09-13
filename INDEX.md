@@ -9,6 +9,12 @@
 |---|---|---|
 | [opencli-best-practices.md](opencli-best-practices.md) | 浏览器自动化：opencli 优先于 Playwright（E2E 例外），state→act→verify 循环、adapter 优先、登录态安全边界 | **任何浏览器/网页操作前** |
 
+## Skill 工程
+
+| 文档 | 一句话 | 何时读 |
+|---|---|---|
+| [skill-authoring-guide.md](skill-authoring-guide.md) | Anthropic 官方 skill 开发最佳实践提炼：description 选择器/自由度分级/渐进披露/eval-first + 五种结构模式 + 验收 checklist + 本仓 skill 资产映射 | **新建、修改、评审任何 SKILL.md 前** |
+
 ## Hermes 工程
 
 | 文档 | 一句话 | 何时读 |

@@ -26,6 +26,10 @@
 
 开发/修改 hermes 任何子系统（agent loop / permission / compact / hook / streaming / mcp / skill / memory 等）前，**先读 [`harness-engineering-principles.md`](harness-engineering-principles.md)** —— 提炼自 `learn-everything` 14-artifact harness 教程（以 Claude Code 为参照系）。核心四条：**① 正交架构**（新子系统不改旧的，接入前问"能否零改动")；**② 模型不可靠**（安全/隐私/cardinality 机制层强制，不靠 prompt 自律）；**③ 软契约**（约束写 prompt/类型，不 runtime throw；仅数据损坏/安全才硬约束）；**④ context 经济是 KPI**（cache 命中 + 双轨注入 stable-prompt/dynamic-attachment + 双层去重 LRU/Session-Set）。文档含 10 条通用原则 + 27 条反模式 + 14 子系统速查表。配合 [[hermes-contribution-followups]] 的 sweeper 红线食用。
 
+## skill 开发规范
+
+**新建、修改、评审任何 SKILL.md 前**（`.claude/skills/`、`skills/`、`~/.hermes/skills/` 及 profile skills），**先读 [`skill-authoring-guide.md`](skill-authoring-guide.md)** —— 提炼自 Anthropic 官方 Skill authoring best practices（2026-09-13 入库）。核心五条：**① context 是公共财**（简洁至上，只写 Claude 不知道的）；**② description 是唯一选择器**（三人称 + 做什么 + 何时用 + 触发关键词，name 自描述）；**③ 自由度分级**（约束密度匹配任务脆弱度：越脆弱越低自由度）；**④ 渐进披露**（正文 <500 行、引用一层深、SKILL.md 是目录不是全书）；**⑤ 先评测后写作**（eval-first + Claude A/B 观察，以队列内最弱模型为验收基准）。文档含 workflow/feedback loop/template/examples 五种结构模式速查、带脚本 skill 纪律（solve-don't-defer / plan-validate-execute）、反模式表、交付前 checklist、本仓 skill 资产分布与范式参照。
+
 ## hermes 开源共建
 
 参与 `NousResearch/hermes-agent` 共建时，**先读 [`hermes-contribution.md`](hermes-contribution.md)** —— 沉淀了被合入 PR 画像、kshitijk4poor 打法逆向、salvage 流程、sweeper 机制（含 09-02 AI farm 生态侦察）、sweeper 红线、邮件时滞坑、**策略主轴 2.0 全文**。具体 PR 进度见记忆 [[hermes-contribution-followups]]。
