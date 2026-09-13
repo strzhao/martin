@@ -34,13 +34,13 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
 # L2 链事件 flush（旧 run-watch flush 段退役后由心跳顺带承载；幂等，内部自带限额/去重）
 bash "${MARTIN:-$HOME/workspace/martin}/scripts/contrib/notify.sh" flush >>"${HOME}/workspace/martin/contrib-data/logs/heartbeat-flush.log" 2>&1 || true
 
-# [watch] 到期唤醒钳夹（零判断：scheduled 卡上有 operator 落的机器行 `watch-due: YYYY-MM-DD`，
+# [watch] 到期唤醒钳夹（零判断：scheduled/blocked 卡上有 operator 落的机器行 `watch-due: YYYY-MM-DD`，
 # 到期即 unblock 交 dispatcher；未到期不动。schedule 是终态停放无唤醒 actor——operator 12 班
 # 源码实证 kanban_db.py:3767-3790 + dispatch _lane_rows，缺口由本钳夹闭合）
 DB="$HOME/.hermes/kanban/boards/contrib/kanban.db"
 due_ids="$(sqlite3 "file:${DB}?mode=ro" \
   "select distinct t.id from tasks t join task_comments c on c.task_id=t.id
-   where t.status='scheduled' and c.body like '%watch-due:%'
+   where t.status in ('scheduled','blocked') and c.body like '%watch-due:%'
    and substr(trim(replace(c.body,char(13),'')), instr(trim(replace(c.body,char(13),'')),'watch-due:')+11, 10) <= date('now','localtime')" 2>/dev/null || true)"
 if [[ -n "$due_ids" ]]; then
   while IFS= read -r wid; do
@@ -48,4 +48,17 @@ if [[ -n "$due_ids" ]]; then
     env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
       "$HB" kanban --board contrib unblock "$wid" --reason "watch-due 到期唤醒（心跳钳夹）" >/dev/null 2>&1 || true
   done <<<"$due_ids"
+fi
+
+# 分诊收口钳夹（零判断：triage 里 [sig] 卡若已有 `triage-verdict:` 判定评论且超过 30 分钟宽限，
+# = operator 已落判、worker 无跨卡终态权（kernel 作用域隔离）——由本钳夹代行归档。
+# 判决是 AI 的（评论机器行），落笔是钳夹的——与 L2「agent 起草链落笔」同构）
+cutoff=$(( $(date +%s) - 1800 ))
+sweep_ids="$(sqlite3 "file:${DB}?mode=ro" \
+  "select distinct t.id from tasks t join task_comments c on c.task_id=t.id
+   where t.status='triage' and t.title like '[sig]%' and c.body like '%triage-verdict:%'
+   and c.created_at <= ${cutoff}" 2>/dev/null || true)"
+if [[ -n "$sweep_ids" ]]; then
+  env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
+    "$HB" kanban --board contrib archive $sweep_ids >>"$HOME/workspace/martin/contrib-data/logs/heartbeat-flush.log" 2>&1 || true
 fi
