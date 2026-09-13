@@ -42,7 +42,7 @@
 - [2026-09-05] jq `//` 把 false 当 falsy：布尔配置静默失效事故根因 | tags: bash, jq, boolean, config-parsing, incident, contrib-watch | → patterns.md
 - [2026-09-05] bash `$var` 紧跟全角标点并入变量名：三方同踩 12+ 处（09-13 五方+1：块级重定向吞 set -u 报错呈零输出假象） | tags: bash, unicode, fullwidth, variable-name, testing | → patterns.md
 - [2026-09-05] 第三方工具链遮蔽系统 diff：stdout 空的静默假绿 | tags: macos, toolchain-shadow, diff, PATH, testing | → patterns.md
-- [2026-09-14] diff 遮蔽三升级：ambient 默认态 / 影子对任意输入 rc=0 / pin 后仍有残留假绿路径（须配 `-x` fail-closed 前置 + 扫描器正控） | tags: macos, toolchain-shadow, diff, PATH, false-green, fail-closed, vacuous-pass, scanner-calibration | → patterns.md
+- [2026-09-14] diff 遮蔽四升级：ambient 默认态 / 影子对任意输入 rc=0 / pin 后残留假绿（须配 `-x` fail-closed 前置）/ **守卫套件自身求值环境被污染 ⇒ 断言假红**（自带 PATH 注入的探针函数只能用于「注入态」断言；两态断言总数 51/53 作防删锚；未越权改动用段级 sha256 对照；mutation 要复现逐字相同的失败原文） | tags: macos, toolchain-shadow, diff, PATH, false-green, false-red, fail-closed, vacuous-pass, scanner-calibration, assertion-mechanism | → patterns.md
 - [2026-09-05] 变异测试 vs 纵深防御：注入必须剥离全部同类防御层 | tags: testing, mutation-testing, defense-in-depth, false-green | → patterns.md
 - [2026-09-06] bash 3.2 case 大小写不敏感撞 stub 分支 | tags: bash, macos, stub, false-null | → patterns.md
 - [2026-09-06] macOS mktemp X 串末尾约束 + 空路径重定向吞错 | tags: bash, macos, mktemp, fail-path | → patterns.md

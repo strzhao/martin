@@ -535,8 +535,9 @@ autopilot tree_sig 对 `*.acceptance.*`、`*/tests/*`、`acceptance-staging/*` �
 stop-hook §5.7 按 /tmp/autopilot-artifacts/<pred-id>.out 校验谓词 artifact 存在性，但本机 CC 会话沙箱对 /tmp **写放行、读静默拒绝**（cat 读 /tmp 无声 rc=1、零报错输出——与 jq 跨目录读被拒同族但更隐蔽：无错误文本可归因，极易误判成被测脚本问题，本轮实测先绕行「cat 死因」假设数轮）。治法：artifact **主落 workspace 内**（.autopilot/runtime/<task>/artifacts/，可读可归档可引用），`cp` 镜像一份到 /tmp 供 stop-hook 机械校验；人读展示一律走 workspace 副本。同族：「运行时产物的红队断言求值根」（2026-09-13）——产物的读路径与写路径都要锚到会话可及的树。
 <!-- tags: qa, autopilot, artifact, sandbox, tmp, dual-write, silent-failure, evidence-integrity, contrib-watch -->
 
-<!-- tags: macos, toolchain-shadow, diff, PATH, false-green, fail-closed, vacuous-pass, scanner-calibration, testing -->
-## [2026-09-14] diff 遮蔽三升级：ambient 默认态 / 影子对任意输入 rc=0 / pin 后仍有残留假绿路径（须配 -x fail-closed 前置）
+<!-- tags: macos, toolchain-shadow, diff, PATH, false-green, false-red, fail-closed, vacuous-pass, scanner-calibration, assertion-mechanism, probe-pollution, red-team, testing -->
+## [2026-09-14] diff 遮蔽四升级：ambient 默认态 / 影子对任意输入 rc=0 / pin 后仍有残留假绿路径（须配 -x fail-closed 前置）/ 守卫套件自身的求值环境被污染 ⇒ 断言假红
+
 本条**升级并入** 2026-09-05「第三方工具链遮蔽系统命令：diff 不支持 -r 的静默假绿」，把三条认知坐实（卡 t_23b17603 三处判据实测）：
 ①**遮蔽是 ambient 默认态，不是需要注入的假设场景**——`command -v diff` 在 Claude Code bash 与用户登录 zsh 下**都**首解到 `~/.local/harmony/command-line-tools/sdk/default/openharmony/toolchains/diff`（ambient PATH 位次 #2，`/usr/bin/diff` 在 #18；该影子目录仅 19 项，对本仓工具集只遮蔽 diff 一个）。⇒ 凡未 pin 的 `diff` 判据在本机**当下就在恒假绿**，不是潜在风险。
 ②**影子行为比原记录更宽**：对**任意**输入 rc=0 零输出——含不存在文件、含 `-r`（stderr 报 `illegal option -- r` 而 **rc 仍 0**）。故不能靠 rc 兜底，只能 pin。
@@ -544,3 +545,11 @@ stop-hook §5.7 按 /tmp/autopilot-artifacts/<pred-id>.out 校验谓词 artifact
 **处置口径**：全仓按**命令位**扫描——剥「词首 #」行内注释 + 严格分隔符 `(^|[$][(]|[|]|&&|;|[{])`，排除①注释字样②消息串字样③`git -C <path> diff` 的参数位（git 子命令不受 PATH 遮蔽影响，**绝不误改**）。真调用共 5 处（s4×2 + t1-04×1 + hkstock/t2_guard×2）；**非假绿向量的调用也一并 pin**（其判定靠字符串不等，diff 仅拼失败 detail，但遮蔽态下 detail 塌成空串、排障误导）。判据由真空绿转为真求值后**可能真红**——那是真实产出，如实登记不回退。
 
 **[扫描器自身必须过正控]** 声称「裸调用数 == 0」的静态扫描器与它要防的假绿同构：正则写松会把注释/消息串/`git diff` 数成命中（本次实测 6 处假阳），**写严则可能整段剥空后恒 0（真空 PASS）**。三件套：①剥注释但**别剥字符串**（`$(diff …)` 常位于双引号命令替换内，整段剥会连真实调用一起剥掉——本次正控因此漏抓 3/5）；②严格命令位分隔符，不用「前有空白」这种松口径；③**正控 = 同一扫描器作用于「改前」版本必须命中预期条数**（本次 HEAD 版恰 5 处），正控不过则「改后 0 处」不构成证据。附同族两例 harness 自伤：矩阵文件与汇总输出**同路径** → 末尾重定向先截断矩阵再读，artifact 段全空；`$TMP（全角括号紧贴）` 被 bash 并入变量名 → unbound variable（见本库「bash `$var` 紧跟全角标点」条目，本次为第 7 方复证）。
+
+④**守卫套件自身的求值环境也会被污染 ⇒ 断言假红（同族第四面，2026-09-14 卡 t_23b17603 r2 实测）**：该卡的守卫套件里有个探针函数 `_diffprobe() { ( export PATH="$SB_SHADOW:$PATH"; "$1" "$2" "$3" > "$4" 2>&1 ); }`——它把**自建 exit-0 假影子**前置到 PATH。C3 用例的「非遮蔽态」分支却用它求值 `_diffprobe diff …`（指望测 ambient 裸 diff）⇒ 无论 ambient 首解是谁，被调用的永远是那个自建影子 ⇒ rc=0/0 行 ⇒ 三条标签自述「**ambient** 裸 diff」的断言在非遮蔽态下**必然假红**（`actual=[0] expected=[1]`/`[0] vs [4]`）。
+- **机制定性**：这是**假绿的镜像面**——同一「PATH 注入污染」机制，用在判据上是恒真假绿，用在断言求值上是恒假假红。**断言标签描述的环境 ≠ 断言实际求值的环境** = 断言机制错（红队铁律例外情形③），不是实现缺陷。
+- **治法**：该分支改**顶层裸调用**（`diff "$A" "$B" > "$OUT" 2>&1`，PATH 不做任何注入）。**判据/探针函数若自带环境注入，就只能用于「注入态」断言，不能用于「ambient 态」断言**——混用即是此坑。改后用两态切换验证：`PATH=/usr/bin:/bin:/usr/sbin:/sbin`（非遮蔽）与 toolchains 前置（遮蔽）各跑一遍。
+- **防误删锚**：两态断言总数（遮蔽分支 2 条 / 非遮蔽分支 4 条 ⇒ **51 / 53**）与 `skipped==0` 一起作为「禁 skip / 禁删断言 / 禁放宽」的机械判据——分支不同断言数不同是**既有设计**，把两个数都钉死即可捕获任何静默减条。
+- **未越权改动的机械判据**：抽取「不可动的那一段」（本例 = C3 遮蔽分支块）与 `git show HEAD:<file>` 的同段做 sha256 对照（相等且抽取非空才 PASS）；配 `git diff HEAD --` 逐文件为空的三生产文件清单。
+- **mutation 真伪判据**：把分支变异回缺陷形态（仓内 gitignored 沙箱副本，跑完即删 + `git check-ignore` 自证），要求复现出**逐字相同**的失败原文（本例 `failed=3 rc=1` 且三条 FAIL detail 与原始缺陷一致）——只断言「变红」不够，要断言「红成同一个样子」。
+- **证据链闭合模板**（AI 自决改红队测试用）：E1 复现原文（两态跑出的 `##SUMMARY` + 失败行）、E2 机制定位（污染源函数 + 标签与实际求值对象的错位）、E3 授权（卡 body 显式指令 + 自带验收标准）。
