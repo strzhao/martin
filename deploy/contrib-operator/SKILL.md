@@ -112,6 +112,9 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 本机 hermes 多 profile 重度生产部署：default（微信主入口）、coder（kanban 编码 worker）、contrib（本域）、hkstock、life、wx-echo。取证面：weixin 取证包、state.db 修复线、forensics 栈、kanban 多 profile 派单/调度/资源闸。判断「影响我们部署」看 `~/.hermes/profiles/` 实际目录与运行，不看 config 顶层 key。
 - **macOS 重启会重新分配 APFS 卷的 `st_dev`（inode 不变）**：实测本机 `last reboot` 09-12 02:52 前后，同一 parent 目录的 `st_dev` 从 16777231 变为 16777233、inode 恒为 54836230 ⇒ **任何把 `(st_dev, st_ino)` 当跨重启持久身份的功能都会在重启后误判**（checkpoint 的 workdir 归属判定 `_workdir_is_observably_gone` 即中招：重启前记的每条 orphan 快照永久不可回收）。跨重启的持久身份须用卷 UUID + inode 或 路径+inode；判「我方是否被咬」的这类题先查 `last reboot` 与记录值的相关性。证据：#109787 复检（contrib store 146/220 条 orphan 被静默拒删）。**冻结效应（09-13 19:29 复测，独立佐证）**：store 250 条时拒删仍 146（构成 139 `identity-mismatch` + 7 `parent-missing`；按记录 dev 分组 145 条属重启前组、1 条属后），而 orphan 220→228、会删 74→82，新增记录**全部**落「会删」桶 ⇒ 拒删集合恒等于重启前快照集合，**不随使用增长、永久不可回收、每次重启重演**；判「是否正在恶化」时用它区分「永冻的已损失量」与「持续增长量」。
 
+- **微信订阅会被网关永久摘除（09-14 实证）**：weixin `context_token` 过期使出站 `prepare failed` 时，网关侧 `gateway/kanban_watchers_notifier.py:593` 在 12 次连续发送失败后「dropping subscription … on weixin」，**无自愈路径**（09-14 01:51:32 实测我方卡 `t_a9ed7383` 的微信订阅被摘，日志在 `~/.hermes/logs/gateway.log`）。⇒ 判「某卡告警没收到」时先分清：是 notify.sh 侧未发（账本 `pushed=false`）、还是网关侧订阅已被摘（账本会显示已推/无行）——两者修复面完全不同，别默认断在 notify.sh。同族错误文案还有连带损失：weixin `stale_session` 掉进 rate-limit 分支 ⇒ 每次失败自开 30s 闸并报「rate limited」，运维易误判为他人占配额。
+- **notify.sh 自建的 digest 卡也落 default 板（09-14 03:07 实证）**：`t_680024e5`（「contrib digest 摘要卡」）created→`ready` 在 `~/.hermes/kanban.db`，assignee 仍 `contrib`；与「own-PR 执行卡不在 contrib 板」同根因（`hermes kanban create` 不带 `--board`）。⇒ 查在飞派单时两块板都要扫。
+
 ### 3.6 草稿质量法（对外成稿前自检）
 
 - 断言编号法：稿子拆成 A1..An 可验证断言，逐条对 origin/main 实查（行号、事实、log 引用逐字比对、时长算术复算）
