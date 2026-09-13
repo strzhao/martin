@@ -133,9 +133,6 @@ BATCH="$(make_real_batch "k3")"
 DIG="$SB_ROOT/tmp/digest-s2.md"
 mkdir -p "$SB_ROOT/tmp"
 make_digest_file "$DIG"
-# 限额前置归用例自持（同 e10 口径：种子 max_alert_pushes_per_day 09-10 起镜像生产 30——
-# 本用例只测「限额满拒发」分支，须显式 pin 上限=3 才有可判满的窗口）
-sb_config_set '.max_alert_pushes_per_day = 3'
 jq --arg d "$(date +%F)" '.alerts[$d] = 3' "$SB_ROOT/contrib-data/notify-state.json" \
   > "$SB_ROOT/contrib-data/notify-state.json.tmp" \
   && mv "$SB_ROOT/contrib-data/notify-state.json.tmp" "$SB_ROOT/contrib-data/notify-state.json"

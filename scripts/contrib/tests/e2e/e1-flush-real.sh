@@ -109,42 +109,5 @@ assert_eq "$(jq -r 'select(.key == "e1-fail") | .attempts' "$EVENTS_FILE")" "1" 
 [[ ! -f "$SB_ROOT/contrib-data/kanban-flight-digest.json" ]] && _pass "建卡失败不写登记" \
   || _fail "建卡失败不写登记" "残留"
 
-t_case "E1g: 简报级事件（own-pr-info）不进微信批——账本 route=brief 标记且不占限额/不推进闸门"
-sb_cleanup
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
-EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
-STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
-sb_notify event own-pr-info --key e1-brief --summary "mergeable 翻转（无决策点）" >/dev/null
-assert_exit 0 $?
-sb_state_set '.last_flush_epoch = 0'
-before_hermes="$(stub_count hermes)"
-before_claude="$(stub_count claude)"
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
-assert_exit 0 $?
-assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "降级轮零外发（即时推送不出）"
-assert_eq "$(( $(stub_count claude) - before_claude ))" "0" "降级轮零 LLM（摘要路同样不出）"
-assert_eq "$(jq -r 'select(.key == "e1-brief") | .route' "$EVENTS_FILE")" "brief" "账本 route=brief（当日简报消费队列）"
-assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "true" "降级即标记已派发（不积压 unpushed）"
-assert_eq "$(jq -r 'select(.key == "e1-brief") | .attempts' "$EVENTS_FILE")" "0" "降级不占 attempts"
-assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "0" "降级不占当日告警限额"
-assert_eq "$(jq -r '.last_flush_epoch' "$STATE_FILE")" "0" "标记动作不推进 last_flush_epoch"
-
-t_case "E1h: brief_only_classes 覆盖 = replace 语义（表内类降级、缺省表类不再降级）"
-sb_cleanup
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
-EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
-STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
-# 沙箱 config 注入 brief_only_classes=[own-pr-unledgered] —— 整体替代缺省表（非并集）
-sb_config_set '.brief_only_classes = ["own-pr-unledgered"]'
-sb_notify event own-pr-info --key e1-cfg-info --summary "缺省表内的类" >/dev/null
-sb_notify event own-pr-unledgered --key e1-cfg-unl --summary "覆盖表内的类" >/dev/null
-assert_exit 0 $?
-sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
-assert_exit 0 $?
-assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | .route' "$EVENTS_FILE")" "brief" "覆盖表内的类降级 route=brief"
-assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | .pushed' "$EVENTS_FILE")" "true" "覆盖表内的类降级即标记派发"
-assert_eq "$(jq -r 'select(.key == "e1-cfg-info") | .route' "$EVENTS_FILE")" "push" "缺省表内的类不再降级（replace 语义）"
-
 sb_cleanup
 t_finish

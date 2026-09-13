@@ -11,7 +11,7 @@ source "$TESTS_ROOT/lib/assert.sh"
 TARGET="$(tests_scripts_dir "$TARGET_DEFAULT")"
 t_init "syntax.sh"
 
-BASH_PROD="notify.sh rq.sh kanban_card.sh forge.sh l2_ledger.sh gateway_sentinel.sh"
+BASH_PROD="notify.sh rq.sh kanban_card.sh forge.sh l2_ledger.sh gateway_sentinel.sh heartbeat.sh"
 ZSH_PROD="notify.sh rq.sh kanban_card.sh"
 
 t_case "生产脚本在位（9 个）"

@@ -186,8 +186,6 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 - `$CONTRIB/ops-journal.md` append-only，每判断一行四栏：`| 时刻 | 决策 | 对象 | 理由 + 置信度(高/中/低) |`。不动手的重大判定也要记一行（「无事可做」是判断不是失职）。
 - **收班（operator，cron agent）**：ops-journal 四行落账 → `bash scripts/contrib/notify.sh flush` → **60 分钟内结束**；开班先看 journal 尾行——上一班 <60 分钟未收口则先续命，不并行开新线。
-- **告警分域与闭环（notify.sh，09-13 起）**：flush 按账本渠道分渠成批——contrib 与 flashcards 各至多一条消息、各取自己的标头/主题（不再出现 flashcards 产线事件顶「contrib 告警」标头）；同域同根因聚合到一行（`occurrences` 计数），静默窗内复发只记账不重推。无决策点的事件（`own-pr-info` / `visual-run-done`；可用 `config.brief_only_classes` 整体覆盖缺省表）降级进当日简报——账本标记 `route:"brief"`，不进微信即时/摘要两路。
-- **resolve 收尾契约**：班内巡检发现某告警根因已消除（issue 关闭 / PR merge / 流水线自愈）时跑 `bash scripts/contrib/notify.sh resolve --key <告警 key> --summary "<一句话结论>"`（同簇收尾用 `--cluster <簇键>`）→ 该行标记 `resolved`，已推送过的还会发一条 ✅ 闭环卡。**目标不存在时命令非零退出、账本与推送零副作用**（显式失败优于静默幂等，别当成功收尾）；同根因复发自动重开该行并进下轮推送。
 - specialist 卡收尾仍按 SOUL：`kanban_complete` 双传 summary+result；>15min 调 `kanban_heartbeat`；缺前提 → `kanban_block --reason`。
 
 ## 7. 红线速查

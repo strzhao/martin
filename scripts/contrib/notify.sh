@@ -8,11 +8,8 @@
 #       （同审批卡哲学：结构化=高效消费，不经 LLM）
 #     ②叙事事件（pipeline-failure/未知类）→ AI 摘要层（claude -p 生成三段式人话）；
 #       摘要失败=搁置重试，**永不降级回 raw dump**；3 败后 osascript 本地机械提示兜底
-#   - 渠道隔离/分域标头：event 支持 --channel；渠道解析三段——显式 --channel（空串=未传）
-#     > class→域映射（default_channel_for_class：flashcards 产线类 → flashcards）> 缺省 contrib。
-#     flush 按账本中实际出现的渠道分渠成批（contrib / flashcards 各至多一条消息、各取自己的
-#     报头与主题；机械批次=速报头、叙事/AI 摘要=告警头）；非 {contrib,flashcards} 渠道事件只入账，
-#     不进任何 flush 批（归各自域的简报/AI 会话消费）
+#   - 渠道隔离：event 支持 --channel（默认 contrib）；非 contrib 渠道事件只入账，
+#     不占 contrib 告警限额、不进 contrib flush（归各自域的简报/AI 会话消费）
 #   - flush 每小时由 run-watch 尾部调用：聚合未推送告警为一条微信；防双发三重
 #     （min_interval + 当日计数 + /tmp 锁）
 #   - 审批推送（🟡 卡片）与告警分开计数；回执独立计数不占限额（审批卡=规范化模板，豁免 AI 整理）
@@ -39,9 +36,8 @@
 #   - 命令 seam：TUNNEL_BIN / HERMES_BIN / OSASCRIPT_BIN / GATEWAY_PROBE_BIN / CLAUDE_BIN
 #
 # 用法:
-#   notify.sh event <class> --key K --summary S [--channel C]   # 渠道缺省按 class 域映射（contrib/flashcards）
-#   notify.sh flush                                             # 分渠聚合推送（每域至多一条）
-#   notify.sh resolve --key K --summary S [--cluster C]         # 闭环：标记 resolved + ✅ 收尾卡
+#   notify.sh event <class> --key K --summary S [--channel C]
+#   notify.sh flush
 #   notify.sh approve <id> | approve --all
 #   notify.sh receipt <id> --summary S
 #   notify.sh fallback <text>
@@ -199,23 +195,6 @@ class_title() {
     *)                      echo "$1" ;;
   esac
 }
-# is_brief_only <class> → 0=简报级（无决策点：不进微信即时/摘要两路，降级进当日简报消费队列）
-# 缺省闭集 {own-pr-info, visual-run-done}（收窄判决：机械类 fixture 不动=机械模板卡是设计标杆
-# 形态；扩展走 config 覆盖）。语义 = **replace**：config.brief_only_classes 数组存在即整体
-# 替代缺省表（不留隐式并集；空数组 = 无简报级类）。本卡不新增 config 键（生产零改动）。
-is_brief_only() {
-  local cls="$1" is_arr hit
-  is_arr="$(jq -r 'if (.brief_only_classes | type) == "array" then "yes" else "no" end' "$CONFIG" 2>/dev/null || echo no)"
-  if [[ "$is_arr" != "yes" ]]; then
-    case "$cls" in
-      own-pr-info|visual-run-done) return 0 ;;
-      *) return 1 ;;
-    esac
-  fi
-  hit="$(jq -r --arg c "$cls" '[.brief_only_classes[] | select(. == $c)] | length' "$CONFIG" 2>/dev/null || echo 0)"
-  [[ "${hit:-0}" -ge 1 ]] && return 0
-  return 1
-}
 class_action() {
   case "$1" in
     probe-premise-dead)     echo "farm 占坑属正常损耗，无需动作；radar 每日自动补新候选" ;;
@@ -226,43 +205,12 @@ class_action() {
   esac
 }
 
-# ---------------- 渠道分域（修① 域分标头） ----------------
-# class → 域映射：flashcards 产线事件由 harmony-space wrapper 写入同一份账本（martin scripts/
-# 零发射这 6 类，grep 实证）——未显式声明渠道的发射方由此兜底归域；其余类缺省 contrib。
-# 显式 --channel 永远优先（cmd_event 三段解析）。
-default_channel_for_class() {
-  case "$1" in
-    visual-run-done|radar-failure|agc-crash-spike|release-blocked|build-failure|contract-failure)
-      echo "flashcards" ;;
-    *) echo "contrib" ;;
-  esac
-}
-# 渠道 → 报头/主题（contrib 字面保持不变=既有契约；flashcards 取自己的报头/主题）
-channel_header() { # <channel> → 微信告警报头
-  case "$1" in
-    flashcards) echo "🟠【flashcards 告警】" ;;
-    *)          echo "🟠【contrib 告警】" ;;
-  esac
-}
-channel_quick_header() { # <channel> → 机械模板卡速报头
-  case "$1" in
-    flashcards) echo "🟠【flashcards 速报】" ;;
-    *)          echo "🟠【contrib 速报】" ;;
-  esac
-}
-channel_subject() { # <channel> → hermes send 主题
-  case "$1" in
-    flashcards) echo "flashcards 告警" ;;
-    *)          echo "contrib-watch 告警" ;;
-  esac
-}
-
-# _render_mechanical_card <batch_file> <channel> → stdout 模板卡（同类归并 + 固定动作行）
+# _render_mechanical_card <batch_file> → stdout 模板卡（同类归并 + 固定动作行）
 # 直接读 batch_file（已按渠道/未推过滤）——勿再回读 EVENTS 重过滤（jq index()
 # 上下文陷阱与双份过滤都是故障面）
 _render_mechanical_card() {
-  local batch_file="$1" ch="${2:-contrib}" cls n=0
-  echo "$(channel_quick_header "$ch")$(date +%m-%d)"
+  local batch_file="$1" cls n=0
+  echo "🟠【contrib 速报】$(date +%m-%d)"
   echo ""
   for cls in probe-premise-dead own-pr-activity deep-budget-exhausted own-pr-unledgered; do
     local batch
@@ -280,13 +228,12 @@ _render_mechanical_card() {
   echo "（明细: contrib-data/events.jsonl）"
 }
 
-# _ai_digest <batch_json_file> <out_file> <channel> → 0=成功生成摘要
+# _ai_digest <batch_json_file> <out_file> → 0=成功生成摘要
 # AI 摘要层：把叙事类事件整理成三段式人话。失败返回非 0，事件保留待下轮——
 # 绝不把原始 JSON 兜底出去（外发消息规范红线）。prompt 走 stdin 直给 claude -p，
 # 不依赖项目级 skill（run-deepcheck 缺 cd 教训：路径/skill 依赖都是故障面）。
-# 报头/主题按渠道参数化（修①：contrib 字面不变，flashcards 取自己的标头）
 _ai_digest() {
-  local in_file="$1" out_file="$2" ch="${3:-contrib}"
+  local in_file="$1" out_file="$2"
   local claude_bin="$CLAUDE_BIN"
   [[ -z "$claude_bin" ]] && claude_bin="$(command -v claude 2>/dev/null)"
   # launchd 环境兜底：PATH 里没有 claude 时按 nvm 安装布局探测（同 deep-check.sh）
@@ -303,9 +250,7 @@ _ai_digest() {
 1. 三段式：发生了什么 → 为什么与他有关/多重要 → 建议他做什么（多数场景是"无需动作"，就明说）
 2. 中文人类可读，机制黑话翻译成人话；rq-id / PR# / issue# 只作引用锚点，不当正文
 3. ≤300 字；同类多条事件归并成一行汇总；只使用事件里已有的事实，不编造、不臆测原因，不确定写"待查"
-EOF
-    echo "4. 首行固定格式：$(channel_header "$ch")MM-DD（用今天日期）"
-    cat <<'EOF'
+4. 首行固定格式：🟠【contrib 告警】MM-DD（用今天日期）
 5. 只输出消息正文本身，不要任何解释、前言或代码块包裹
 
 黑话对照（用于翻译，不得照抄）：
@@ -334,9 +279,9 @@ EOF
     rm -f "$out_file.raw" "$out_file.err"
     return 1
   fi
-  # 首行格式兜底：AI 忘了加报头则补上（按渠道取标头）
-  if ! head -1 "$out_file.raw" | grep -qF "【$ch"; then
-    { echo "$(channel_header "$ch")$(date +%m-%d)"; echo ""; cat "$out_file.raw"; } > "$out_file"
+  # 首行格式兜底：AI 忘了加报头则补上
+  if ! head -1 "$out_file.raw" | grep -q "【contrib"; then
+    { echo "🟠【contrib 告警】$(date +%m-%d)"; echo ""; cat "$out_file.raw"; } > "$out_file"
   else
     mv "$out_file.raw" "$out_file"
   fi
@@ -496,14 +441,14 @@ PYEOF
     fi
 }
 
-# fallback_ai <batch_file> <keys_file> <unpushed> <narrative> <ep> <channel> → rc
+# fallback_ai <batch_file> <keys_file> <unpushed> <narrative> <ep> → rc
 # 旧 claude -p 内联摘要路整段保留为兜底（卡建失败/卡失败终态/stale/done-未发送时走此路）：
 # _ai_digest → 空卡守卫 → _send → 账本标记 / attempts+1 + osascript。永不 raw dump。
 fallback_ai() {
-  local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5" ch="${6:-contrib}"
+  local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5"
   local body="/tmp/contrib-alerts-fb-$$.txt"
   local rc=0
-  _ai_digest "$batch_file" "$body" "$ch" || rc=1
+  _ai_digest "$batch_file" "$body" || rc=1
   (( rc == 0 )) && log "叙事事件 ${narrative}/${unpushed} 条 → AI 摘要层（fallback 路）"
   if (( rc == 0 )); then
     # 空卡守卫（与 flush 机械路同一多模式 grep）
@@ -513,7 +458,7 @@ fallback_ai() {
     fi
   fi
   if (( rc == 0 )); then
-    _send "$body" "$(channel_subject "$ch")" || rc=$?
+    _send "$body" "contrib-watch 告警" || rc=$?
   fi
   if (( rc == 0 )); then
     _flush_push_mark "$keys_file"
@@ -528,10 +473,10 @@ fallback_ai() {
   return "$rc"
 }
 
-# _digest_card_body <snapshot> <digest_file> <channel> → stdout 卡 body（快照路径+摘要输出路径约定+
+# _digest_card_body <snapshot> <digest_file> → stdout 卡 body（快照路径+摘要输出路径约定+
 # 三段式规范（照抄 _ai_digest prompt）+ 红线：唯一外发通道=send-digest）
 _digest_card_body() {
-  local snapshot="$1" digest_file="$2" ch="${3:-contrib}"
+  local snapshot="$1" digest_file="$2"
   cat <<EOF
 # contrib digest 摘要卡
 
@@ -540,7 +485,6 @@ _digest_card_body() {
 - 事件快照（权威数据源）: ${snapshot}
 - 摘要输出文件（写到此路径）: ${digest_file}
 - 接收渠道: contrib（微信，notify_target 取 config）
-- 本批事件域: ${ch}（contrib/flashcards 共用同一微信目标；报头与主题按域取）
 - 摘要规范权威: .claude/skills/contrib-watch/SKILL.md 模式六（digest 摘要卡）
 
 ## 摘要规范
@@ -548,7 +492,7 @@ _digest_card_body() {
 1. 三段式：发生了什么 → 为什么与他有关/多重要 → 建议他做什么（多数场景是"无需动作"，就明说）
 2. 中文人类可读，机制黑话翻译成人话；rq-id / PR# / issue# 只作引用锚点，不当正文
 3. ≤300 字；同类多条事件归并成一行汇总；只使用事件里已有的事实，不编造、不臆测原因，不确定写"待查"
-4. 首行固定格式：$(channel_header "$ch")MM-DD（用今天日期）
+4. 首行固定格式：🟠【contrib 告警】MM-DD（用今天日期）
 
 黑话对照（用于翻译，不得照抄）：
 - probe-premise-dead：ready-queue 候选机会的 issue 空间被其他贡献者占坑，候选作废（上游 AI farm 生态的正常损耗）
@@ -573,12 +517,11 @@ _digest_card_body() {
 EOF
 }
 
-# _digest_flush <batch_file> <keys_file> <unpushed> <narrative> <ep> <channel> → rc
+# _digest_flush <batch_file> <keys_file> <unpushed> <narrative> <ep> → rc
 # 叙事批 digest 卡化主路：flight 检查五分支 → 无登记则快照+建卡（异步）；任何失败分支
 # 落 fallback_ai()。done+sent:true 消费轮零账本动作且本轮不建新卡（防每小时卡风暴）。
-# flight 单槽不分渠道（跨渠道并存时后到批挂账顺延——告警时效粒度为小时级，串行可接受）。
 _digest_flush() {
-  local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5" ch="${6:-contrib}"
+  local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5"
   local flight="$CONTRIB/kanban-flight-digest.json"
   local card_id="" snap="" frc=0
   if [[ -s "$flight" ]] && jq -e 'type == "object"' "$flight" >/dev/null 2>&1; then
@@ -601,7 +544,7 @@ _digest_flush() {
       # done 但 sent 缺失/false：worker 完成但未发送=异常收口 → fallback
       rm -f "$flight"
       log "digest 卡 ${card_id} done 但批次未标 sent——异常收口，走 fallback"
-      fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
+      fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
       frc=$?
       [[ -n "$snap" ]] && _digest_cleanup_files "$snap"
       return "$frc"
@@ -620,7 +563,7 @@ _digest_flush() {
           snap="$(jq -r '.batch_file // empty' "$flight" 2>/dev/null || true)"
           rm -f "$flight"
           log "digest 卡 ${card_id} 失败终态（blocked outcome=${oc}）——清登记走 fallback"
-          fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
+          fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
           frc=$?
           [[ -n "$snap" ]] && _digest_cleanup_files "$snap"
           return "$frc"
@@ -641,7 +584,7 @@ _digest_flush() {
       "$SELF_BIN" event pipeline-failure --key "$(date +%F)-digest-stale" \
         --summary "digest 卡 ${card_id} 超 ${stale_secs}s 未终态（stale），已清登记走 fallback" >/dev/null 2>&1 || true
       log "digest 卡 ${card_id} stale（>${stale_secs}s）——清登记走 fallback"
-      fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
+      fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
       frc=$?
       [[ -n "$snap" ]] && _digest_cleanup_files "$snap"
       return "$frc"
@@ -659,18 +602,18 @@ _digest_flush() {
   body_file="$CONTRIB/pending/digest-$ts_id.body.md"
   cp "$batch_file" "$snapshot" || {
     log "digest 快照落盘失败（${snapshot}）——走 fallback"
-    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
+    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
     return $?
   }
   idem="digest-$(date +%Y%m%d)-$(_digest_keys_md5 "$keys_file")"
-  _digest_card_body "$snapshot" "$digest_file" "$ch" > "$body_file"
+  _digest_card_body "$snapshot" "$digest_file" > "$body_file"
   card_json="$(bash "$MARTIN/scripts/contrib/kanban_card.sh" create \
     --kind digest --title "contrib digest 摘要卡 $ts_id" \
     --body-file "$body_file" --idempotency-key "$idem" \
     --json-out "$CONTRIB/pending/digest-$ts_id.card.json" 2>>"$CONTRIB/logs/notify.log")" || rc=$?
   if (( rc != 0 )); then
     log "digest 建卡失败（rc=${rc}）——走 fallback"
-    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
+    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
     frc=$?
     rm -f "$digest_file"
     _digest_cleanup_files "$snapshot"
@@ -679,7 +622,7 @@ _digest_flush() {
   card_id_new="$(printf '%s' "$card_json" | jq -r '.id // empty' 2>/dev/null || true)"
   if [[ -z "$card_id_new" ]]; then
     log "digest 建卡输出缺 id——走 fallback"
-    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
+    fallback_ai "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
     frc=$?
     rm -f "$digest_file"
     _digest_cleanup_files "$snapshot"
@@ -693,21 +636,11 @@ _digest_flush() {
   return 0
 }
 
-# _batch_channel <batch_file> → 批次所属渠道（首个带 key 事件行的 channel，缺省 contrib）
-# 批次形态=flush 建卡快照（恒有事件行）；异常形态回落 contrib（主题选择 fail-safe 到现状字面）
-_batch_channel() {
-  local ch
-  ch="$(jq -r '[.[] | select(has("key")) | (.channel // "contrib")][0] // "contrib"' "$1" 2>/dev/null || true)"
-  [[ -n "$ch" && "$ch" != "null" ]] || ch="contrib"
-  printf '%s' "$ch"
-}
-
 # cmd_send_digest — worker 卡内唯一外发通道。输出闭集：stdout 一行 OK / FAIL <原因>；exit 0/1。
 # 全程持 flush 同款 LOCK（自包带超时锁获取 + 自装 EXIT trap）；空卡守卫/限额/dry-run 与
 # flush 同口径；成功后账本标记 pushed + state_bump alerts + 回写批次 sent:true。
-# 主题按批次渠道取（contrib 字面不变，flashcards 取自己的主题）。
 cmd_send_digest() {
-  local digest="" batch="" ch="contrib"
+  local digest="" batch=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --digest) digest="${2:-}"; shift 2 ;;
@@ -716,7 +649,6 @@ cmd_send_digest() {
     esac
   done
   [[ -n "$digest" && -n "$batch" && -f "$digest" && -f "$batch" ]] || { echo "FAIL bad-usage"; exit 1; }
-  ch="$(_batch_channel "$batch")"
   ensure_state
   # 幂等快路：批次已标 sent:true → 重复调用零副作用（防 worker 重试双发）
   if [[ "$(_digest_batch_sent "$batch")" == "true" ]]; then
@@ -736,9 +668,9 @@ cmd_send_digest() {
     echo "FAIL empty-card"
     exit 1
   fi
-  # 限额（与 flush 同数值口径；缺省值与生产 config 对齐 30——上限数值本身零改动）
+  # 限额（与 flush 同数值口径）
   local max_alerts used
-  max_alerts="$(cfg '.max_alert_pushes_per_day' '30')"
+  max_alerts="$(cfg '.max_alert_pushes_per_day' '3')"
   used="$(state_get alerts "$(today)")"
   if (( used >= max_alerts )); then
     _digest_write_sent "$batch" false "limit"
@@ -748,14 +680,14 @@ cmd_send_digest() {
   # dry-run：同 _send 语义打印完整消息体与目标；sent:false reason=dry-run + exit 0
   # （worker 据 OK normal-complete；下轮 flush 消费 done+sent:false → fallback 接管，账本收敛）
   if [[ "$DRY_RUN" == "true" ]]; then
-    _send "$digest" "$(channel_subject "$ch")" || true
+    _send "$digest" "contrib-watch 告警" || true
     _digest_write_sent "$batch" false "dry-run"
     echo "OK"
     exit 0
   fi
   local rc=0 keys_file send_started
   send_started="$(now_epoch)"   # B-2（T6）：佐证新鲜度基准——NOTIFY_SEND_LAST 的 mtime 必须
-  _send "$digest" "$(channel_subject "$ch")" || rc=$?   # ≥ 本轮调用起点才算本次 send 的回写
+  _send "$digest" "contrib-watch 告警" || rc=$?   # ≥ 本轮调用起点才算本次 send 的回写
   if (( rc == 0 )); then
     # 账本标记该批 pushed（按批次 keys；attempts 逻辑留给 flush fallback 路——防双重计数）
     keys_file="$(mktemp "${TMPDIR:-/tmp}/contrib-digest-keys-XXXXXX")"
@@ -773,121 +705,10 @@ cmd_send_digest() {
   exit 1
 }
 
-# ---------------- event 聚类（修② 同域同根因） ----------------
-# 静默窗：同一根因（同 key 或同簇）推送后窗口内复发只更新既有行（不重推）；窗口外/未推送过
-# → 置 pushed=false 进下轮 flush（带「第 N 次」上下文）。64bit 秒。
-CLUSTER_REPUSH_SECS="${CLUSTER_REPUSH_SECS:-86400}"
-
-# cluster_key_of <key> → 簇键：剥离日期 token（YYYY-MM-DD 与 YYYYMMDD）→ 压缩重复 '-'；
-# 剥离后为空（key 本身即日期）→ 回退原 key（保持「同 key」语义，防空簇键吞并全量）
-cluster_key_of() {
-  local k
-  k="$(printf '%s' "$1" | sed -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2}//g; s/[0-9]{8}//g; s/-+/-/g')"
-  [[ -n "$k" ]] || k="$1"
-  printf '%s' "$k"
-}
-
-# _events_splice <updates_file> — 账本行拼接（line-splice）：updates_file 每行
-# "<行号>TAB<jq args JSON>TAB<jq 程序>"，命中行以 jq -c 就地更新（保紧凑形态/字段序），
-# 未点名行逐行原样透传——绝不整本重排（python json.dumps 会把紧凑行改写成带空格形态，
-# 打红紧凑 grep 与 harmony 侧双格式假设；09-09 T2 教训）
-_events_splice() {
-  local updates="$1" tmp="$EVENTS.tmp.$$" n=0 line ul uargs uprog new
-  : > "$tmp"
-  while IFS= read -r line; do
-    n=$((n+1))
-    ul=""; uprog=""
-    while IFS=$'\t' read -r xl xa xp; do
-      if [[ "$xl" == "$n" ]]; then ul="$xl"; uargs="$xa"; uprog="$xp"; break; fi
-    done < "$updates"
-    if [[ -n "$ul" && -n "$uprog" ]]; then
-      new="$(printf '%s' "$line" | jq -c --argjson a "${uargs:-{\}}" "$uprog" 2>/dev/null || true)"
-      [[ -n "$new" ]] || new="$line"
-      printf '%s\n' "$new" >> "$tmp"
-    else
-      printf '%s\n' "$line" >> "$tmp"
-    fi
-  done < "$EVENTS"
-  mv "$tmp" "$EVENTS"
-}
-
-# _event_line_of <key> <channel> → stdout：同 (key,channel) 命中首行行号（无命中=空串）。
-# 预过滤双格式（jq 紧凑 / json.dumps 带空格），命中候选再逐行 jq 校验（key+channel 精确匹配）
-_event_line_of() {
-  local key="$1" ch="$2" line n raw
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    n="${line%%:*}"
-    raw="${line#*:}"
-    if printf '%s' "$raw" | jq -e --arg k "$key" --arg c "$ch" \
-        '(.key == $k) and ((.channel // "contrib") == $c)' >/dev/null 2>&1; then
-      printf '%s' "$n"
-      return 0
-    fi
-  done < <(grep -nF -e "\"key\":\"$key\"" -e "\"key\": \"$key\"" "$EVENTS" 2>/dev/null || true)
-  return 0
-}
-
-# _event_line_of_cluster <channel> <cluster> → stdout：同 (channel,cluster) 未 resolved 命中首行行号。
-# 簇读法钉死：stored 优先（既有行 .cluster 字段），字段缺失按 cluster_key_of(.key) 重算（向后兼容）。
-# resolved 历史不吞新告警（仅未 resolved 行参与聚类匹配）。
-# ⚠️ 字段分隔用 \x1f（非 IFS 空白）——tab 会让 read 折叠空字段（cluster 缺失行字段错位，
-#    重算缺省语义整条失效；25-09-13 沙箱实证）
-_event_line_of_cluster() {
-  local ch="$1" cl="$2" line n raw info lch lcl lkey lres
-  [[ -n "$cl" ]] || return 0
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    n="${line%%:*}"
-    raw="${line#*:}"
-    info="$(printf '%s' "$raw" | jq -r --arg sep "$(printf '\037')" '[(.channel // "contrib"), (.cluster // ""), (.key // ""), ((.resolved // false) | tostring)] | join($sep)' 2>/dev/null || true)"
-    [[ -n "$info" ]] || continue
-    IFS=$'\x1f' read -r lch lcl lkey lres <<<"$info"
-    [[ "$lch" == "$ch" ]] || continue
-    [[ "$lres" == "true" ]] && continue
-    [[ -n "$lcl" ]] || lcl="$(cluster_key_of "$lkey")"
-    [[ "$lcl" == "$cl" ]] || continue
-    printf '%s' "$n"
-    return 0
-  done < <(grep -nF -e "$cl" -e '"cluster"' "$EVENTS" 2>/dev/null || true)
-  return 0
-}
-
-# _epoch_of_pushed_at <pushed_at> → stdout epoch（偏移归一化后求差）；空/缺省/解析失败 → 空串。
-# 双格式：cmd_event 路 date +%z（+0800）与 flush 标记路 python isoformat（+08:00）；
-# 解析失败 = 视为未过期（调用方 fail-safe：宁可少推不可多推）
-_epoch_of_pushed_at() {
-  local s="${1:-}" ep
-  [[ -n "$s" && "$s" != "null" ]] || { printf ''; return 0; }
-  ep="$(python3 -c '
-import sys, datetime
-s = sys.argv[1].strip()
-if s.endswith("Z"):
-    s = s[:-1] + "+00:00"
-if len(s) >= 5 and s[-5] in "+-" and s[-4:].isdigit():
-    s = s[:-2] + ":" + s[-2:]
-try:
-    d = datetime.datetime.fromisoformat(s)
-except ValueError:
-    sys.exit(1)
-if d.tzinfo is None:
-    d = d.replace(tzinfo=datetime.timezone.utc)
-print(int(d.timestamp()))
-' "$s" 2>/dev/null || true)"
-  case "$ep" in ''|*[!0-9]*) ep="" ;; esac
-  printf '%s' "$ep"
-}
-
 # ---------------- event ----------------
-# 落账语义（修② 聚类更新，替代旧「同 key 幂等跳过」）：
-#   ① 完全同 (key,channel) 行存在 → 原位更新（occurrences=(occ//1)+1、ts/summary 刷新、cluster 落账）
-#   ② 同 key 未命中时按 (channel,cluster) 查未 resolved 行，命中 → 原行更新（不追加，key 保持首行值）
-#   ③ 均未命中 → 追加新行（occurrences=1、cluster 落账）
-# 重推判定：原 pushed==false 或 now-pushed_at ≥ CLUSTER_REPUSH_SECS → 置 pushed=false（进下轮 flush）；
-# 静默窗内保持 pushed=true（只记账不重推）；已 resolved 行被复发 → 重开（resolved=false 且 pushed=false）。
 cmd_event() {
   local cls="${1:-}"; shift || true
-  local key="" summary="" channel=""
+  local key="" summary="" channel="contrib"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --key) key="$2"; shift 2 ;;
@@ -897,155 +718,26 @@ cmd_event() {
     esac
   done
   [[ -n "$cls" && -n "$key" ]] || { echo "用法: event <class> --key K --summary S [--channel C]" >&2; exit 2; }
-  # 渠道三段解析：显式 --channel（空串=未传）> class→域映射 > 缺省 contrib
-  [[ -n "$channel" ]] || channel="$(default_channel_for_class "$cls")"
-  [[ -n "$channel" ]] || channel="contrib"
   ensure_state
-  local cluster; cluster="$(cluster_key_of "$key")"
-  local upd="/tmp/contrib-event-upd-$$.tsv"
-  : > "$upd"
-  # ① 同 (key,channel) → ② 同 (channel,cluster) 未 resolved 行
-  local lno; lno="$(_event_line_of "$key" "$channel")"
-  [[ -n "$lno" ]] || lno="$(_event_line_of_cluster "$channel" "$cluster")"
-  if [[ -n "$lno" ]]; then
-    local old_line info lpushed lres lpat oep repush args_json
-    old_line="$(sed -n "${lno}p" "$EVENTS")"
-    info="$(printf '%s' "$old_line" | jq -r '[((.pushed // false) | tostring), ((.resolved // false) | tostring), (.pushed_at // "")] | @tsv' 2>/dev/null || true)"
-    if [[ -z "$info" ]]; then
-      log "event $key 既有行解析失败（line=${lno}），按新增行处理"
-    else
-      IFS=$'\t' read -r lpushed lres lpat <<<"$info"
-      oep="$(_epoch_of_pushed_at "$lpat")"
-      repush="false"
-      if [[ "$lpushed" == "true" && -n "$oep" ]] && (( $(now_epoch) - oep >= CLUSTER_REPUSH_SECS )); then
-        repush="true"
-      fi
-      args_json="$(jq -cn --arg ts "$(ts)" --arg summary "$summary" --arg cluster "$cluster" --argjson repush "$repush" \
-        '{ts: $ts, summary: $summary, cluster: $cluster, repush: $repush}')"
-      printf '%s\t%s\t%s\n' "$lno" "$args_json" \
-        '.occurrences = ((.occurrences // 1) + 1) | .ts = $a.ts | .summary = $a.summary | .cluster = $a.cluster | (if .resolved == true then (.resolved = false | .pushed = false) elif $a.repush then .pushed = false else . end)' >> "$upd"
-      _events_splice "$upd"
-      rm -f "$upd"
-      log "event ~ $cls $key (channel=$channel, line=${lno}, occurrences+1, repush=${repush})"
-      return 0
-    fi
+  # 同 key 幂等（双格式：jq 紧凑追加形态 + flush 账本重写的 json.dumps 带空格形态——
+  # 09-09 T2 实证：flush 跑过一轮后整本被重写为 "key": "..." 带空格，单格式 grep 会漏判致重复入账）
+  if grep -qF "\"key\":\"$key\"" "$EVENTS" 2>/dev/null \
+     || grep -qF "\"key\": \"$key\"" "$EVENTS" 2>/dev/null; then
+    log "event $key 已在账（幂等跳过）"
+    return 0
   fi
-  rm -f "$upd"
   jq -cn --arg ts "$(ts)" --arg cls "$cls" --arg key "$key" --arg summary "$summary" --arg ch "$channel" \
-    --arg cluster "$cluster" --arg route "$(is_brief_only "$cls" && echo brief || echo push)" \
-    '{ts: $ts, class: $cls, key: $key, channel: $ch, summary: $summary, pushed: false, attempts: 0, pushed_at: null, occurrences: 1, cluster: $cluster, route: $route}' \
+    '{ts: $ts, class: $cls, key: $key, channel: $ch, summary: $summary, pushed: false, attempts: 0, pushed_at: null}' \
     >> "$EVENTS"
-  log "event + $cls $key (channel=$channel, cluster=$cluster)"
+  log "event + $cls $key (channel=$channel)"
 }
 
-# ---------------- flush（告警聚合推送，分渠两级渲染） ----------------
-# _flush_brief_mark <brief_keys_json_file> <channel> — 简报级降级标记：原行 pushed=true + route=brief
-# （route=brief 行=operator 当日简报消费队列，账本可查；经 line-splice 保原行形态）。
-# 红线：不推进 last_flush_epoch、不占 attempts、不触发 osascript。
-_flush_brief_mark() {
-  local keys_file="$1" ch="$2" upd="/tmp/contrib-brief-upd-$$.tsv" k ln
-  : > "$upd"
-  while IFS= read -r k; do
-    [[ -n "$k" ]] || continue
-    ln="$(_event_line_of "$k" "$ch")"
-    [[ -n "$ln" ]] || continue
-    printf '%s\t%s\t%s\n' "$ln" '{}' '.pushed = true | .route = "brief"' >> "$upd"
-  done < <(jq -r '.[]' "$keys_file" 2>/dev/null)
-  if [[ -s "$upd" ]]; then
-    _events_splice "$upd"
-  fi
-  rm -f "$upd"
-}
-
-# _flush_channel <channel> <ep> → rc —— 单渠道批次：选择 →（brief 降级标记）→ 渲染 → 发送 → 标记。
-# 限额与 min_interval 由 cmd_flush 在分渠循环前统一把守（全渠道共享总闸，全局恰一次兜底）。
-_flush_channel() {
-  local ch="$1" ep="$2"
-  local all="/tmp/contrib-all-${ch}-$$.jsonl"
-  local brief_file="/tmp/contrib-brief-${ch}-$$.json"
-  local batch_file="/tmp/contrib-batch-${ch}-$$.json" keys_file="/tmp/contrib-keys-${ch}-$$.txt"
-  local body="/tmp/contrib-alerts-${ch}-$$.txt"
-  jq -c --arg ch "$ch" 'select(.pushed == false and (.channel // "contrib") == $ch)' "$EVENTS" > "$all" 2>/dev/null
-  local unpushed_all; unpushed_all="$(wc -l < "$all" | tr -d ' ')"
-  if (( unpushed_all == 0 )); then rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"; return 0; fi
-  # 修③推送门槛：brief-only 类不进微信批（即时/摘要两路皆出）——分类在 bash 侧完成
-  # （jq 里调不到 bash 函数）；被排除行统一标记 pushed=true + route=brief
-  local brief_keys="[]" k c
-  while IFS=$'\t' read -r k c; do
-    [[ -n "$k" ]] || continue
-    is_brief_only "$c" && brief_keys="$(jq -c --arg k "$k" '. + [$k]' <<<"$brief_keys")"
-  done < <(jq -r '[.key, .class] | @tsv' "$all" 2>/dev/null)
-  printf '%s' "$brief_keys" > "$brief_file"
-  local brief_n; brief_n="$(jq 'length' <<<"$brief_keys" 2>/dev/null || echo 0)"
-  if (( ${brief_n:-0} > 0 )); then
-    _flush_brief_mark "$brief_file" "$ch"
-    log "${ch} 渠道 ${brief_n} 条简报级事件降级（route=brief，不进微信批）"
-  fi
-  # 微信批 = 全部未推行 − brief 降级行
-  jq -c --slurpfile bk "$brief_file" 'select(.key as $k | ($bk[0] | index($k)) == null)' "$all" > "$batch_file" 2>/dev/null
-  local unpushed; unpushed="$(wc -l < "$batch_file" | tr -d ' ')"
-  if (( unpushed == 0 )); then rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"; return 0; fi
-  # keys 存 JSON 数组（裸字符串会被 jq 当非法 JSON——空卡事故教训）
-  jq -s '[.[].key]' "$batch_file" > "$keys_file"
-
-  # 两级渲染：混有任何叙事事件 → 整批走 digest 卡（T5 异步化）；纯机械 → 模板卡
-  # （分类逻辑必须在 bash/jq 侧完成——jq 里调不到 bash 函数）
-  local narrative
-  narrative="$(jq -s '[.[] | select((.class == "probe-premise-dead" or .class == "own-pr-activity" or .class == "deep-budget-exhausted" or .class == "own-pr-unledgered") | not)] | length' \
-    "$batch_file" 2>/dev/null)"
-  narrative="${narrative:-0}"
-
-  local rc=0
-  if (( narrative > 0 )); then
-    if [[ "$(cfg '.notify_digest' 'true')" == "true" ]]; then
-      # T5 卡化主路：叙事批 → digest 卡（异步），flight 五分支/建卡失败/stale 全部在
-      # _digest_flush 内收口（兜底=fallback_ai 旧内联路）；本轮 rc 透传其返回值
-      _digest_flush "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
-      local drc=$?
-      rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"
-      return "$drc"
-    fi
-    log "${ch} 渠道 notify_digest=false，叙事事件 ${narrative} 条挂账待 AI 会话转述"
-    rc=1
-  else
-    _render_mechanical_card "$batch_file" "$ch" > "$body"
-    log "${ch} 渠道纯机械事件 ${unpushed} 条 → 模板卡（不经 LLM）"
-    # 空卡守卫：剔除报头/脚注/空行后必须还剩实质内容——模板卡排版要能通过；
-    # 绝不发空壳卡、更不允许空卡把事件标记成已推（09-05 沙箱实测抓到此路径）
-    # 注意用 grep -e 多模式：BSD grep 的 BRE 里 `^$\|..` 的 $ 中缀是字面量，交替会失效
-    if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
-      log "渲染产物无实质内容（空卡守卫触发），按失败挂账"
-      rc=1
-    fi
-    if (( rc == 0 )); then
-      _send "$body" "$(channel_subject "$ch")" || rc=$?
-    fi
-  fi
-
-  if (( rc == 0 )); then
-    # 只标记本轮批次（本渠道 + 批次内 key）；keys_file 是 JSON 数组
-    _flush_push_mark "$keys_file"
-    state_bump alerts "$(today)"
-    jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
-    log "告警已推送（${ch} 渠道 ${unpushed} 条事件，rendering=template）"
-  else
-    # 失败：批次内 attempts+1（事件保留，下轮重试；永不 raw dump 兜底）
-    _flush_attempts_bump "$keys_file"
-    log "告警推送失败 rc=${rc}（${ch} 渠道 ${unpushed} 条事件保留，下轮重试）"
-  fi
-  rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"
-  # 失败 rc 向上传撑（契约：AI 摘要失败/发送失败 → rc≠0，事件保留重试）；
-  # 调用方均容错（run-watch `|| echo`、deep_check_gate `|| true`），launchd 流水线退出码不受影响
-  return "$rc"
-}
-
-# cmd_flush — 分渠聚合推送：min_interval/限额全局把守 → 逐渠道独立成批（各至多一条消息）。
-# 单渠无待推事件 → 该渠零发送零标头零标记；非 {contrib,flashcards} 渠道永不进批。
+# ---------------- flush（告警聚合推送，两级渲染） ----------------
 cmd_flush() {
   ensure_state
   acquire_lock
   local min_interval; min_interval="$(cfg '.notify_min_interval_min' '20')"
-  local max_alerts; max_alerts="$(cfg '.max_alert_pushes_per_day' '30')"
+  local max_alerts; max_alerts="$(cfg '.max_alert_pushes_per_day' '3')"
   local ep; ep="$(now_epoch)"
   local last; last="$(jq -r '.last_flush_epoch // 0' "$STATE")"
 
@@ -1054,28 +746,74 @@ cmd_flush() {
     return 0
   fi
 
-  # 本轮渠道集 = 账本中未推事件实际出现的渠道 ∩ 合法闭集 {contrib,flashcards}
-  # （其他渠道照旧只入账不进批；空集=零输出零标记零推进）
-  local channels
-  channels="$(jq -r 'select(.pushed == false) | (.channel // "contrib")' "$EVENTS" 2>/dev/null \
-    | grep -E '^(contrib|flashcards)$' | sort -u | tr '\n' ' ' || true)"
-  [[ -n "$(printf '%s' "$channels" | tr -d ' ')" ]] || return 0
+  # 本轮批次 = contrib 渠道的未推事件（非 contrib 渠道只入账，归各自域消费）
+  local batch_file="/tmp/contrib-batch-$$.json" keys_file="/tmp/contrib-keys-$$.txt"
+  local body="/tmp/contrib-alerts-$$.txt"
+  jq -c 'select(.pushed == false and (.channel // "contrib") == "contrib")' "$EVENTS" > "$batch_file" 2>/dev/null
+  local unpushed; unpushed="$(wc -l < "$batch_file" | tr -d ' ')"
+  if (( unpushed == 0 )); then rm -f "$batch_file" "$keys_file" "$body"; return 0; fi
+  # keys 存 JSON 数组（裸字符串会被 jq 当非法 JSON——空卡事故教训）
+  jq -s '[.[].key]' "$batch_file" > "$keys_file"
 
-  # 当日告警限额（两渠道共享总闸；检查置于分渠循环之前 → 全局恰一次兜底）
+  # 当日告警限额
   local used; used="$(state_get alerts "$(today)")"
   if (( used >= max_alerts )); then
-    local pend_n
-    pend_n="$(jq -s '[.[] | select(.pushed == false) | select((.channel // "contrib") == "contrib" or (.channel // "contrib") == "flashcards")] | length' "$EVENTS" 2>/dev/null || echo 0)"
-    _osascript "contrib 告警 ${pend_n} 条今日未推（限额 ${max_alerts} 已满），明日 09:17 对账补推"
-    log "告警限额已满（${used}/${max_alerts}），${pend_n} 条留待补推"
+    _osascript "contrib 告警 ${unpushed} 条今日未推（限额 ${max_alerts} 已满），明日 09:17 对账补推"
+    log "告警限额已满（${used}/${max_alerts}），${unpushed} 条留待补推"
+    rm -f "$batch_file" "$keys_file" "$body"
     return 0
   fi
 
-  local rc_total=0 ch
-  for ch in $channels; do
-    _flush_channel "$ch" "$ep" || rc_total=$?
-  done
-  return "$rc_total"
+  # 两级渲染：混有任何叙事事件 → 整批走 digest 卡（T5 异步化）；纯机械 → 模板卡
+  # （分类逻辑必须在 bash/jq 侧完成——jq 里调不到 bash 函数）
+  local narrative
+  narrative="$(jq -s '[.[] | select((.channel // "contrib") == "contrib")
+    | select((.class == "probe-premise-dead" or .class == "own-pr-activity" or .class == "deep-budget-exhausted" or .class == "own-pr-unledgered") | not)] | length' \
+    "$batch_file" 2>/dev/null)"
+  narrative="${narrative:-0}"
+
+  local rc=0
+  if (( narrative > 0 )); then
+    if [[ "$(cfg '.notify_digest' 'true')" == "true" ]]; then
+      # T5 卡化主路：叙事批 → digest 卡（异步），flight 五分支/建卡失败/stale 全部在
+      # _digest_flush 内收口（兜底=fallback_ai 旧内联路）；本轮 rc 透传其返回值
+      _digest_flush "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep"
+      local drc=$?
+      rm -f "$batch_file" "$keys_file" "$body"
+      return "$drc"
+    fi
+    log "notify_digest=false，叙事事件 ${narrative} 条挂账待 AI 会话转述"
+    rc=1
+  else
+    _render_mechanical_card "$batch_file" > "$body"
+    log "纯机械事件 ${unpushed} 条 → 模板卡（不经 LLM）"
+    # 空卡守卫：剔除报头/脚注/空行后必须还剩实质内容——模板卡排版要能通过；
+    # 绝不发空壳卡、更不允许空卡把事件标记成已推（09-05 沙箱实测抓到此路径）
+    # 注意用 grep -e 多模式：BSD grep 的 BRE 里 `^$\|..` 的 $ 中缀是字面量，交替会失效
+    if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
+      log "渲染产物无实质内容（空卡守卫触发），按失败挂账"
+      rc=1
+    fi
+    if (( rc == 0 )); then
+      _send "$body" "contrib-watch 告警" || rc=$?
+    fi
+  fi
+
+  if (( rc == 0 )); then
+    # 只标记本轮批次（contrib 渠道 + 批次内 key）；keys_file 是 JSON 数组
+    _flush_push_mark "$keys_file"
+    state_bump alerts "$(today)"
+    jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+    log "告警已推送（${unpushed} 条事件，rendering=template）"
+  else
+    # 失败：批次内 attempts+1（事件保留，下轮重试；永不 raw dump 兜底）
+    _flush_attempts_bump "$keys_file"
+    log "告警推送失败 rc=${rc}（${unpushed} 条事件保留，下轮重试）"
+  fi
+  rm -f "$batch_file" "$keys_file" "$body"
+  # 失败 rc 向上传撑（契约：AI 摘要失败/发送失败 → rc≠0，事件保留重试）；
+  # 调用方均容错（run-watch `|| echo`、deep_check_gate `|| true`），launchd 流水线退出码不受影响
+  return "$rc"
 }
 
 # ---------------- approve（审批推送 🟡） ----------------
@@ -1524,95 +1262,6 @@ cmd_receipt() {
   return 0
 }
 
-# ---------------- resolve（修④ 告警闭环：标记 resolved + ✅ 收尾卡） ----------------
-# 定位账本未 resolved 匹配行（--key 精确 / --cluster 簇匹配；两者同给=与语义）→ 原行标记
-# resolved=true、resolved_at、resolution=S；命中行存在 pushed==true 时复用 _send 发一条
-# 跟进收尾卡（✅ 含 key 与 summary）并置 resolution_sent=true。
-# 无匹配行 → 非零退出 + stdout 回显目标 + 账本与推送零副作用（显式失败优于静默幂等：
-# 「已闭环」的假回执会让根因继续烧）。
-# dry-run 语义同 _send（打印不发送；dry-run 不置 resolution_sent——未真发不算收尾）。
-cmd_resolve() {
-  ensure_state
-  local key="" cluster="" summary=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --key) key="${2:-}"; shift 2 ;;
-      --cluster) cluster="${2:-}"; shift 2 ;;
-      --summary) summary="${2:-}"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  [[ -n "$key" || -n "$cluster" ]] || { echo "用法: resolve --key K --summary S [--cluster C]" >&2; exit 2; }
-  local ident="${key:-$cluster}"
-  # 候选行预过滤（key 双格式 / 簇子串），逐行 jq 校验
-  local pre
-  if [[ -n "$key" ]]; then
-    pre="$(grep -nF -e "\"key\":\"$key\"" -e "\"key\": \"$key\"" "$EVENTS" 2>/dev/null || true)"
-  else
-    pre="$(grep -nF -e "$cluster" -e '"cluster"' "$EVENTS" 2>/dev/null || true)"
-  fi
-  local matches="/tmp/contrib-resolve-$$.txt" line n raw info lkey lch lcl lres lpushed
-  : > "$matches"
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    n="${line%%:*}"
-    raw="${line#*:}"
-    info="$(printf '%s' "$raw" | jq -r --arg sep "$(printf '\037')" '[(.key // ""), (.channel // "contrib"), (.cluster // ""), ((.resolved // false) | tostring), ((.pushed // false) | tostring)] | join($sep)' 2>/dev/null || true)"
-    [[ -n "$info" ]] || continue
-    IFS=$'\x1f' read -r lkey lch lcl lres lpushed <<<"$info"
-    [[ "$lres" == "true" ]] && continue
-    [[ -n "$lcl" ]] || lcl="$(cluster_key_of "$lkey")"
-    if [[ -n "$key" && -n "$cluster" ]]; then
-      [[ "$lkey" == "$key" && "$lcl" == "$cluster" ]] || continue
-    elif [[ -n "$key" ]]; then
-      [[ "$lkey" == "$key" ]] || continue
-    else
-      [[ "$lcl" == "$cluster" ]] || continue
-    fi
-    printf '%s\t%s\t%s\n' "$n" "$lkey" "$lpushed" >> "$matches"
-  done <<<"$pre"
-  local n_matches; n_matches="$(wc -l < "$matches" | tr -d ' ')"
-  if (( n_matches == 0 )); then
-    echo "resolve: 未命中未 resolved 告警 ${ident}（账本与推送零动作）"
-    rm -f "$matches"
-    return 1
-  fi
-  # 收尾卡：任一命中行已推送过则发一条（未推送过的告警在账本层面闭环即可，无「已推送后解决」可言）
-  local pushed_any=0
-  while IFS=$'\t' read -r n lkey lpushed; do
-    [[ "$lpushed" == "true" ]] && pushed_any=1
-  done < "$matches"
-  # 路径禁与 matches 同址（曾同名覆盖致标记丢失：/tmp/contrib-resolve-$$.txt 双占）
-  local send_rc=0 card="/tmp/contrib-resolve-card-$$.txt" res="${summary:-（已解决）}"
-  if (( pushed_any == 1 )); then
-    printf '✅【contrib 闭环】%s 已解决：%s\n' "$ident" "$res" > "$card"
-    _send "$card" "contrib 闭环 ${ident}" || send_rc=$?
-  fi
-  rm -f "$card"
-  # 行进位标记（line-splice）：resolution_sent 仅当收尾卡真发出
-  local rsent="false"
-  if (( pushed_any == 1 )) && (( send_rc == 0 )) && [[ "$DRY_RUN" != "true" ]]; then
-    rsent="true"
-  fi
-  local upd="/tmp/contrib-resolve-upd-$$.tsv" args_json
-  : > "$upd"
-  args_json="$(jq -cn --arg ts "$(ts)" --arg res "$res" --argjson sent "$rsent" \
-    '{ts: $ts, resolution: $res, sent: $sent}')"
-  while IFS=$'\t' read -r n lkey lpushed; do
-    if [[ "$lpushed" == "true" ]]; then
-      printf '%s\t%s\t%s\n' "$n" "$args_json" \
-        '.resolved = true | .resolved_at = $a.ts | .resolution = $a.resolution | (if $a.sent then .resolution_sent = true else . end)' >> "$upd"
-    else
-      printf '%s\t%s\t%s\n' "$n" "$args_json" \
-        '.resolved = true | .resolved_at = $a.ts | .resolution = $a.resolution' >> "$upd"
-    fi
-  done < "$matches"
-  _events_splice "$upd"
-  rm -f "$upd" "$matches"
-  log "resolve ~ ${ident}（命中 ${n_matches} 行，pushed=${pushed_any}，send_rc=${send_rc}，resolution_sent=${rsent}）"
-  return "$send_rc"
-}
-
 # ---------------- fallback ----------------
 cmd_fallback() {
   _osascript "${1:-contrib-watch 通知}"
@@ -1627,10 +1276,9 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   event)   cmd_event "$@" ;;
   flush)   cmd_flush ;;
-  resolve) cmd_resolve "$@" ;;
   approve) cmd_approve "$@" ;;
   receipt) cmd_receipt "$@" ;;
   fallback) cmd_fallback "$@" ;;
   send-digest) cmd_send_digest "$@" ;;
-  help|*)  sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|*)  sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
