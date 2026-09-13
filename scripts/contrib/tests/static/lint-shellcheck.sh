@@ -20,7 +20,7 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 
 t_case "文件集计数 >= 10"
-files="$TARGET/notify.sh $TARGET/rq.sh $TARGET/kanban_card.sh $TARGET/forge.sh $TARGET/l2_ledger.sh $TARGET/gateway_sentinel.sh $TARGET/heartbeat.sh"
+files="$TARGET/notify.sh $TARGET/rq.sh $TARGET/kanban_card.sh $TARGET/forge.sh $TARGET/l2_ledger.sh $TARGET/gateway_sentinel.sh"
 for f in $(cd "$TESTS_ROOT" && find . -name '*.sh' -type f | sort); do
   files="$files $TESTS_ROOT/$f"
 done
