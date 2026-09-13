@@ -34,31 +34,63 @@ env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
 # L2 链事件 flush（旧 run-watch flush 段退役后由心跳顺带承载；幂等，内部自带限额/去重）
 bash "${MARTIN:-$HOME/workspace/martin}/scripts/contrib/notify.sh" flush >>"${HOME}/workspace/martin/contrib-data/logs/heartbeat-flush.log" 2>&1 || true
 
-# [watch] 到期唤醒钳夹（零判断：scheduled/blocked 卡上有 operator 落的机器行 `watch-due: YYYY-MM-DD`，
-# 到期即 unblock 交 dispatcher；未到期不动。schedule 是终态停放无唤醒 actor——operator 12 班
-# 源码实证 kanban_db.py:3767-3790 + dispatch _lane_rows，缺口由本钳夹闭合）
+# ── 钳夹读取器（两个钳夹共用；2026-09-13 结构件，同形两处一次收敛）──────────
+# 为什么需要这一层（实查证据，勿删注释）：
+#   ① 读取：本 board 库是 WAL（文件头 18/19 字节 = 02 02）。静止时刻（-wal/-shm 不在场，
+#      dispatcher 按 tick 开关库、不常驻持有）`sqlite3 "file:<DB>?mode=ro"` rc=14
+#      `unable to open database file`，旧写法 `2>/dev/null || true` 把它吞成空串 = 静默失败
+#      （用无 sidecar 的库副本可复现；`?immutable=1` 在任何状态下 rc=0，只读快照、不产生写）。
+#   ② 失败不再无声：rc != 0 追加一行到 logs/heartbeat-clamp.log。
+#   ③ 到期窗口先过日期形状守卫：token 首次出现后 10 字符必须 glob `YYYY-MM-DD`。散文里复述该
+#      token 会被取到（实测误命中 [draft] t_8bc51715 的窗口 `[ 行请编排层 unb]`，首字符空格
+#      0x20 字典序 < 数字 0x32 ⇒ 恒判「已到期」⇒ 每次心跳误唤醒一张非到期卡）。
 DB="$HOME/.hermes/kanban/boards/contrib/kanban.db"
-due_ids="$(sqlite3 "file:${DB}?mode=ro" \
-  "select distinct t.id from tasks t join task_comments c on c.task_id=t.id
-   where t.status in ('scheduled','blocked') and c.body like '%watch-due:%'
-   and substr(trim(replace(c.body,char(13),'')), instr(trim(replace(c.body,char(13),'')),'watch-due:')+11, 10) <= date('now','localtime')" 2>/dev/null || true)"
+CLAMP_LOG="$HOME/workspace/martin/contrib-data/logs/heartbeat-clamp.log"
+
+# $1 = SQL（只返回 id 列）；stdout = 合法 id 行（无命中则空）
+_clamp_read() {
+  local raw rc
+  raw="$(sqlite3 "file:${DB}?immutable=1" "$1" 2>&1)"; rc=$?
+  if [[ "$rc" != 0 ]]; then
+    printf '%s clamp read FAILED rc=%s: %s\n' "$(date '+%F %T')" "$rc" "$raw" >>"$CLAMP_LOG"
+    return 0
+  fi
+  printf '%s\n' "$raw" | grep -E '^t_[0-9a-f]+$' || true
+}
+
+# ── 钳夹 1：[watch] 到期唤醒（到期即 unblock 交 dispatcher；未到期不动）──
+# schedule 是终态停放无唤醒 actor——operator 12 班源码实证 kanban_db.py:3481-3522 unblock_task
+# 是唯一 re-gate 路 + dispatch 只枚举 ready/review，缺口由本钳夹闭合。
+watch_sql="with w as (
+   select t.id as id,
+     substr(trim(replace(c.body,char(13),'')), instr(trim(replace(c.body,char(13),'')),'watch-due:')+11, 10) as due
+   from tasks t join task_comments c on c.task_id=t.id
+   where t.status in ('scheduled','blocked') and c.body like '%watch-due:%')
+ select distinct id from w
+  where due glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    and due <= date('now','localtime')"
+due_ids="$(_clamp_read "$watch_sql")"
 if [[ -n "$due_ids" ]]; then
   while IFS= read -r wid; do
     [[ -n "$wid" ]] || continue
-    env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
-      "$HB" kanban --board contrib unblock "$wid" --reason "watch-due 到期唤醒（心跳钳夹）" >/dev/null 2>&1 || true
+    if env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
+      "$HB" kanban --board contrib unblock "$wid" --reason "watch-due 到期唤醒（心跳钳夹）" >/dev/null 2>&1; then
+      printf '%s woke %s\n' "$(date '+%F %T')" "$wid" >>"$CLAMP_LOG"
+    else
+      printf '%s unblock FAILED %s\n' "$(date '+%F %T')" "$wid" >>"$CLAMP_LOG"
+    fi
   done <<<"$due_ids"
 fi
 
-# 分诊收口钳夹（零判断：triage 里 [sig] 卡若已有 `triage-verdict:` 判定评论且超过 30 分钟宽限，
+# ── 钳夹 2：分诊收口（triage 里 [sig] 卡已有 `triage-verdict:` 判定评论且超过 30 分钟宽限，
 # = operator 已落判、worker 无跨卡终态权（kernel 作用域隔离）——由本钳夹代行归档。
-# 判决是 AI 的（评论机器行），落笔是钳夹的——与 L2「agent 起草链落笔」同构）
+# 判决是 AI 的（评论机器行），落笔是钳夹的——与 L2「agent 起草链落笔」同构）──
 cutoff=$(( $(date +%s) - 1800 ))
-sweep_ids="$(sqlite3 "file:${DB}?mode=ro" \
-  "select distinct t.id from tasks t join task_comments c on c.task_id=t.id
+sweep_sql="select distinct t.id from tasks t join task_comments c on c.task_id=t.id
    where t.status='triage' and t.title like '[sig]%' and c.body like '%triage-verdict:%'
-   and c.created_at <= ${cutoff}" 2>/dev/null || true)"
+   and c.created_at <= ${cutoff}"
+sweep_ids="$(_clamp_read "$sweep_sql")"
 if [[ -n "$sweep_ids" ]]; then
   env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
-    "$HB" kanban --board contrib archive $sweep_ids >>"$HOME/workspace/martin/contrib-data/logs/heartbeat-flush.log" 2>&1 || true
+    "$HB" kanban --board contrib archive $sweep_ids >>"$CLAMP_LOG" 2>&1 || true
 fi
