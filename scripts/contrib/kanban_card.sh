@@ -46,7 +46,7 @@ CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 DOWN_FILE="$CONTRIB/.hermes-down"
 NOTIFY="$MARTIN/scripts/contrib/notify.sh"
 
-# launchd 极简 PATH 兼容（同 run-watch 探测口径；timeout/perl/jq 探测依赖此 PATH）
+# launchd 极简 PATH 兼容（timeout/perl/jq 探测依赖此 PATH）
 PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export PATH
 
@@ -60,8 +60,8 @@ fail() {
   exit 1
 }
 
-# hermes_call <secs> <args...> — env -u 三变量 + 统一超时包裹（三级退化，同 run-watch run_phase
-# 先例）；stdout/stderr 分离由调用方负责（调用方以 2>file 捕获 stderr）
+# hermes_call <secs> <args...> — env -u 三变量 + 统一超时包裹（三级退化）；
+# stdout/stderr 分离由调用方负责（调用方以 2>file 捕获 stderr）
 hermes_call() {
   local secs="$1"; shift
   local -a pre=()

@@ -13,12 +13,12 @@
 #     flush 按账本中实际出现的渠道分渠成批（contrib / flashcards 各至多一条消息、各取自己的
 #     报头与主题；机械批次=速报头、叙事/AI 摘要=告警头）；非 {contrib,flashcards} 渠道事件只入账，
 #     不进任何 flush 批（归各自域的简报/AI 会话消费）
-#   - flush 每小时由 run-watch 尾部调用：聚合未推送告警为一条微信；防双发三重
+#   - flush 由 operator 班次收班契约每小时调用（无内置定时器；run-watch 已于 09-13 退役）：聚合未推送告警为一条微信；防双发三重
 #     （min_interval + 当日计数 + /tmp 锁）
 #   - 审批推送（🟡 卡片）与告警分开计数；回执独立计数不占限额（审批卡=规范化模板，豁免 AI 整理）
 #   - hermes send 失败链：重试 1 次 → 事件保留 → 累计 3 败 osascript 本地通知兜底
 #   - 审批卡推送（09-07 双修①）：rc==1 失败原地退避重试（默认 3 次×35s，跨 iLink 30s cooldown，
-#     seam NOTIFY_CARD_ATTEMPTS/NOTIFY_CARD_BACKOFF）；跨轮兜底 = run-watch 每小时 approve --all sweep
+#     seam NOTIFY_CARD_ATTEMPTS/NOTIFY_CARD_BACKOFF）
 #   - claude -p 模型 pin（09-07 双修②）：--model 剥 [1m]/[1M] 后缀（seam CLAUDE_MODEL_PIN；
 #     来源链 settings.json env > 运行时 env），运行时 ANTHROPIC_MODEL 同步 sanitize
 #   - notify_dry_run=true 时只打印完整消息体与目标，不触 hermes/tunnel（AI 摘要照常生成）
@@ -1035,7 +1035,7 @@ _flush_channel() {
   fi
   rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"
   # 失败 rc 向上传撑（契约：AI 摘要失败/发送失败 → rc≠0，事件保留重试）；
-  # 调用方均容错（run-watch `|| echo`、deep_check_gate `|| true`），launchd 流水线退出码不受影响
+  # 调用方均容错（operator 班次收班契约不因 rc≠0 中断）
   return "$rc"
 }
 
@@ -1467,7 +1467,7 @@ cmd_approve() {
     # 审批推送记账；approvals[date] = {count, ok:{}, fail:{}}
     # 09-07 双修①：审批卡是用户的唯一决策触达通道，单发即败=永久卡死（rq-20260907-104693 实证：
     # iLink 30s cooldown 被同窗口回执挤爆，fail=1 后无人再推）。rc==1 类失败原地退避重试跨过
-    # cooldown；跨轮兜底 = run-watch 每小时 approve --all sweep。rc==3（网关不可达）重试无意义，
+    # cooldown。rc==3（网关不可达）重试无意义，
     # 保持 osascript 兜底。重试只重发同一张卡，不重新部署 tunnel 页（slug/code 已登记）。
     local rc=0 attempts total backoff
     total="${NOTIFY_CARD_ATTEMPTS:-3}"

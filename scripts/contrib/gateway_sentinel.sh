@@ -12,7 +12,7 @@
 #   gateway 由 launchd 服务 ai.hermes.gateway 托管（KeepAlive=true + ThrottleInterval=30s）——
 #   「拉起」已由 launchd 负责：进程死 ~30s 内自动重生。本哨兵只补可观测性：崩溃窗口入账、
 #   崩溃循环跨 tick 可见。检测≠送达（已接受限制，记录在案）：gateway down 期间 event 只落
-#   events.jsonl 账本，微信送达依赖 gateway 恢复后 run-watch 每小时 flush 聚合推送。
+#   events.jsonl 账本，微信送达依赖 gateway 恢复后 operator 班次收班时的 flush 聚合推送（每小时一班）。
 #   pgrep pattern 同时命中 stderr_timestamp 包装进程与 gateway 本体（launchd 单元两进程），
 #   比单 pid 探测保守——包装进程存活即视为单元存活，降低误报面。
 #
