@@ -79,3 +79,7 @@
 - [2026-09-12] 默认态 fail-closed 分支黑盒测法：整树镜像沙箱（gate.sh 拷入 mktemp 仓根）+ 双缺失装配以断言集裁决 | tags: testing, black-box, sandbox, fail-closed, gate, contrib-watch | → patterns.md
 - [2026-09-12] 纯测试面卡 tree_sig=空集哈希属预期（lib.sh 排除 tests/acceptance 路径） | tags: autopilot, tree-sig, qa, operational | → patterns.md
 - [2026-09-13] 告警判据与阈值契约必须锚定病理本体（在飞≠占槽；计数分母 per-card vs 聚合写进契约，否则红蓝 Tier 0 必撞） | tags: alarm-criteria, duty-loop, contract, threshold, false-positive, red-blue, contrib-watch | → patterns.md
+- [2026-09-13] WAL 形态只读 fixture 构造：CLI 退出不删旁文件→须显式 checkpoint(TRUNCATE)+rm+写后跑前双向自证（旁文件在则 mode=ro 可开、immutable 回退空转假绿） | tags: sqlite, wal, fixture, readonly, immutable, fallback, self-verify, mutation-testing, contrib-watch | → patterns.md
+- [2026-09-13] 判定词断言必须用唯一标记子串（正/负样本可分）+ mutation 命中场景须排在同层防御门之前（fail-fast 首死归因） | tags: testing, assertion, unique-marker, vacuous-pass, false-green, mutation-testing, fail-fast, attribution, contrib-watch | → patterns.md
+- [2026-09-13] 值班环 L1 特权动作分工：worker 只判定声明（台账 archive-request）、编排层 duty_card.sh apply 代行执行（fence 下白名单二分） | tags: hermes, kanban, fence, duty-loop, privilege-split, contrib-watch | → decisions.md
+- [2026-09-13] 运行时产物的红队断言求值根：gitignore 产物只在生产仓存在，REPO_ROOT 求值必假红；同源 seam 回退（两根皆缺仍硬失败） | tags: testing, acceptance, runtime-artifact, evaluation-root, seam, contrib-watch | → patterns.md

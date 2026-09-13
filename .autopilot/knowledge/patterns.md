@@ -317,6 +317,7 @@ hermes 补丁栈(5 commit)被 `git reset: moving to origin/main` 抹掉(疑似 h
 ## [2026-09-05] bash 里 `$var` 紧跟全角标点被并入变量名：三方同踩 12+ 处的套件杀手
 `echo "PASS $P（cases=...）"` 中全角 `（` 直接并入变量名（`P（cases` unbound）——set -u 下脚本中途炸。本任务蓝队、红队、编排器三方共踩 12+ 处（知识库 09-02 坑③的三次复发证明「知道」防不住「手写」）。治法：交付前统一 regex sweep `\$(\w+)(?=[（）｜：；，「」等全角集])` → `${\1}` 固化成测试套件静态门；写作习惯用 `${var}` 只是缓解不是防线。
 **[2026-09-07 已固化]** 静态门落地：`scripts/contrib/tests/gate.sh`（三关聚合秒级门）+ `static/gate-fullwidth.sh`（run.sh 维度）+ `lib/fullwidth-pattern.txt`（regex 单源，perl 字节模式冻结）+ `.githooks/pre-commit`（staged 触及两域 *.sh 才跑，MARTIN_GATE_SKIP=1 逃生阀留台账）。13 处存量整改后全仓零命中。配套实证：shellcheck 0.11 的 SC2086 是 **info** 级，`-S warning` 阈值下放行——warning 级注入样本要用 SC2034。
+**[2026-09-13 四方+1 复证]** gate 扫描域**外**的脚手架仍会中招：drill 脚手架 `out "登记: … rc=$DC_ACC（契约…"`（LC_ALL=en_US.UTF-8 下 set -u 必炸，卡 t_4a97e410）——静态门只护 contrib/approval/hkstock 两域 *.sh，.autopilot 会话目录里的临时脚本不设防；横切知识「知道」依然防不住「手写」，域外 bash 脚本交付前建议沿用同款 regex sweep。
 
 <!-- tags: macos, toolchain-shadow, diff, PATH, sandbox, testing -->
 ## [2026-09-05] 用户机器第三方工具链遮蔽系统命令：diff 不支持 -r 的静默假绿
@@ -516,3 +517,15 @@ autopilot tree_sig 对 `*.acceptance.*`、`*/tests/*`、`acceptance-staging/*` �
 ## [2026-09-13] 告警判据与阈值契约必须锚定病理本体，而非可观测代理面
 值班环（state brief，卡 t_582e238b）两处同型翻车：①S1 深检槽告警初版按「flight 登记卡非终态」触发——健康在飞（ready/running）也告警，实跑 7 分钟前新建的深检卡即中招，值班环信噪比被常态操作打穿；病理本体是设计 §0 病例①「blocked 卡占槽死锁」，判据收敛为 status∈{blocked,gave_up} 才触发（健康在飞仅入清单）。②红队把「秒崩循环」阈值断言写成聚合计数（两卡各 gave_up×1 → 告警），契约本义是「某卡 gave_up ≥2 次」（§0 病例③同卡连崩）——跨卡聚合把两张卡各崩一次误报成崩溃循环，红队铁律例外 E1-E3 闭合后改测试重锁。通则：告警判据写「病理状态」不写「生命周期状态」；阈值类契约必须写明计数分母（per-card/per-item vs 全局聚合），否则红蓝各按一个分母实现/断言，Tier 0 必撞。
 <!-- tags: alarm-criteria, duty-loop, contract, threshold, per-card-vs-aggregate, false-positive, red-blue, contrib-watch -->
+
+## [2026-09-13] WAL 形态只读 fixture 构造：CLI 退出不删旁文件→须显式 checkpoint(TRUNCATE)+rm+写后跑前双向自证
+测 ro_sqlite 这类「mode=ro 败→immutable=1 回退」分支时，fixture 必须造成生产真实形态「WAL 头、无 -wal/-shm」。本机（macOS sqlite3 3.51）实测：CLI 干净退出**不**删旁文件（-wal 0B/-shm 32768B 残留），旁文件在则 `mode=ro` 反而可开→回退分支零执行、覆盖假绿。构造法：`PRAGMA journal_mode=WAL;` 建库+全部写入后，显式 `PRAGMA wal_checkpoint(TRUNCATE);` 再 `rm -f` 旁文件；且 seal 必须放在**最后一次库写入之后**（add_card 等 sqlite3 写入会重建旁文件）。写后跑前必须双向自证（`file:<db>?mode=ro` 必败 rc=14 ∧ `mode=ro&immutable=1` 必成），否则断言 [FAIL]/die——形态自证把「fixture 漂移」从假绿变成显式红。归因设计：形态自证断言的 immutable 探针若写源内字面量，会被 M-B 全量 sed（immutable=1→0）一起改坏而丧失「fixture 健康」信号——探针 URL 用运行时拼接构造（运行时逐字等于契约形态、源内字面缺席），变异下自证仍 PASS，正好证明红因是回退路径而非 fixture 腐坏。另：`PRAGMA journal_mode=WAL;` 会向 stdout 打印 "wal"，建库调用加 >/dev/null 防 selftest 输出污染。同族：「fixture 数据形态漂移诱发假红」（2026-09-10）、「kanban.db 只读形态」（2026-09-11）。
+<!-- tags: sqlite, wal, fixture, readonly, immutable, fallback, checkpoint, self-verify, mutation-testing, contrib-watch -->
+
+## [2026-09-13] 判定词断言必须用唯一标记子串 + mutation 命中场景须排在同层防御门之前（fail-fast 首死归因）
+验收断言用裸判定词 token（如 grep「孤儿」）必撞负样本：①负分支生产文案同词（S1「注意 —— 未触发孤儿/深检槽/超龄任一」）；②fixture 卡标题字面同词（「孤儿病例卡」）——正/负样本完全不可分，判据改坏后该门恒绿（恰是用例存在理由的那道门假绿，卡 t_4a97e410 父卡 mutation 自证实证）。修法双管：断言只用「仅命中路径输出」的唯一标记子串集（判定行 reason「存在孤儿卡（§0 病例②）」+ 卡行后缀「｜孤儿（所提 rq 全部终态」全命中才算 PASS），fixture 标题去判定词；并补负样本 hasnt 锁（孤儿不触发场景 S1 节不得含标记——注意负向锁观测块必须选对节，施于本就不含标记的节=真空断言）。配套归因律：fail-fast 验收套件（首 die 即退）里，mutation 直接命中的场景必须排在同层防御门之前（selftest 全绿门会因 mutant 先死、把命名归因掩盖成 FAIL[P1]）——「注入必须剥离同类防御层」（2026-09-05）的场景排序落地面；基线全绿与场景排序无关，重排零风险。
+<!-- tags: testing, assertion, unique-marker, vacuous-pass, false-green, mutation-testing, fail-fast, attribution, red-team, contrib-watch -->
+
+## [2026-09-13] 运行时产物的红队断言求值根：gitignore 产物只在生产仓存在，REPO_ROOT 求值必假红；同源 seam 回退（两根皆缺仍硬失败）
+值班环 apply 卡（t_00ec41f4）红队 t9-02 W11.P0「duty-ledger.md 存在且非空」在 worktree 首跑假红：台账是 gitignore 运行时产物（BRIEFING 交付三），只被生产根（主仓 contrib-data）的 run-watch/duty_card 产出，worktree 检出面按设计永不可能有——断言钉在 `$REPO_ROOT/contrib-data` 上则 dev worktree 必然假红，且任何实现改动都无法使其变绿（唯一「解法」=伪造运行时数据，更不可为）。修法（红队铁律例外 E1-E3 闭合 AI 自决）：求值根加同源 seam 回退 `[[ -s "$LEDGER" ]] || LEDGER="${MARTIN_DIR:-$HOME/workspace/martin}/contrib-data/duty-ledger.md"`（与 duty_card.sh:39 同 seam 同缺省），断言语义不动——两根皆缺仍硬失败不空转放行；合并进生产仓后 REPO_ROOT 即运行时根、回退不触发、行为不变。通用律：对 gitignore 运行时产物的存在性断言，求值根必须是「产物实际被产出的那棵树」；测试头注释应载明求值序依赖（本例「前置=真库场景 2/3 先行」）。同族：「QA 验收谓词 artifact 必须每谓词独立观测」（2026-09-07）、「默认态 fail-closed 分支的黑盒测法」（2026-09-12）。
+<!-- tags: testing, acceptance, runtime-artifact, evaluation-root, seam, false-red, worktree, martin-dir, contrib-watch -->
