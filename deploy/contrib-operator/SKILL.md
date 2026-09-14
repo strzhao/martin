@@ -307,7 +307,13 @@ new_parts: <净零件数>   （红队核对项）
 - **唯一的刹车是零件计数**：净 >0 且答不出「为什么零新增不行」⇒ 打回 Q3。
 - **同形刹在第二次**：Q2 答出「同形已有 ≥1 件」时，本件正确落点**默认是结构件**（合并已有 + 删除被取代者），不是再打一个同形补丁。要推翻这个默认，必须在卡上写明「为什么这两件不是同形」并接受红队核（否则 `REBUT`）。**「默认」不是「可以论证推翻」的软词**。
 - **REBUT 的回滚义务**：当班修 + 跨班红队 ⇒ 存在「改动已 live 而判词未到」的窗口 ⇒ **REBUT 到达时若改动已生效，默认动作 = 立即执行 Q4 登记的回退命令**，再谈重做；**`REBUT` 不得以「弃」结束**（必须落到四种归宿之一并写回卡评论，否则一个已被红队确认的损失会从账面上完全消失）。
-- **开卡前先跑「可改面 ∩ 写保护名单」（09-14 实证，1 次真实代价）**：`[fix]` 卡的可改面若含 agent 指令文件（`CLAUDE.md` / `AGENTS.md` / `SOUL.md` / `.cursorrules`），**headless 下必然被 Hermes 写保护拦下**（审批提示无人在场 → timeout = 拒；工具原文 `BLOCKED: write to protected agent-instruction file(s) … Do NOT retry it or attempt the same edit via another path`）⇒ ① 建卡时就在 body 写明该文件走**人批路**，不要等改到一半才发现；② 该文件的固定分包形态 =「先把非保护文件落地提交 + 精确 old→new 稿落卡评论 + `kanban_block(kind=needs_input)`」，让闸门卡在有决策点的地方；③ 这类卡**不得判 `REBUT`**——falsify 会因被拦文件恒 >0，判词必须区分「实现失败」与「授权被拦」，否则人手审批环会被机械判词反复打回；④ **不许绕过**（不写临时副本、不走 terminal/sed、不换路径）：这是红线，不是建议。证据：`t_d4dedfc7`（提交 `41bfe48` 落地 3 文件、falsify 11→2、剩 2 行全在 `CLAUDE.md:58/:72`、卡停 `needs_input`）。
+- **开卡先跑「可改面 ∩ 写保护名单」；命中即改走「预产补丁 + 可执行人门问句」（09-14 两轮实证，2 次真实代价）**：`[fix]` 卡的可改面若含 agent 指令文件（`CLAUDE.md` / `AGENTS.md` / `SOUL.md` / `.cursorrules`），**headless 下必然被 Hermes 写保护拦下**（审批提示无人在场 → timeout = 拒；工具原文 `BLOCKED: write to protected agent-instruction file(s) … Do NOT retry it or attempt the same edit via another path`）。先认清闸的性质：这是**逐次操作**的人批闸——`tools/file_tools_write_guards.py:178-245`（docstring 原文 `one-operation approval EVERY time, no persisted scope, fail-closed without a human channel`；`allow_permanent=False` / `allow_session=False`），无人类通道时 `_NO_HUMAN` fail-closed（`:238`）；CLI 路靠 `_get_approval_callback()`、网关路靠 session 的 notify cb，worker 两条都没有 ⇒ 本机 `approvals.timeout: 60`（代码默认 300）到点即拒。⇒ 五条：
+  - ① **建卡时**就在 body 写明该文件走**人批路**——「可改面 ∩ 名单」在开卡那一刻求交，不要等改到一半才发现。
+  - ② **交付形态固定 = 预产补丁**（这类卡唯一有落笔路径的形态，不是「请人放行」四个字）：`contrib-data/pending/<slug>/xxx.patch` + 同目录 `howto.md`（写人工两处改法 + 写清回退命令），产稿时 `git apply --check` 自证可干净套用；**卡面/评论给出的必须是一条可直接执行的命令**（`cd ~/workspace/martin && git apply <patch>`）。非保护文件照常当班落地提交，闸门卡在有决策点的地方（`kanban_block(kind=needs_input)`）。
+  - ③ **人门问句必须可执行、且与 unblock 语义分离**：只写「人工落笔（跑那条 `git apply`）」或「在**有人在场的会话**里让我改（面板 60s 内点批准）」；**禁写「请放行」**——`unblock ≠ 写授权`（第 2 轮 12:29:32 人 unblock 该卡后，12:33 同路径重试仍必拒 ⇒「block(needs_input) → 人 unblock」闭环对这类卡是**空转**，还让人误以为已授权）。可达形态有先例：09-11 01:16 用户在微信说「同意改 CLAUDE.md」后 `feff35e` 当场落地。
+  - ④ 这类卡**不得判 `REBUT`**——falsify 会因被拦文件恒 >0，红队判词必须**分流**「实现失败」与「授权被拦」（后者 = 停在 `needs_input`，不是 REBUT），否则人手审批环会被机械判词反复打回。
+  - ⑤ **不许绕过**（不写临时副本、不走 terminal/sed、不换路径）：这是红线，不是建议。
+  - 证据：`t_d4dedfc7` 第 1 轮提交 `41bfe48`（3 文件落地、falsify 11→2、剩 2 行全在 `CLAUDE.md:58/:72`）；第 2 轮 12:33 重试同拒 + 预产补丁 `contrib-data/pending/claude-md-doc-layer-20260914/`（`git apply --check` rc=0、以改写稿顶替重跑 falsify=0），卡两次 `needs_input` 后自动升 triage。
 
 ### 9.5 红队复核协议（`[redteam]` 卡 + 独立进程）
 
