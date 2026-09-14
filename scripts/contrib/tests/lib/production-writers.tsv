@@ -60,6 +60,15 @@ contrib-data/logs/approval-execute.log	approval-execute	append-records	^\[([0-9]
 #     第 2 轮重审裁决补入（第 10 条）：覆盖守卫要求源码写点 ⊆ 清单模式，本文件是源码实测写点
 contrib-data/logs/l2-ledger.log	l2-ledger	append-records	^\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})\] l2-ledger: 	:none
 
+# [12] watch-due 到期巡检日志 ← scripts/contrib/watch-due-patrol.sh:84（log_line 定义）/ :50（$LOG 绑定）
+#      `log_line() { detail=$(printf '%s' "$1" | tr '\n' ' '); printf '[%s] patrol %s\n' "$(date '+%F %T')" "${detail:0:200}" >>"$LOG" 2>/dev/null || true; }`
+#      形态（单测 unit/watch-due-patrol.sh 四态用例实测，36 断言全绿）：自有记录 4 形态 ——
+#        `read FAILED rc=N: …`（读断；不落 `2>/dev/null || true`，禁静默）/
+#        `parse SKIP <id> win=[len=.. first=0x..]`（形状守卫漏账，只记形状元信息不复述原文）/
+#        `woke <id> due=YYYY-MM-DD today=YYYY-MM-DD` / `unblock FAILED <id>`
+#      `tr '\n' ' '` 保证恒单行记录（无块级容错下的必要前提）；无 token 命中时零行（无噪音）
+contrib-data/logs/watch-due-patrol.log	watch-due-patrol	append-records	^\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})\] patrol 	:none
+
 # [5] notify 状态账本 ← scripts/contrib/notify.sh:123（首建）/ :178 / :182 / :521 / :1029 / :1491 / :1499
 #     写机制 = `jq ... > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"`（原子替换 ⇒ 无追加自证面）
 #     ⇒ mode=corroborated-rewrite；佐证=logs/notify.log

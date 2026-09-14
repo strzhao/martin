@@ -43,7 +43,7 @@ WA_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wa-unit.XXXXXX")" || {
 }
 trap 'rm -rf "$WA_TMP"' EXIT
 
-t_case "C0 前置：清单可解析（默认路径 / 11 条 / 四模式齐备）"
+t_case "C0 前置：清单可解析（默认路径 / 12 条 / 四模式齐备）"
 WA_REG_RC=0
 WA_DEF_REG="$(wa_registry_default "$TESTS_ROOT")" || WA_REG_RC=$?
 assert_exit "0" "$WA_REG_RC" "C0 wa_registry_default rc=0"
@@ -52,7 +52,7 @@ assert_eq "$(basename "$WA_DEF_REG")" "production-writers.tsv" "C0 清单文件�
 WA_LOAD_RC=0
 wa__registry_load "$WA_DEF_REG" || WA_LOAD_RC=$?
 assert_exit "0" "$WA_LOAD_RC" "C0 清单解析 rc=0"
-assert_eq "$WA_R_N" "11" "C0 清单条目数=11（+pending/* 删除面）"
+assert_eq "$WA_R_N" "12" "C0 清单条目数=12（+pending/* 删除面）"
 NW_APPEND=0; NW_RW=0; NW_CR=0; NW_DEL=0
 for ((i = 0; i < WA_R_N; i++)); do
   case "${WA_R_MODE[$i]}" in
@@ -62,11 +62,11 @@ for ((i = 0; i < WA_R_N; i++)); do
     corroborated-delete) NW_DEL=$((NW_DEL + 1)) ;;
   esac
 done
-assert_eq "$NW_APPEND" "4" "C0 append-records 条目=4（collect/notify/execute/l2-ledger）"
+assert_eq "$NW_APPEND" "5" "C0 append-records 条目=5（collect/notify/execute/l2-ledger/watch-due-patrol）"
 assert_eq "$NW_RW" "5" "C0 corroborated-rewrite 条目=5"
 assert_eq "$NW_CR" "1" "C0 corroborated-create 条目=1（pending/*）"
 assert_eq "$NW_DEL" "1" "C0 corroborated-delete 条目=1（pending/* 删除面）"
-assert_eq "$((NW_APPEND + NW_RW + NW_CR + NW_DEL))" "11" "C0 四模式计数之和=11（防未知 mode 静默漏计）"
+assert_eq "$((NW_APPEND + NW_RW + NW_CR + NW_DEL))" "12" "C0 四模式计数之和=12（防未知 mode 静默漏计）"
 
 # -----------------------------------------------------------------------------
 # 合成树（全部用例共用；不触碰真实 contrib-data）
@@ -454,12 +454,12 @@ GUARD_RC=0
 wa_guard_diff "$REPO_ROOT/scripts/contrib" "$REPO_ROOT/scripts/approval" "$WA_DEF_REG" "$WA_TMP/guard.diff" 2>"$WA_TMP/guard.err" || GUARD_RC=$?
 assert_exit "0" "$GUARD_RC" "C16a 守卫运行 rc=0"
 assert_eq "$(<"$WA_TMP/guard.diff")" "" "C16a 差集为空（派生写点全部被清单覆盖）"
-assert_ge "$WA_G_N_CAND" "13" "C16a 派生候选数 >=13（防 no-op 派生面；下界而非等值：新增已注册写点不应误报）"
+assert_ge "$WA_G_N_CAND" "14" "C16a 派生候选数 >=14（防 no-op 派生面；下界而非等值：新增已注册写点不应误报）"
 assert_ge "$(grep -c '^E1$' "$WA_G_CNT_FILE")" "1" "C16a E1 瞬时槽位谓词命中 >=1（.rq-item.tmp / ready-queue.json.tmp / budget.json.tmp）"
 assert_ge "$(grep -c '^E2$' "$WA_G_CNT_FILE")" "1" "C16a E2 运行期产物谓词命中 >=1（runs/deep-check/**）"
 assert_ge "$(grep -c '^E3$' "$WA_G_CNT_FILE")" "1" "C16a E3 面外数据文件谓词命中 >=1（goods-metrics.json / kanban-flight-digest.json）"
 assert_ge "$WA_G_N_LIVE" "5" "C16a 反查到的写手脚本 >=5（清单 writer 列 → 源码命中）"
-assert_file_contains "$WA_TMP/guard.err" "WA-GUARD candidates=13" "C16a 守卫计数行落 stderr（可审计）"
+assert_file_contains "$WA_TMP/guard.err" "WA-GUARD candidates=14" "C16a 守卫计数行落 stderr（可审计）"
 
 t_case "C16b 覆盖守卫 mutation kill：删清单一行 ⇒ 差集非空（必红）"
 grep -v '^contrib-data/logs/approval-collect.log' "$WA_DEF_REG" > "$WA_TMP/reg-minus-one.tsv"
