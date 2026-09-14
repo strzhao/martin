@@ -91,6 +91,32 @@ t_finish
 
 沙箱把 `HOME` 指向沙箱内 home 并将 `$HOME/workspace/martin` 软链回沙箱根——**万一哪处 seam 漏配，默认值也落在沙箱里，生产零风险**。另外：notify.sh 的审批卡/回执临时文件（`/tmp/contrib-approval-<id>.txt`、`/tmp/contrib-receipt-<id>.txt`）与 AI 摘要 prompt（`/tmp/contrib-digest-prompt-<pid>.txt`）保持现状（按 id/pid 命名、用后即删，不在冻结 seam 名单内）。
 
+## 写入归属引擎（s4 4.P1 / t1-04 4.1 的生产零写入判据）
+
+**要改「套件对生产 contrib-data 零写入」判据、或看到 4.P1 因生产写手在窗口内落笔而红** ⇒ 先读本节。
+
+判据原口径是「全量 shasum 前后 diff 行数==0」。只要套件运行窗口与**生产写手**（launchd `com.stringzhao.approval-collect` 每 90s 跑 `scripts/approval/collect.sh` 追加 `contrib-data/logs/approval-collect.log`）重叠，diff 必然非 0 ⇒ 门恒定红（恒定红会被训练成忽略；为让它绿去放宽又退回假绿）。归属引擎把「窗口内变更」机械拆成三类：
+
+| 类别 | 语义 | 判据后果 |
+|---|---|---|
+| `suite` | 套件写的（或无法归属的）：默认 deny | **判红**（`eq "$WA_SUITE" 0`） |
+| `external` | 生产写手写的：路径 ∈ 清单 ∧ 追加语义/inode ∧ 记录落字母表 ∧ 时间戳在窗（corroborated-* 另需佐证近邻） | 证据行 + PASS |
+| `outside-surface` | 判据面外路径（不匹配任何清单模式） | 证据行 + PASS（**不判失败**，理由见下） |
+
+- **引擎**：`lib/write-attribution.sh`（纯只读；API `wa_registry_default` / `wa_snapshot` / `wa_classify` / `wa_selftest` / `wa_inject` / `wa_wait_external`；exit 码闭集 0/1/2，`wa_classify` 的 2 = 依赖缺失/快照缺失/清单非法/窗口非法/计数恒等式失配）。`diff` 一律落库内（两个 acceptance 文件的命令位 `/usr/bin/diff` 调用点由守卫钉死：s4=2 / t1-04=1）。
+- **清单**：`lib/production-writers.tsv`（唯一真源；TAB 五字段 = 路径模式（**shell glob**，bash `case` 语义） / writer-id / mode / 输出字母表（ERE，`|` 连接多形态，**首捕获组=记录时间戳**） / 佐证写手日志路径（`|` 分隔多佐证））。mode 闭集 = `append-records`（追加语义可自证）/ `corroborated-rewrite` / `corroborated-create`（重写类，**只能靠佐证**）。`#` 注释行承载逐形态实测证据（形态 + 出处行号 + 样本条数）。
+- **佐证成立** = 佐证日志存在 ≥1 条**在窗**合规记录 ∧ `|佐证记录 ts − 变更文件 mtime| ≤ 30s`（时序近邻：notify 改状态与落 `log()` 行同秒相邻是实证常态；仅「存在性佐证」会被套件恰在写手活跃窗内写入掩蔽 ⇒ 假绿通道）。失败态 evidence 行同样带 `Δt=`/`ts=`（无在窗记录写 `none`），便于事后审计。
+- **marker 短路**：变更文件的新增内容含 `S4-P1-` 前缀行 ⇒ 无条件 `suite`（reason=`canary-marker`），**先于**佐证判定——本 harness 注入物是确定事实，真实泄漏仍由存在性 + 时序近邻拦截。
+- **注入旋钮**（env，默认空 = 纯生产态；每次注入落 `WA-INJECT` 证据行，注入物由调用方 EXIT trap 清理）：
+  - `S4_P1_INJECT=canary-create`：窗口内往注册面 `contrib-data/pending/` 新建 marker 文件（可干净删除、零残留）⇒ 必须判红；
+  - `S4_P1_INJECT=canary-append`：窗口内往注册路径追加一行字母表外 marker（留 1 行残留，opt-in）⇒ 必须判红；
+  - `S4_P1_INJECT=external-append`：窗口内往注册路径追加与写手 `log()` 逐字同构的合规记录 ⇒ 必须 `external≥1` 且 PASS；
+  - `S4_P1_INJECT=wait-external`：`run.sh` 后弹性轮询（`S4_P1_WAIT_MAX`，默认 150s）等**真实生产写手**落笔 ⇒ 必须 `external≥1` 且 PASS。
+- **面外语义与残余风险**：面外不判失败的依据是「套件写面由静态 seam 守卫锁死（`static/seam-defaults.sh` 冻结默认值）⇒ 面外路径不是套件可达写目标」+ 实测该面被并发进程高频写（判红即「训练人忽略这道门」）。残余风险（如实登记、不隐藏）：① 形态归属 ≠ 进程归属（套件精确复刻「注册路径 + 字母表形态 + 在窗时间戳」仍可能误判 external；缓解=字母表是实测闭集 + 金丝雀证明注册路径非免死金牌）；② 面外不判失败（套件若往草稿区写文件，4.P1 不红）；③ 佐证漏配（`corroborated-*` 赶上生产写手「改了状态但没落日志」的罕见轮次会误红，可凭 evidence 行的 `Δt=`/`ts=` 诊断）。
+- **清单完整性守卫**：`unit/write-attribution.sh` C16 —— 从清单 writer 列反查写手脚本（∪ 其字面调用者）派生源码写点，断言 ⊆ 清单模式（差集为空），并施加三条**声明式排除谓词**（E1 瞬时槽位：basename 以 `.` 开头或含 `.tmp`；E2 运行期产物：路径含 `/runs/`；E3 判据面外数据文件短名单：`logs/sentinel.log` / `inventory.json` / `goods-metrics.json` / `kanban-flight-digest.json` / `logs/launchd*.log`，逐条带理由）。守卫自身可被 mutation kill（删清单一行 / 往写手脚本副本注入新写点 ⇒ 差集非空 ⇒ FAIL）。**残余缺口**：新增**独立**写手脚本（不在清单 writer 列、也未被清单写手调用，例如新装 plist 的脚本）不被派生面覆盖，需带理由显式扩清单或 E3 名单。
+- **并发探测注意**：探测是否有同名 acceptance 在跑时用**命令位形态** `bash .*s4-production-zero-touch\.acceptance\.sh`；勿用 `pgrep -f '[s]4-production-zero-touch'`（会命中他卡 `claude -p` 提示词里的同名字符串 ⇒ 假 SKIP，也会误伤相对路径调起的他卡进程）。
+- **生产侧复跑配方**（生产主 checkout 上由 worker 执行）：`.autopilot/runtime/sessions/t_cbf34542/requirements/20260914-s4-p1-write-attribution/production-recipe.md`。
+
 ## 豁免清单
 
 - **zsh 脚本**（按 shebang 动态识别）不做 shellcheck（SC1071 是工具对 zsh 的误报），以 `zsh -n` 语法门覆盖（static/syntax.sh 生产 3 个 + gate.sh 全部 zsh shebang）。

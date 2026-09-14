@@ -196,3 +196,65 @@ exit-0 假影子 `SB_SHADOW` **前置到 PATH** ⇒ 被断言的裸 `diff` 无�
    HEAD 已含修复 ⇒ 该谓词再跑退化为自比对（遮蔽分支判别力归零）。QA 期证据（`r2-p4.out`）有效，
    提交后失效。红队已在套件头以 `CONTRACT_AMBIGUOUS` 自记。建议后续改为锚定 r1 提交 sha 或显式预期块快照。
 3. 未改任何 hook / `core.hooksPath` / 第四路径文件（本卡约束「本轮只允许在 C3 分支上做最小修复」）。
+
+---
+---
+
+# state.md — 卡 t_cbf34542：s4 4.P1「生产零写入」写入归属定性（只 commit 不 push）
+
+日期：2026-09-14 ｜ lane：`wt/t_cbf34542`（基线 `main@71b6956`）｜ 驱动：autopilot `--headless`（standard）
+
+## 做了什么
+
+4.P1 的语义是「套件对生产 `contrib-data` 零写入」，但父卡 pin 掉裸 diff 后它**恒定红**——只要窗口与生产写手
+（launchd `com.stringzhao.approval-collect` 每 ~90s 追加 `contrib-data/logs/approval-collect.log`）重叠，
+全树快照 diff 必非 0。本卡把判据升级为**写入归属定性**：冻结 driver（`snap_contrib` + `/usr/bin/diff` 行）逐字保留，
+在其上叠加共享引擎，把窗口内变更机械拆成 `external`（生产写手 ⇒ 可 grep 的 evidence 行 + 判绿）/
+`suite`（套件写入 ⇒ 判红，默认 deny）/ `outside-surface`（判据面外 ⇒ 证据行，不判失败）。
+
+产物：`lib/write-attribution.sh`（引擎）+ `lib/production-writers.tsv`（写手清单 + 输出字母表，10 条）+
+`unit/write-attribution.sh`（115 断言）+ `acceptance/write-attribution.acceptance.test.sh`（红队，111 断言）+
+s4 4.P1 与 t1-04 4.1 改造（断言只增不减，原 `eq DIFFN 0` 在无外部/面外变更分支逐字保留）。
+
+## 两处设计被实测推翻（plan-reviewer 两轮 BLOCKER，均采纳）
+
+1. **单条记录正则不可用**：生产日志里写手自有记录仅 ~60%，其余是子进程转写（其中 4159 行是历史死循环爆发段）。
+   → 升级为**输出字母表**（多形态 ERE，逐条带实测证据）；修订后实测：字母表对三个生产日志**全量 0 行落表外**。
+2. **`contrib-data` 不是纯数据目录，是本机多进程共享草稿区**（24h 写面含 `drafts/`、`card-bodies/`、其它卡的 `s*.py` 产物…）
+   → 全树「逐字节一致」在该目录上结构性不可求值；引入判据面/面外分层 + 覆盖守卫（源码派生写点 ⊆ 清单模式 ∪ 三条声明式排除谓词）。
+3. 第二轮重审又抓出 `corroborated-*` 的假绿通道（仅「佐证写手在窗活跃」是存在性判据）→ 加**时序近邻**（|佐证记录 ts − 文件 mtime| ≤ 30s）
+   + 注入 marker 无条件短路（新增 reason `canary-marker`）。
+
+## QA 实证（lane）
+
+| 门 | 结果 |
+|---|---|
+| `gate.sh` | `GATE: PASS (78 files, 0 findings)` rc=0 |
+| `run.sh`（MARTIN_DIR=仓库根） | `{"total":782,"passed":782,"failed":0}` rc=0（基线 667 → +115 新单测） |
+| `approval/tests/run.sh` | `{"total":161,"passed":161,"failed":0}` rc=0 |
+| 红队独立验收套件 | 111/111 passed、failed=0、skipped=0、rc=0 |
+| 守卫 `diff-pin-canary` | 51/51 rc=0（C5 pin 计数 2/1/5、裸 diff 0、各 1 行 `-x` 在改造后仍成立） |
+| s4 lane 四模式（影子 contrib-data） | 无注入 `PASS 4.P1（suite=0，diff=0）`；`external-append` `PASS 4.P1（external=1，diff 行数=4）`；`canary-create`/`canary-append` 均 `ACCEPTANCE-FAIL[4.P1]`（suite=1） |
+
+**QA 抓出并已修复的 Critical**：`cleanup_inject` EXIT trap 对 append 两模式会 `rm -f` **注册日志本体**
+（等于删除整份生产日志，严重违反「生产树只读」）→ 清理面收窄为仅 `canary-create` 新建物；
+新增回归锚 `evidence/check-trap-fix.sh`（注入后 41→42 行、文件仍在，VERDICT OK）。
+
+## 改后仍红的真实原因（如实记录）
+
+1. **4.P3 存量红**（闭集外路径数=5）：属兄弟卡 t_b1fbc698 范围，本卡未动其闭集。
+2. **t1-04 整文件红**：兄弟件 `t1-01/02/03` 已退役缺失 ⇒ 4.1 前置 `_fail`；本卡负责的 4.1 归属断言行本身按同口径落地。
+3. **`diff-pin-canary-c3-ambient` 的 T5 在提交前必红**：其断言「三生产文件相对 HEAD 零改动」而本卡按卡要求改写了 s4/t1-04；提交后 `git diff HEAD` 为空即复绿。
+4. **生产主 checkout 实跑未执行（卡分工推迟给 worker）**：配方见 `production-recipe.md`（`wait-external` / `canary-create` / `canary-append` 原文命令 + 期望输出 + 落盘路径）。
+
+## 范围外发现（请 worker 转达）
+
+1. **⚠️ 跨卡事故**：本卡红队子代理的临时清理脚本 `pgrep -f` 模式误命中并**杀死了兄弟卡 t_b1fbc698 QA 的 3 个 s4 进程**
+   （PID 12233/12254、20947、57718 系）。**建议对该卡 QA 结论复核重跑**。教训：并发探测一律用命令位形态
+   `^bash .*s4-production-zero-touch\.acceptance\.sh`（`pgrep -f '[s]4-…'` 会命中他卡 `claude -p` 提示词文本）。
+2. `diff-pin-canary-c3-ambient` 的 T5 与 R2.P4 同族**守卫衰减**（基线锚 HEAD）：本卡交付后其 T5 依赖「改动已提交」才绿；
+   建议后续把基线改为锚定引入提交 sha。
+3. `.autopilot/knowledge/` 知识提取本轮**跳过**（`knowledge_extracted: skipped`）：该目录是指向**生产主 checkout** 的符号链接，
+   而此刻生产侧有其它卡在跑；为不干扰其工作树，本轮经验写在卡内 state.md（随本提交入库）与 `scripts/contrib/tests/README.md`。
+4. 判据面外数据文件（`sentinel.log`/`inventory.json`/`goods-metrics.json`/`kanban-flight-digest.json`/`launchd*.log`）
+   目前只落 `outside-surface` 证据行、不判失败；如需纳入判据面，需按带理由的显式动作扩展清单（覆盖守卫已提示该边界）。
