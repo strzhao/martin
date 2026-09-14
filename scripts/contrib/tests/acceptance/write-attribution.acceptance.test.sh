@@ -44,6 +44,15 @@
 #                                   （R-1：删除类路径短路先于一切，面外也判红）
 #   S19 混合窗口等值恒等式（R3）    同窗 4 external + 1 suite + 1 outside ⇒ external==4 ∧ suite==1 ∧ outside==1
 #                                   ∧ 三类和==total ∧ total==窗口差集文件数 ∧ unclassified==0（S-12，等值断言）
+#   T14 reason 闭集表自证（R4）      新令牌 `ownership-delete-ok` 归 external 侧 ∧ class↔reason 失配仍被检出
+#   T15 跨窗所有权链（R4/S-15）      写手删其**上一轮**所建、日志**窗口前字节区**具名、本窗活跃且无近邻记录的
+#                                   四件同 stem 产物 ⇒ 四件 external/ownership-delete-ok（owner=/owner_ts=/
+#                                   owner_log=/act_ts= 全量反查；两个 <TS> 两轮杀写死；窗口差集非空；
+#                                   D-β 前提自证 = 活跃记录与锚相距 > 30s ⇒ 放行只能来自 D-α）
+#   T16 D-α 负对照三态（R4/S-16）    ①marker 探针 ⇒ canary-marker（活跃记录落在锚 ±30s **内**仍判红
+#                                     ⇒ 路径短路先于一切）；②无 marker 无具名记录 ⇒ no-delete-corroboration
+#                                     （写手本窗活跃 ≠ 所有权）；③本窗伪造具名记录（回填旧 ts / 当前 ts）
+#                                     ⇒ 仍 no-delete-corroboration（记录在窗口**后**字节区 ⇒ 不构成所有权）
 #   M1/M2 mutation 抗性             库副本注入「一律 external」「未注册也放行」→ 同一检查器必转红
 #   E1–E5 影子端到端                canary-create / canary-append / external-append / canary-delete（三轮等量）/
 #                                   external-delete 真跑 s4；E6 = 影子树零残留守卫
@@ -51,7 +60,8 @@
 #                                   各恰 1 行 `-x /usr/bin/diff`；diff-pin-canary 套件仍 rc=0；无 skip 降级
 #   N1–N3 断言条数防删锚            s4 4.P1 段 / t1-04 4.1 段断言行数 ≥ 改造前基线（冻结常量）
 #
-# 所依据的谓词口径版本：state.md `## 验收场景` **第 2 轮定向重审后**的版本 + **第 3 轮删除类（R3）**，即
+# 所依据的谓词口径版本：state.md `## 验收场景` **第 2 轮定向重审后**的版本 + **第 3 轮删除类（R3）**
+#   + **第 4 轮跨窗所有权链（R4；`## R4 修复规格`，含「D-α 新字段一律追加在 `dir_mtime=` 之后」的契约修正）**，即
 #   ① 类别闭集 = 三值 {suite, external, outside-surface}（场景3.P1 / 4.P4 同口径）；
 #   ② reason 闭集含 `canary-marker`（新增内容含以 `S4-P1-` 开头的行 ⇒ 无条件 suite，先于佐证判定）；
 #   ③ `corroborated-*` 成立需两条同时满足：佐证日志在窗有合规记录 ∧ |佐证 ts − 变更文件 mtime| ≤ 30s；
@@ -65,6 +75,13 @@
 #      仍为 suite/`deleted`（既有语义逐字保留）；面外未登记路径的删除仍为 outside-surface（R-1 的 marker 短路除外）；
 #   ⑥ 注入旋钮 s4 侧 4→6（+`canary-delete` / `external-delete`，两段式 delete-plant/delete-fire：plant 先于快照、
 #      fire 在 run.sh 之后）；t1-04 旋钮闭集保持 4 值（未知值 fail-closed，属 per-file 语义，本套件不代其求值）。
+#   ⑦ 删除类（R4）：D-β（父目录锚 ±30s 近邻）**先判、逐字不变**；其后追加 **D-α 跨窗所有权链** —— 佐证日志中
+#      存在一条合规记录（匹配该日志字母表 ∧ 可提取 ts）其行文本**含被删物 stem**（stem = basename 去掉首个
+#      `.` 及其后；|stem| ≥ WA_OWNER_MIN_STEM = 8）∧ 该行**起始字节偏移 < 该日志在 before 快照中的 size**
+#      （= 窗口前字节区），且同一日志存在 ts ∈ [t0−120s, t1+120s] 的合规记录（写手本窗活跃）
+#      ⇒ external / `ownership-delete-ok`（reason 闭集 external 侧第 4 员）；否则 suite / `no-delete-corroboration`。
+#      D-α 证据行 / 失败行的新字段（`owner=` / `owner_ts=` / `owner_log=` / `act_ts=` / `act=`）一律**追加在
+#      `dir_mtime=` 之后** ⇒ 既有 `_ev_ts`（`%% dir_mtime=` 截断）与 `_ev_dirmtime`（贪婪）语义逐字不变。
 #
 # 纪律：
 #   - 每条断言硬失败（无 SKIP / 无 warn 降级 / 无 `|| true` 宽容 / 无条件放行）
@@ -152,7 +169,7 @@ _class_counts() { # <out> → "external suite outside unknown"（文件缺失 �
   awk '/^WA-CLASS / {
       r=""
       for (i=1;i<=NF;i++) { if (index($i,"reason=") == 1) r=substr($i,8) }
-      if (r=="registered-append-ok" || r=="corroborated-ok" || r=="corroborated-delete-ok") e++
+      if (r=="registered-append-ok" || r=="corroborated-ok" || r=="corroborated-delete-ok" || r=="ownership-delete-ok") e++
       else if (r=="not-append-only" || r=="inode-changed" || r=="alphabet-violation" || r=="empty-append" || r=="timestamp-out-of-window" || r=="created-unallowed" || r=="deleted" || r=="no-corroboration" || r=="canary-marker" || r=="no-delete-corroboration") s++
       else if (r=="outside-surface") o++
       else x++
@@ -206,7 +223,7 @@ _identity_report() { # <stdout-file> <out-file>
   awk '/^WA-CLASS / {
       cat=$2; r=""; p=""
       for (i=1;i<=NF;i++) { if (index($i,"reason=")==1) r=substr($i,8); if (index($i,"path=")==1) p=substr($i,6) }
-      if (r=="registered-append-ok" || r=="corroborated-ok" || r=="corroborated-delete-ok") expc="external"
+      if (r=="registered-append-ok" || r=="corroborated-ok" || r=="corroborated-delete-ok" || r=="ownership-delete-ok") expc="external"
       else if (r=="outside-surface") expc="outside"
       else if (r=="not-append-only" || r=="inode-changed" || r=="alphabet-violation" || r=="empty-append" || r=="timestamp-out-of-window" || r=="created-unallowed" || r=="deleted" || r=="no-corroboration" || r=="canary-marker" || r=="no-delete-corroboration") expc="suite"
       else expc="UNKNOWN"
@@ -820,6 +837,349 @@ assert_eq "$(_expect_report "$R_OUT" "$DEL_OUT" "outside-surface")" "" "S19 面�
 assert_eq "$(_expect_report "$R_OUT" "$DEL_SUITE_PROBE" "canary-marker|created-unallowed|no-corroboration")" "" \
   "S19 套件面内写入归 suite（reason ∈ suite 闭集；见 CONTRACT_AMBIGUOUS 10)）"
 
+
+# =============================================================================
+# R4 面（D-α 跨窗所有权链）合成树
+#   依据：state.md `## R4 修复规格`「修法 D-α」/「契约规约（增量部分）」/「验收谓词 S-15、S-16」。
+#   与 R3 删除面（DEL_*）互不复用：R3 的放行依据 = 父目录锚 ±30s 近邻（D-β）；R4 在其后**追加**一条：
+#     **窗口前字节区**的具名所有权记录（D-α）∧ 本窗写手活跃。两条判据正交，须独立构造、独立取证。
+#   生产形态镜像（R4 规格「缺陷事实」，窗口 11:07:34–11:09:18，main=e329c07）：四件同 stem 由写手
+#     **上一轮**建立（notify.log:1722 具名）⇒ 本窗内被写手自行消费清理（真 rm 四件）⇒ 写手本窗另有
+#     活跃记录（11:08:39）；删除与最近记录相距 39s（> 30s）⇒ D-β 不成立 ⇒ 旧引擎兜 suite（每小时假红
+#     一次，正是本卡要消灭的形态）。
+#   构造纪律：
+#     · 所有权记录写在 **before 快照之前** ⇒ 其起始字节偏移 < 该日志在 before 快照中的 size（窗口前字节区）
+#     · 活跃记录写在 **before 快照之后**（后区），镜像生产「本窗在活动」
+#     · 锚 = 真 rm 产生的 pending 目录 mtime（与 R3 面同纪律：不 touch -t 伪造锚）
+#     · 反空转：四件必须在 before 快照中（否则「以为测了其实没测」）；两个不同 <TS> 两轮
+# =============================================================================
+R4_DIR="contrib-data/pending"
+R4_LOG="contrib-data/logs/notify.log"
+R4_TS_A="20260914-100442"          # worker 生产实测四件的 <TS>（R4 缺陷窗口）
+R4_TS_B="20260914-110839"          # 第二个 <TS>（S-15 反空转：杀写死文件名/时间戳/常量）
+R4_STEM_A="digest-$R4_TS_A"
+R4_STEM_B="digest-$R4_TS_B"
+R4_DECOY="$R4_DIR/digest-20260914-000000.json"   # 常驻未变更物（目录非空 + 阴性对照：无变更 ⇒ 无行）
+R4_OWN_LAG=3600                    # 所有权记录时刻 = 锚 − 1h（远离近邻带 ⇒ 逐轮稳健，不随运行时刻漂移）
+R4_REG="$WA_SB/registry-r4.tsv"
+{
+  printf '%s\tnotify\tappend-records\t%s\t:none\n' "$R4_LOG" "$ALPHA_NOTIFY"
+  printf '%s/*\tnotify\tcorroborated-create\t:none\t%s\n' "$R4_DIR" "$R4_LOG"
+  printf '%s/*\tnotify\tcorroborated-delete\t:none\t%s\n' "$R4_DIR" "$R4_LOG"
+} > "$R4_REG"
+
+# —— 独立口径助手（不读实现、不复用引擎内部）—————
+_snap_size() { # <snapshot> <relpath> → 第 2 列 size（按第 5 列精确等值；无该行 ⇒ 空）
+  awk -v p="$2" '$5 == p { print $2; exit }' "$1"
+}
+_log_first_off() { # <logfile> <needle> → 首个含 needle 行的**起始字节偏移**（无 ⇒ 空；LC_ALL=C 保字节语义）
+  LC_ALL=C awk -v n="$2" '
+    BEGIN { off = 0 }
+    { if (!found && index($0, n) > 0) { print off; found = 1 } }
+    { off += length($0) + 1 }' "$1"
+}
+_to_epoch() { # <"YYYY-MM-DD HH:MM:SS"> → epoch（解析失败 ⇒ 空）
+  "$PIN_DATE" -j -f '%Y-%m-%d %H:%M:%S' "$1" '+%s' 2>/dev/null
+}
+_ev_class() { # <WA-CLASS 行> → class 列（第 2 列）
+  printf '%s\n' "$1" | awk '/^WA-CLASS /{ print $2; exit }'
+}
+_ev_field() { # <线> <key> → 该 k=v 字段值（值可含空格；以「下一个已知 k=」为界；无 ⇒ 空）
+  printf '%s\n' "$1" | awk -v k="$2" '
+    BEGIN { nk = split("writer bytes_added records Δt ts owner owner_ts owner_log act_ts act dir_mtime marker reason path", K, " ") }
+    {
+      cur = ""; val = ""
+      for (i = 1; i <= NF; i++) {
+        t = $i; isk = 0; kk = ""
+        p = index(t, "=")
+        if (p > 1) {
+          cand = substr(t, 1, p - 1)
+          for (j = 1; j <= nk; j++) { if (K[j] == cand) { isk = 1; kk = cand } }
+        }
+        if (isk) {
+          if (cur == k) { print val; exit }
+          cur = kk; val = substr(t, p + 1)
+        } else if (cur == k) {
+          val = val " " t
+        }
+      }
+      if (cur == k) { print val; exit }
+    }'
+}
+
+_r4_before() { # <tag> <stem> [plant-relpath...] → R4 合成根（四件 + 窗口前具名所有权记录）+ before 快照
+  local tag="$1" stem="$2" rc p own_ep
+  shift 2
+  SYN_ROOT="$WA_SB/syn.$tag"
+  mkdir -p "$SYN_ROOT/$R4_DIR" "$SYN_ROOT/contrib-data/logs" "$SYN_ROOT/contrib-data/scratch"
+  # ① 窗口前字节区：写手「上一轮」建该 stem 的**具名**记录（行文本含 stem；ts 唯一，供反查与字节区断言）
+  own_ep="$(( $("$PIN_DATE" +%s) - R4_OWN_LAG ))"
+  R4_OWN_TS="$("$PIN_DATE" -r "$own_ep" '+%Y-%m-%d %H:%M:%S')"
+  R4_OWN_TOUCH="$("$PIN_DATE" -r "$own_ep" '+%Y%m%d%H%M.%S')"
+  printf '[%s] notify: digest 卡已建 t_shadow-r4（snapshot=%s/%s.json，idem=rq-shadow）\n' \
+    "$R4_OWN_TS" "$R4_DIR" "$stem" > "$SYN_ROOT/$R4_LOG"
+  printf '[%s] notify: 批次具名 %s 四件（k3）\n' "$R4_OWN_TS" "$stem" >> "$SYN_ROOT/$R4_LOG"
+  # 窗口外 seed（阴性背景：既不在窗 ⇒ 不构成活跃，也不构成近邻）
+  printf '[2026-01-01 00:00:00] notify: seed-out-of-window\n' >> "$SYN_ROOT/$R4_LOG"
+  # ② 四件同 stem 真落盘（plant 先于 before 快照 ⇒ 窗口差集非空的前提）；mtime 对齐所有权记录（= 上一轮产物）
+  printf '{"digest":"%s"}\n' "$stem" > "$SYN_ROOT/$R4_DIR/$stem.json"
+  printf 'body\n' > "$SYN_ROOT/$R4_DIR/$stem.body.md"
+  printf '{"card":1}\n' > "$SYN_ROOT/$R4_DIR/$stem.card.json"
+  printf 'digest\n' > "$SYN_ROOT/$R4_DIR/$stem.digest.md"
+  touch -t "$R4_OWN_TOUCH" "$SYN_ROOT/$R4_DIR/$stem.json" "$SYN_ROOT/$R4_DIR/$stem.body.md" \
+    "$SYN_ROOT/$R4_DIR/$stem.card.json" "$SYN_ROOT/$R4_DIR/$stem.digest.md"
+  printf '{"decoy":true}\n' > "$SYN_ROOT/$R4_DECOY"
+  printf 'draft\n' > "$SYN_ROOT/contrib-data/scratch/draft.md"
+  for p in "$@"; do
+    mkdir -p "$SYN_ROOT/$(dirname "$p")"
+    printf 'probe-planted\n' > "$SYN_ROOT/$p"
+  done
+  SNAP_B="$WA_SB/$tag.before.snap"
+  SNAP_A="$WA_SB/$tag.after.snap"
+  _wa_call wa_snapshot "$SYN_ROOT" "$SNAP_B" > "$WA_SB/$tag.snapb.out" 2>&1
+  rc=$?
+  [ "$rc" = "0" ] || _fail "前置 wa_snapshot(before) rc=0" "rc=$rc tag=${tag}（R4 合成树）"
+  [ -s "$SNAP_B" ] || _fail "前置 快照非空" "tag=${tag}；快照为空 ${SNAP_B}"
+  # 反空转前置：before 快照必须含四件（S-15「窗口差集非空」的机械前提）
+  for p in "$R4_DIR/$stem.json" "$R4_DIR/$stem.body.md" "$R4_DIR/$stem.card.json" "$R4_DIR/$stem.digest.md"; do
+    [ -n "$(_snap_size "$SNAP_B" "$p")" ] || _fail "前置 before 快照含 plant 物" "缺失 ${p}（窗口差集为空 ⇒ 用例空转）"
+  done
+}
+
+_r4_rm() { # <relpath...> → 真 rm（kind=D 真成立；父目录 mtime 随之更新为删除瞬间 = 锚）
+  local p
+  for p in "$@"; do
+    rm -f "$SYN_ROOT/$p"
+    [ ! -e "$SYN_ROOT/$p" ] || _fail "前置 真 rm 生效" "path=${p} 仍存在（kind=D 与锚均不成立）"
+  done
+}
+_r4_anchor_now() { # → R4_ANCHOR = 实测 pending 目录 mtime（真 rm 产生；非 touch -t 伪造）
+  R4_ANCHOR="$("$PIN_STAT" -f %m "$SYN_ROOT/$R4_DIR")"
+  case "$R4_ANCHOR" in
+    ''|*[!0-9]*) _fail "前置 目录锚为十进制 epoch" "stat -f %m 实得 [${R4_ANCHOR}]" ;;
+  esac
+}
+_r4_activity() { # <offset-s> → 本窗活跃记录（合规形态；写手本窗活跃的机械构造）
+  R4_ACT_TS="$("$PIN_DATE" -r "$((R4_ANCHOR - $1))" '+%Y-%m-%d %H:%M:%S')"
+  printf '[%s] notify: 轮次活跃（本窗 write-after）\n' "$R4_ACT_TS" >> "$SYN_ROOT/$R4_LOG"
+}
+_r4_classify() { # <tag> [registry] → after 快照 + classify（窗口 = [锚−300, 锚]）
+  _syn_after "$1" "$((R4_ANCHOR - 300))" "$R4_ANCHOR" "${2:-$R4_REG}"
+}
+
+# 组合断言：D-α 证据行全字段反查（<tag> <stem> <anchor> <lo> <hi> <path>...）
+_r4_ev_asserts() {
+  local tag="$1" stem="$2" anchor="$3" lo="$4" hi="$5"
+  shift 5
+  local p line size off owner owner_ts owner_log act_ts actep dm pre inb
+  size="$(_snap_size "$SNAP_B" "$R4_LOG")"   # 窗口前字节区上界（快照 size 列；独立口径，非引擎自报）
+  for p in "$@"; do
+    line="$(_line_for_path "$R_OUT" "$p")"
+    assert_ne "$line" "" "${tag} 证据行存在 path=${p}"
+    assert_eq "$(_ev_class "$line")" "external" "${tag} class==external path=${p}"
+    assert_eq "$(_ev_field "$line" reason)" "ownership-delete-ok" \
+      "${tag} reason==ownership-delete-ok path=${p}"
+    owner="$(_ev_field "$line" owner)"
+    assert_eq "$owner" "$stem" "${tag} owner= == 四件共同 stem path=${p} 实得 [${owner}]"
+    owner_ts="$(_ev_field "$line" owner_ts)"
+    assert_ne "$owner_ts" "" "${tag} owner_ts= 非空 path=${p}"
+    off="$(_log_first_off "$SYN_ROOT/$R4_LOG" "$owner_ts")"
+    assert_ne "$off" "" "${tag} owner_ts= 在写手日志中真实存在（S-02 反查）path=${p} ts=[${owner_ts}]"
+    if [ -n "$off" ] && [ -n "$size" ] && [ "$off" -lt "$size" ]; then pre=1; else pre=0; fi
+    assert_eq "$pre" "1" "${tag} 所有权记录位于窗口前字节区 path=${p} 偏移=${off} before_size=${size}"
+    owner_log="$(_ev_field "$line" owner_log)"
+    assert_eq "$owner_log" "$R4_LOG" "${tag} owner_log= == 佐证日志 path=${p} 实得 [${owner_log}]"
+    act_ts="$(_ev_field "$line" act_ts)"
+    actep="$(_to_epoch "$act_ts")"
+    if [ -n "$actep" ] && [ -n "$lo" ] && [ -n "$hi" ] && [ "$actep" -ge "$lo" ] && [ "$actep" -le "$hi" ]; then inb=1; else inb=0; fi
+    assert_eq "$inb" "1" "${tag} act_ts= 落在窗口松弛带 path=${p} lo=${lo} hi=${hi} 实得 [${act_ts}]"
+    dm="$(_ev_dirmtime "$line")"
+    case "$dm" in
+      ''|*[!0-9]*) assert_eq "nondecimal" "decimal" "${tag} dir_mtime= 十进制 path=${p} 实得 [${dm}]" ;;
+      *) assert_eq "$dm" "$anchor" "${tag} dir_mtime == 实测目录锚 path=${p} 期望 ${anchor}" ;;
+    esac
+  done
+}
+
+# =============================================================================
+t_case "T14 reason 闭集表自证：新令牌 ownership-delete-ok 归 external 侧 ∧ class↔reason 失配仍被检出"
+printf 'WA total=1 external=1 suite=0 outside=0 unclassified=0 diff_lines=2\n' > "$WA_SB/t14.ok.sum"
+printf 'WA-CLASS external path=contrib-data/pending/digest-20260914-100442.json reason=ownership-delete-ok writer=notify Δt=9s ts=2026-09-14 11:08:39 dir_mtime=1789355358 owner=digest-20260914-100442 owner_ts=2026-09-14 10:04:43 owner_log=contrib-data/logs/notify.log act_ts=2026-09-14 11:08:39\n' > "$WA_SB/t14.ok.cls"
+assert_eq "$(_identity_report "$WA_SB/t14.ok.sum" "$WA_SB/t14.ok.cls")" "" \
+  "T14 新令牌被闭集表接纳为 external 侧（表未同步更新 ⇒ 本断言转红）"
+printf 'WA total=1 external=0 suite=1 outside=0 unclassified=0 diff_lines=2\n' > "$WA_SB/t14.bad.sum"
+printf 'WA-CLASS suite path=contrib-data/pending/digest-20260914-100442.json reason=ownership-delete-ok writer=notify dir_mtime=1789355358\n' > "$WA_SB/t14.bad.cls"
+T14_BAD="$(_identity_report "$WA_SB/t14.bad.sum" "$WA_SB/t14.bad.cls")"
+assert_ne "$T14_BAD" "" "T14 class↔reason 失配（suite 侧出现 external 令牌）必须被检出"
+assert_contains "$T14_BAD" "class/reason 失配" "T14 违规类别 = class/reason 失配（非其它）"
+printf 'WA total=1 external=1 suite=0 outside=0 unclassified=0 diff_lines=2\n' > "$WA_SB/t14.unk.sum"
+printf 'WA-CLASS external path=contrib-data/pending/x.json reason=ownership-delete-okX writer=notify\n' > "$WA_SB/t14.unk.cls"
+assert_ne "$(_identity_report "$WA_SB/t14.unk.sum" "$WA_SB/t14.unk.cls")" "" \
+  "T14 拼写变体令牌必须被检出（闭集不接受近似令牌）"
+
+# =============================================================================
+t_case "T15 跨窗所有权链（D-α / S-15）：写手删其上一轮所建、日志具名、无近邻在窗记录 ⇒ external/ownership-delete-ok"
+# 轮 A：worker 生产实测同形四件（digest-20260914-100442.{json,body.md,card.json,digest.md}）
+#       活跃记录距锚 60s（> 30 ⇒ D-β 必不成立）⇒ 放行只能来自 D-α
+_r4_before t15a "$R4_STEM_A"
+_r4_rm "$R4_DIR/$R4_STEM_A.json" "$R4_DIR/$R4_STEM_A.body.md" "$R4_DIR/$R4_STEM_A.card.json" "$R4_DIR/$R4_STEM_A.digest.md"
+_r4_anchor_now
+T15A_ANCHOR="$R4_ANCHOR"
+_r4_activity 60
+T15A_ACT="$R4_ACT_TS"
+_r4_classify t15a
+_case_asserts "T15a" "0" \
+  "$R4_DIR/$R4_STEM_A.json" "ownership-delete-ok" \
+  "$R4_DIR/$R4_STEM_A.body.md" "ownership-delete-ok" \
+  "$R4_DIR/$R4_STEM_A.card.json" "ownership-delete-ok" \
+  "$R4_DIR/$R4_STEM_A.digest.md" "ownership-delete-ok" \
+  "$R4_LOG" "registered-append-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "T15a suite==0（R4 生产形态必须全归 external；每小时假红即此断言转红）"
+assert_eq "$(_wa_sum "$R_SO" external)" "5" "T15a external==5（四件删除 + 写手本窗日志追加）"
+assert_eq "$(_wa_sum "$R_SO" outside)" "0" "T15a outside==0"
+assert_eq "$(_wa_sum "$R_SO" unclassified)" "0" "T15a unclassified==0"
+T15A_DIFF="$(_diffset_n "$SNAP_B" "$SNAP_A")"
+assert_eq "$T15A_DIFF" "5" "T15a 独立口径窗口差集 == 5（四删 + 日志改写；反空转：窗口差集非空）"
+assert_eq "$(_wa_sum "$R_SO" total)" "$T15A_DIFF" "T15a total == 窗口差集文件数（等值断言，非 >=）"
+assert_eq "$(_to_epoch "$T15A_ACT")" "$((T15A_ANCHOR - 60))" \
+  "T15a D-β 前提自证：活跃记录 ts 与锚相距恰 60s（> 30 ⇒ 近邻不成立，放行只能来自 D-α）"
+_r4_ev_asserts "T15a" "$R4_STEM_A" "$T15A_ANCHOR" "$((T15A_ANCHOR - 420))" "$((T15A_ANCHOR + 120))" \
+  "$R4_DIR/$R4_STEM_A.json" "$R4_DIR/$R4_STEM_A.body.md" "$R4_DIR/$R4_STEM_A.card.json" "$R4_DIR/$R4_STEM_A.digest.md"
+
+# 轮 B（S-15 反空转）：第二个 <TS> + 不同活跃偏移（45s）⇒ 同判 external（杀写死文件名/时间戳/常量）
+_r4_before t15b "$R4_STEM_B"
+_r4_rm "$R4_DIR/$R4_STEM_B.json" "$R4_DIR/$R4_STEM_B.body.md" "$R4_DIR/$R4_STEM_B.card.json" "$R4_DIR/$R4_STEM_B.digest.md"
+_r4_anchor_now
+T15B_ANCHOR="$R4_ANCHOR"
+_r4_activity 45
+T15B_ACT="$R4_ACT_TS"
+_r4_classify t15b
+_case_asserts "T15b" "0" \
+  "$R4_DIR/$R4_STEM_B.json" "ownership-delete-ok" \
+  "$R4_DIR/$R4_STEM_B.body.md" "ownership-delete-ok" \
+  "$R4_DIR/$R4_STEM_B.card.json" "ownership-delete-ok" \
+  "$R4_DIR/$R4_STEM_B.digest.md" "ownership-delete-ok" \
+  "$R4_LOG" "registered-append-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "T15b suite==0（第二 <TS> 轮）"
+assert_eq "$(_wa_sum "$R_SO" external)" "5" "T15b external==5（四件删除 + 写手本窗日志追加）"
+T15B_DIFF="$(_diffset_n "$SNAP_B" "$SNAP_A")"
+assert_eq "$T15B_DIFF" "5" "T15b 独立口径窗口差集 == 5（反空转：窗口差集非空）"
+assert_eq "$(_wa_sum "$R_SO" total)" "$T15B_DIFF" "T15b total == 窗口差集文件数（等值断言）"
+assert_eq "$(_to_epoch "$T15B_ACT")" "$((T15B_ANCHOR - 45))" \
+  "T15b D-β 前提自证：活跃记录 ts 与锚相距恰 45s（> 30 ⇒ 近邻不成立）"
+_r4_ev_asserts "T15b" "$R4_STEM_B" "$T15B_ANCHOR" "$((T15B_ANCHOR - 420))" "$((T15B_ANCHOR + 120))" \
+  "$R4_DIR/$R4_STEM_B.json" "$R4_DIR/$R4_STEM_B.body.md" "$R4_DIR/$R4_STEM_B.card.json" "$R4_DIR/$R4_STEM_B.digest.md"
+
+# =============================================================================
+t_case "T16 套件躲进写手活动窗的机械区分（D-α 负对照三态 / S-16）：三态全部判 suite"
+R4_NONCE="$( "$PIN_DATE" +%s )-$$"
+R4_PROBE_M_STEM="S4-P1-del-$R4_NONCE"
+R4_PROBE_M="$R4_DIR/$R4_PROBE_M_STEM.json"          # ① marker 探针（basename 以 S4-P1- 开头）
+R4_PROBE_N_STEM="probe-del-$R4_NONCE"
+R4_PROBE_N="$R4_DIR/$R4_PROBE_N_STEM.json"          # ②③ 无 marker 探针（stem 长度 ≥ 8 ⇒ 所有权规则适用）
+
+# ① marker 探针：本窗植入 + 本窗真删 + 写手本窗活跃（活跃记录落在锚 ±30s **内** ⇒ 近邻本会成立）
+#    ⇒ 判红只能来自 marker 路径短路「先于一切」（R-1）；任何「先判佐证」的排序都会让本态错误变绿
+_r4_before t16a "$R4_STEM_A" "$R4_PROBE_M"
+_r4_rm "$R4_PROBE_M"
+_r4_anchor_now
+T16A_ANCHOR="$R4_ANCHOR"
+_r4_activity 9
+T16A_ACT="$R4_ACT_TS"
+_r4_classify t16a
+T16A_LINE="$(_line_for_path "$R_OUT" "$R4_PROBE_M")"
+_case_asserts "T16a" "0" "$R4_PROBE_M" "canary-marker" "$R4_LOG" "registered-append-ok"
+assert_eq "$(_ev_class "$T16A_LINE")" "suite" "T16a marker 探针 class==suite（S-16①：路径自证面优先，非 external）"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "T16a suite==1（仅探针；近邻本会成立却被短路拦住 ⇒ 排序正确）"
+assert_eq "$(_wa_sum "$R_SO" external)" "1" "T16a external==1（写手本窗追加仍归 external，未被 marker 短路吞并）"
+assert_eq "$(_wa_sum "$R_SO" total)" "2" "T16a total==2（探针 + 日志改写）"
+# 前提自证（防空转）：活跃记录距锚 9s（≤30s）⇒ D-β 近邻**本会成立**，故本态判红确由 marker 短路先占（排序正确性）
+T16A_ACT_EP="$(_to_epoch "$T16A_ACT")"
+assert_ne "$T16A_ACT_EP" "" "T16a 前置自证：活跃记录 ts 可解析（${T16A_ACT}）"
+T16A_D="$(( T16A_ANCHOR - T16A_ACT_EP ))"
+if [ "$T16A_D" -ge -30 ] && [ "$T16A_D" -le 30 ]; then
+  _pass "T16a 前置自证：活跃记录落在锚 ±30s 内（Δ=${T16A_D}s）⇒ 近邻本会成立"
+else
+  _fail "T16a 前置自证：活跃记录落在锚 ±30s 内" "Δ=${T16A_D}s（构造失效）"
+fi
+
+# ② 无 marker 探针：本窗植入 + 本窗真删 + 写手本窗活跃（活跃记录距锚 60s > 30 ⇒ 近邻不成立）
+#    + 日志中**无任何具名该物 stem 的记录** ⇒ 所有权不成立 ⇒ suite/no-delete-corroboration
+_r4_before t16b "$R4_STEM_A" "$R4_PROBE_N"
+_r4_rm "$R4_PROBE_N"
+_r4_anchor_now
+T16B_ANCHOR="$R4_ANCHOR"
+_r4_activity 60
+_r4_classify t16b
+T16B_LINE="$(_line_for_path "$R_OUT" "$R4_PROBE_N")"
+_case_asserts "T16b" "0" "$R4_PROBE_N" "no-delete-corroboration" "$R4_LOG" "registered-append-ok"
+assert_eq "$(_ev_class "$T16B_LINE")" "suite" "T16b 无 marker 探针 class==suite（S-16②：写手活跃 ≠ 所有权）"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "T16b suite==1（活跃在窗但无具名所有权记录 ⇒ 不放行）"
+assert_eq "$(_wa_sum "$R_SO" external)" "1" "T16b external==1（仅写手日志追加）"
+assert_eq "$(_ev_dirmtime "$T16B_LINE")" "$T16B_ANCHOR" "T16b 失败行 dir_mtime == 实测锚（锚有值、依据缺席）"
+assert_ne "$(_ev_field "$T16B_LINE" owner)" "" "T16b 失败行带 owner= 审计字段（R4 契约：字段只增）"
+T16B_ACT="$(_ev_field "$T16B_LINE" act)"
+assert_ne "$T16B_ACT" "" "T16b 失败行带 act= 审计字段（R4 契约：字段只增）"
+assert_ne "$T16B_ACT" "none" "T16b 失败行 act= 为实际在窗时刻（活跃确已被观测）"
+
+# ③a 本窗伪造具名所有权记录（回填窗口前**旧时间戳**）：记录写在 before 快照**之后** ⇒ 窗口后字节区
+#     ⇒ 探针仍判 suite；且该追加自身被既有 append 分支判红（块内无在窗记录 ⇒ timestamp-out-of-window）
+_r4_before t16c "$R4_STEM_A" "$R4_PROBE_N"
+# 伪造 ts 取「所有权记录 ts − 60s」：仍远在窗口带外，且**与所有权记录 ts 不撞车**
+# （撞车会让「窗口后字节区」的自证命中第 1 行的原记录 ⇒ 自证假通过 —— 0414 首跑即抓到该测试侧缺陷）
+T16C_FAKE_TS="$("$PIN_DATE" -r "$(( $(_to_epoch "$R4_OWN_TS") - 60 ))" '+%Y-%m-%d %H:%M:%S')"
+printf '[%s] notify: digest 卡已建 t_forge-c（snapshot=%s/%s，idem=rq-forge）\n' \
+  "$T16C_FAKE_TS" "$R4_DIR" "$R4_PROBE_N" >> "$SYN_ROOT/$R4_LOG"
+_r4_rm "$R4_PROBE_N"
+_r4_anchor_now
+T16C_ANCHOR="$R4_ANCHOR"
+_r4_classify t16c
+T16C_LINE="$(_line_for_path "$R_OUT" "$R4_PROBE_N")"
+_case_asserts "T16c" "0" "$R4_PROBE_N" "no-delete-corroboration" "$R4_LOG" "timestamp-out-of-window"
+assert_eq "$(_ev_class "$T16C_LINE")" "suite" "T16c 回填旧 ts 的伪造记录不得使探针变绿（S-16③ 硬断言：非 external）"
+assert_eq "$(_ev_dirmtime "$T16C_LINE")" "$T16C_ANCHOR" "T16c 失败行 dir_mtime == 实测锚（锚有值、依据缺席）"
+assert_eq "$(_wa_sum "$R_SO" suite)" "2" "T16c suite==2（探针 + 伪造追加自身；追加自身被判红）"
+assert_eq "$(_wa_sum "$R_SO" external)" "0" "T16c external==0（无任何在窗合规记录）"
+T16C_BEFORE_SIZE="$(_snap_size "$SNAP_B" "$R4_LOG")"
+T16C_FAKE_OFF="$(_log_first_off "$SYN_ROOT/$R4_LOG" "$T16C_FAKE_TS")"
+assert_ne "$T16C_FAKE_TS" "$R4_OWN_TS" "T16c 前置自证：伪造记录 ts 与所有权记录 ts 不撞车（防字节区自证命题错位）"
+assert_ne "$T16C_FAKE_OFF" "" "T16c 前置自证：伪造记录确已写入日志（非空转）"
+if [ -n "$T16C_FAKE_OFF" ] && [ -n "$T16C_BEFORE_SIZE" ] && [ "$T16C_FAKE_OFF" -ge "$T16C_BEFORE_SIZE" ]; then T16C_POST=1; else T16C_POST=0; fi
+assert_eq "$T16C_POST" "1" "T16c 伪造记录位于窗口后字节区（偏移 ${T16C_FAKE_OFF} ≥ before_size ${T16C_BEFORE_SIZE}）⇒ 按定义不构成所有权"
+assert_eq "$(_ev_field "$T16C_LINE" act)" "none" "T16c 失败行 act=none（无在窗记录 ⇒ 活跃亦不成立）"
+
+# ③b 本窗伪造具名记录（**当前**时间戳、合规形态）：记录在窗 ⇒ 活跃成立；但与锚相距 ≥ 31s（构造间隔）
+#     ⇒ 近邻不成立 ⇒ 判红只能来自 D-α 的字节区判据（记录在窗口后字节区 ⇒ 不构成所有权）
+_r4_before t16d "$R4_STEM_A" "$R4_PROBE_N"
+T16D_FAKE_TS="$("$PIN_DATE" '+%Y-%m-%d %H:%M:%S')"
+printf '[%s] notify: digest 卡已建 t_forge-d（snapshot=%s/%s，idem=rq-forge）\n' \
+  "$T16D_FAKE_TS" "$R4_DIR" "$R4_PROBE_N" >> "$SYN_ROOT/$R4_LOG"
+sleep 33
+_r4_rm "$R4_PROBE_N"
+_r4_anchor_now
+T16D_ANCHOR="$R4_ANCHOR"
+_r4_classify t16d
+T16D_LINE="$(_line_for_path "$R_OUT" "$R4_PROBE_N")"
+_case_asserts "T16d" "0" "$R4_PROBE_N" "no-delete-corroboration" "$R4_LOG" "registered-append-ok"
+assert_eq "$(_ev_class "$T16D_LINE")" "suite" "T16d 本窗伪造具名记录（当前 ts）不得使探针变绿（S-16③ 硬断言：非 external）"
+assert_eq "$(_ev_dirmtime "$T16D_LINE")" "$T16D_ANCHOR" "T16d 失败行 dir_mtime == 实测锚（锚有值、依据缺席）"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "T16d suite==1（仅探针；伪造追加自身合规且在窗 ⇒ 归 external）"
+assert_eq "$(_wa_sum "$R_SO" external)" "1" "T16d external==1（= 伪造追加自身 registered-append-ok；删除面未被冒领）"
+T16D_DT="$(_ev_field "$T16D_LINE" Δt)"; T16D_DT="${T16D_DT%s}"
+case "$T16D_DT" in
+  ''|*[!0-9]*) T16D_DT_OK=0 ;;
+  *) if [ "$T16D_DT" -ge 31 ]; then T16D_DT_OK=1; else T16D_DT_OK=0; fi ;;
+esac
+assert_eq "$T16D_DT_OK" "1" "T16d 失败行 Δt=${T16D_DT}s ≥ 31（近邻不成立的自证；V1 检测器）"
+T16D_BEFORE_SIZE="$(_snap_size "$SNAP_B" "$R4_LOG")"
+assert_ne "$T16D_FAKE_TS" "$R4_OWN_TS" "T16d 前置自证：伪造记录 ts 与所有权记录 ts 不撞车（防字节区自证命题错位）"
+T16D_FAKE_OFF="$(_log_first_off "$SYN_ROOT/$R4_LOG" "$T16D_FAKE_TS")"
+if [ -n "$T16D_FAKE_OFF" ] && [ -n "$T16D_BEFORE_SIZE" ] && [ "$T16D_FAKE_OFF" -ge "$T16D_BEFORE_SIZE" ]; then T16D_POST=1; else T16D_POST=0; fi
+assert_eq "$T16D_POST" "1" "T16d 前置自证：伪造记录位于窗口后字节区（偏移 ${T16D_FAKE_OFF} ≥ before_size ${T16D_BEFORE_SIZE}）"
+T16D_ACT="$(_ev_field "$T16D_LINE" act)"
+assert_ne "$T16D_ACT" "" "T16d 失败行带 act= 审计字段（R4 契约：字段只增）"
+assert_ne "$T16D_ACT" "none" "T16d 失败行 act= 为实际在窗时刻（活跃成立但所有权不成立 ⇒ 判红）"
+
 # =============================================================================
 t_case "M1 mutation 抗性：库副本注入「一律 external」→ 同一形态结果必与正确版不同"
 MUT_LIB="$WA_SB/mut-lib.sh"
@@ -1277,4 +1637,18 @@ t_finish
 # 11) 删除类注入行的透传：`## 契约规约` 只声明 `wa_inject` 自身的 stdout 形态（`WA-INJECT mode=delete-plant|delete-fire …`），
 #     未声明 s4 是否把两行透传到自身输出。本套件沿用 E1 的既有先例（`WA-INJECT` 可在 s4 输出中转储）并对
 #     plant/fire 两行分别断言；若不透传 ⇒ 红（审计链缺口）而非静默放宽。
+# 12) D-α 新字段的落点：R4 契约修正为「新字段一律**追加在 `dir_mtime=` 之后**」。本套件对旧字段沿用既有
+#     `_ev_ts`（`%% dir_mtime=` 截断）/ `_ev_dirmtime`（贪婪）提取器，对新字段另立 `_ev_field`（按「已知键=
+#     值以下一个已知键为界」切分）——不硬编码新字段位置，故对「追加在 dir_mtime 之后」与「插在中间」两种
+#     排列同判；若实现把新字段插在 `ts=` 与 `dir_mtime=` 之间，既有 `_ev_ts` 的 S15/S16 断言会转红并暴露。
+# 13) 失败行的 `owner=<stem|none>` / `act=<ts|none>`：`## 契约规约` 只声明字段存在与「字段只增」，未钉死
+#     何时取 `none`（`wa__owner_prior` 契约又称失败时 `WA_OWN_STEM` 仍置实际 stem，未说明是否落盘）。
+#     本套件对**存在性**硬断言，对 `act=` 按**构造前提**断言（本窗确无/确有在窗记录），不对 `owner=` 的
+#     stem/none 二值择一断言（不推测未声明的落盘口径）。
+# 14) D-α 的「活跃」扫描面：契约写「同一佐证日志中存在 ts ∈ [t0−120s, t1+120s] 的合规记录」，未声明是
+#     全文扫描还是仅追加块。本套件的三态构造**让两种读法同判**（活跃记录在 before 快照前/后各有覆盖；
+#     ③b 的伪造记录自身即落在窗），故结论不依赖该口径分歧。
+# 15) ③b 的真实时间间隔：伪造记录 ts 与「锚」（= 真 rm 时刻）必须相距 > 30s，D-β 才不成立。本套件用
+#     `sleep 33` 造**真实**间隔（不给目录 touch -t 伪造锚），故 T16d 固有 ~33s 墙钟成本；`Δt ≥ 31` 断言
+#     即该前提的机械自证（实现未落 Δt 字段 ⇒ 转红 = 契约缺口，不属放宽）。
 # =============================================================================

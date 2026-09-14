@@ -22,6 +22,9 @@
 #   删除时点锚 删除不留内容、也没有「被删那一刻」的文件 mtime（= 其创建时刻）⇒ corroborated-delete
 #            的锚改取**父目录 mtime**（富快照 sidecar `<out>.dirs` 承载；语义 = 该目录最后一次条目增删，
 #            unlink 即触发；是删除时刻的上界，同目录无后续条目增删时恰等于删除时刻）
+#            近邻不成立时追加**跨窗所有权链**（D-α）：窗口前字节区有具名记录（含被删物 stem）∧ 写手
+#            本窗活跃 ⇒ external/ownership-delete-ok；「字节区」是结构事实（窗口前 N 字节），
+#            套件在窗内追加的任何字节落在后区 ⇒ 伪造具名记录在机制上不构成所有权
 #   金丝雀短路 变更文件新增内容含 `S4-P1-` 前缀行 ⇒ 无条件 suite/canary-marker（先于佐证判定；
 #            本 harness 注入物是确定事实，真实泄漏仍由存在性 + 时序近邻拦截）；
 #            删除类无内容可读 ⇒ 改判**路径形态**（basename 以 `S4-P1-` 开头），先于清单匹配
@@ -54,6 +57,8 @@ WA_TS_TIME_SHAPE='[0-9]{2}:[0-9]{2}:[0-9]{2}'
 WA_WINDOW_SLACK=120
 # 时序近邻阈值：corroborated-* 的佐证记录与变更文件 mtime 的最大间隔（秒）
 WA_CORR_PROXIMITY=30
+# 删除类跨窗所有权链（D-α）的被删物 stem 最小长度：短于它 ⇒ 所有权不适用（fail-closed，防「短 stem 子串命中」）
+WA_OWNER_MIN_STEM=8
 # 注入物标记前缀（金丝雀可 grep、可追责；命中即无条件 suite/canary-marker）
 WA_MARKER_PREFIX='S4-P1-'
 # exit 码闭集：0=成功 1=自证/等待未达预期 2=依赖或输入缺失（fail-closed）
@@ -336,6 +341,11 @@ WA_EXTRA=""
 WA_LAST_TS=""
 WA_CORR_TS=""
 WA_CORR_DT=""
+# D-α（跨窗所有权链）审计载体：所有权记录时间戳 / 承载日志 / 被删物 stem；写手本窗活跃记录时间戳
+WA_OWN_TS="none"
+WA_OWN_LOG="none"
+WA_OWN_STEM="none"
+WA_ACT_TS="none"
 wa__r_suite() { WA_CLS="suite"; WA_REASON="$1"; }
 wa__r_external() { WA_CLS="external"; WA_REASON="$1"; }
 wa__r_outside() { WA_CLS="outside-surface"; WA_REASON="outside-surface"; }
@@ -431,6 +441,86 @@ wa__corroborated() {
   return 1
 }
 
+# wa__owner_prior <repo_root> <佐证字段> <path> <before 快照>
+#   → 0=所有权成立（置 WA_OWN_TS/WA_OWN_LOG）；1=不成立（WA_OWN_STEM 仍置实际 stem，供审计）
+# 所有权 = 佐证日志中存在一条**合规记录**（落该日志字母表 ∧ 其时间戳可由 wa__alpha_ts_re 提取）
+#   ∧ 该行文本含被删物 stem（stem = basename 去掉首个 `.` 及其后）∧ stem 长度 >= WA_OWNER_MIN_STEM
+#   ∧ 该行**起始字节偏移 < 该日志在 before 快照中的 size**（= 窗口前字节区）。
+# 「窗口前字节区」而非「记录时间戳 < t0」：时间戳是记录的自述文本（在窗内补写一条自带旧时间戳的
+#   记录即可伪造），字节偏移是结构事实——窗口前区 = 该日志在 before 快照里的前 N 字节，套件在窗内
+#   追加的任何字节都落在 offset >= b_size 的后区 ⇒ 伪造具名记录在机制上不可达。
+# 佐证日志可用性同 wa__corroborated 纪律：日志须存在 ∧ 在清单中登记为 append-records（否则该路不可用）；
+#   全路不可用 ⇒ 不成立（fail-closed）。多佐证字段以 `|` 分隔，首个成立即返回。
+wa__owner_prior() {
+  local repo_root="${1:-}" corr="${2:-}" path="${3:-}" before_snap="${4:-}"
+  local corr_paths=() p="" logf="" idx="" alpha="" tsre="" b_size="" hit="" ts=""
+  WA_OWN_TS="none"
+  WA_OWN_LOG="none"
+  WA_OWN_STEM="none"
+  WA_OWN_STEM="${path##*/}"
+  WA_OWN_STEM="${WA_OWN_STEM%%.*}"
+  [[ -n "$path" && -n "$corr" && -f "$before_snap" ]] || return 1
+  [[ "${#WA_OWN_STEM}" -ge "$WA_OWNER_MIN_STEM" ]] || return 1
+  IFS='|' read -r -a corr_paths <<< "$corr"
+  for p in ${corr_paths[@]+"${corr_paths[@]}"}; do
+    [[ -n "$p" ]] || continue
+    logf="$repo_root/$p"
+    [[ -f "$logf" ]] || continue
+    idx="$(wa__registry_match "$p")" || continue
+    [[ "${WA_R_MODE[$idx]}" == "append-records" ]] || continue
+    alpha="${WA_R_ALPHA[$idx]}"
+    tsre="$(wa__alpha_ts_re "$alpha")" || continue
+    [[ -n "$tsre" ]] || continue
+    # 该日志在 before 快照中的 size = 窗口前字节区上界（缺行/非十进制 ⇒ 该路不可用，fail-closed）
+    b_size="$(wa__snap_field "$before_snap" "$p" 2)" || b_size=""
+    case "$b_size" in ''|*[!0-9]*) continue ;; esac
+    # grep -b 打印合规行的**起始字节偏移**；awk 只做「偏移 < 上界 ∧ 行文本含 stem」的机械筛选（值经 ENVIRON 传入）
+    hit="$(LC_ALL=C grep -bE "$alpha" "$logf" 2>/dev/null | WA_OP_STEM="$WA_OWN_STEM" WA_OP_LIM="$b_size" awk '
+      BEGIN { stem = ENVIRON["WA_OP_STEM"]; lim = ENVIRON["WA_OP_LIM"] + 0 }
+      {
+        i = index($0, ":")
+        if (i == 0) next
+        if (substr($0, 1, i - 1) + 0 >= lim) next
+        if (index(substr($0, i + 1), stem) > 0) { print substr($0, i + 1); exit }
+      }')" || hit=""
+    [[ -n "$hit" ]] || continue
+    ts="$(printf '%s\n' "$hit" | LC_ALL=C grep -oE "$tsre" 2>/dev/null | head -n 1)"
+    [[ -n "$ts" ]] || continue
+    WA_OWN_TS="$ts"
+    WA_OWN_LOG="$p"
+    return 0
+  done
+  return 1
+}
+
+# wa__activity_in_window <repo_root> <佐证字段> <lo_key> <hi_key> → 0=有在窗合规记录（置 WA_ACT_TS）；1=无
+# 活跃度依据（D-α 的第二半）：窗口带（t0−120s .. t1+120s）内有该写手的合规记录 ⇒ 写手本窗在活动。
+# 佐证日志可用性纪律同 wa__owner_prior（须存在 ∧ 清单登记为 append-records）。
+wa__activity_in_window() {
+  local repo_root="${1:-}" corr="${2:-}" lo_key="${3:-}" hi_key="${4:-}"
+  local corr_paths=() p="" logf="" idx="" alpha="" tsre="" ts="" k=""
+  WA_ACT_TS="none"
+  [[ -n "$corr" && -n "$lo_key" && -n "$hi_key" ]] || return 1
+  IFS='|' read -r -a corr_paths <<< "$corr"
+  for p in ${corr_paths[@]+"${corr_paths[@]}"}; do
+    [[ -n "$p" ]] || continue
+    logf="$repo_root/$p"
+    [[ -f "$logf" ]] || continue
+    idx="$(wa__registry_match "$p")" || continue
+    [[ "${WA_R_MODE[$idx]}" == "append-records" ]] || continue
+    alpha="${WA_R_ALPHA[$idx]}"
+    tsre="$(wa__alpha_ts_re "$alpha")" || continue
+    [[ -n "$tsre" ]] || continue
+    while IFS= read -r ts; do
+      k="$(wa__ts_key "$ts")" || continue
+      [[ "$k" -ge "$lo_key" && "$k" -le "$hi_key" ]] || continue
+      WA_ACT_TS="$ts"
+      return 0
+    done < <(LC_ALL=C grep -E "$alpha" "$logf" 2>/dev/null | LC_ALL=C grep -oE "$tsre" 2>/dev/null)
+  done
+  return 1
+}
+
 # wa__marker_hit <file> → 0=文件内含 `S4-P1-` 前缀行（注入物短路）；1=无
 wa__marker_hit() {
   LC_ALL=C grep -qE "^${WA_MARKER_PREFIX}" "$1" 2>/dev/null
@@ -470,11 +560,27 @@ wa__dirmtime() {
   return 0
 }
 
-# wa__classify_one <repo_root> <path> <kind C|D|M> <before_line> <after_line> <lo_key> <hi_key> <after_dirs>
+# wa__snap_field <快照> <相对路径> <列号> → stdout=该行第 <列号> 列；rc 1=快照无该路径行 / 参数非法
+# 按第 5 列（relpath）精确等值取列（禁用 grep 子串匹配：relpath 含正则元字符时语义漂移）。
+# 相对路径与列号经 ENVIRON 传入（同 wa__dirmtime 纪律，值逐字节传递）。
+wa__snap_field() {
+  local snap="${1:-}" rel="${2:-}" col="${3:-}" v=""
+  [[ -n "$snap" && -n "$rel" && -f "$snap" ]] || return 1
+  case "$col" in ''|*[!0-9]*) return 1 ;; esac
+  [[ "$col" -ge 1 && "$col" -le 5 ]] || return 1
+  v="$(WA_SF_PATH="$rel" WA_SF_COL="$col" awk -F'\t' 'BEGIN { d = ENVIRON["WA_SF_PATH"]; c = ENVIRON["WA_SF_COL"] + 0 }
+    $5 == d { print $c; exit }' "$snap" 2>/dev/null)" || v=""
+  [[ -n "$v" ]] || return 1
+  printf '%s' "$v"
+  return 0
+}
+
+# wa__classify_one <repo_root> <path> <kind C|D|M> <before_line> <after_line> <lo_key> <hi_key> <after_dirs> <before_snap>
 #   → 置 WA_CLS/WA_REASON/WA_EXTRA（不发射；发射由调用方统一做）
 #   <after_dirs>：after 富快照的目录侧车路径（`<after>.dirs`），仅删除分支消费。
+#   <before_snap>：before 富快照主文件路径（D-α 查佐证日志的窗口前字节区上界），仅删除分支消费。
 wa__classify_one() {
-  local repo_root="$1" path="$2" kind="$3" bline="$4" aline="$5" lo_key="$6" hi_key="$7" after_dirs="${8:-}"
+  local repo_root="$1" path="$2" kind="$3" bline="$4" aline="$5" lo_key="$6" hi_key="$7" after_dirs="${8:-}" before_snap="${9:-}"
   local idx="" mode="" writer="" alpha="" corr=""
   WA_EXTRA=""
   # ---- 删除类的 marker 路径短路（**上提到清单匹配之前**，面内面外同；R-1）----
@@ -550,9 +656,19 @@ wa__classify_one() {
     if wa__corroborated "$repo_root" "$dcorr" "$lo_key" "$hi_key" "$anchor"; then
       wa__r_external "corroborated-delete-ok"
       WA_EXTRA="writer=${dwriter} Δt=${WA_CORR_DT}s ts=${WA_CORR_TS} dir_mtime=${anchor}"
+      return 0
+    fi
+    # D-α 跨窗所有权链（仅当 D-β 近邻不成立时求值）：窗口前字节区有具名（含 stem）合规记录 ∧ 写手本窗活跃。
+    # 两半各自独立求值（失败态证据行 owner=/act= 两个审计字段都要落值，不得短路掉第二个）。
+    local own_ok=0 act_ok=0
+    wa__owner_prior "$repo_root" "$dcorr" "$path" "$before_snap" && own_ok=1
+    wa__activity_in_window "$repo_root" "$dcorr" "$lo_key" "$hi_key" && act_ok=1
+    if [[ "$own_ok" -eq 1 && "$act_ok" -eq 1 ]]; then
+      wa__r_external "ownership-delete-ok"
+      WA_EXTRA="writer=${dwriter} Δt=${WA_CORR_DT}s ts=${WA_CORR_TS} dir_mtime=${anchor} owner=${WA_OWN_STEM} owner_ts=${WA_OWN_TS} owner_log=${WA_OWN_LOG} act_ts=${WA_ACT_TS}"
     else
       wa__r_suite "no-delete-corroboration"
-      WA_EXTRA="writer=${dwriter} Δt=${WA_CORR_DT} ts=${WA_CORR_TS} dir_mtime=${anchor}"
+      WA_EXTRA="writer=${dwriter} Δt=${WA_CORR_DT} ts=${WA_CORR_TS} dir_mtime=${anchor} owner=${WA_OWN_STEM} act=${WA_ACT_TS}"
     fi
     return 0
   fi
@@ -728,7 +844,11 @@ wa_classify() {
     WA_LAST_TS=""
     WA_CORR_TS=""
     WA_CORR_DT=""
-    wa__classify_one "$repo_root" "$path" "$kind" "$bline" "$aline" "$lo_key" "$hi_key" "${after}.dirs"
+    WA_OWN_TS="none"
+    WA_OWN_LOG="none"
+    WA_OWN_STEM="none"
+    WA_ACT_TS="none"
+    wa__classify_one "$repo_root" "$path" "$kind" "$bline" "$aline" "$lo_key" "$hi_key" "${after}.dirs" "$before"
     wa__emit "$out" "$path"
   done < "$changed"
   rm -f "$changed"
@@ -1187,8 +1307,58 @@ wa_selftest() {
     printf 'WA-SELFTEST ok case=empty-registry（fail-closed）\n'
   fi
 
+  # --- 24 D-α 跨窗所有权链：具名记录在窗口前字节区 ∧ 写手本窗活跃（近邻不成立）⇒ external/ownership-delete-ok ---
+  #     先例：该形态的具名记录与删除时刻本就相距 >30s（写手生命周期是「建新的、删旧的」）⇒ D-β 恒不成立
+  local own_stem="digest-20260914-235959" own_ts="" act_ts=""
+  own_ts="$(date -r $((now - 3600)) +'%Y-%m-%d %H:%M:%S')"
+  act_ts="$(date -r $((now + 90)) +'%Y-%m-%d %H:%M:%S')"
+  : > "$root/contrib-data/logs/notify.log"
+  printf '[%s] notify: digest 卡已建 %s（snapshot=…）\n' "$own_ts" "$own_stem" >> "$root/contrib-data/logs/notify.log"
+  printf '[%s] notify: 本窗活跃记录（不具名）\n' "$act_ts" >> "$root/contrib-data/logs/notify.log"
+  printf '{"d":3}\n' > "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap before
+  rm -f "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap after
+  wa__st_case delete-owner-prior external ownership-delete-ok
+  wa__st_count delete-owner-prior external 1
+
+  # --- 25 D-α 有所有权但写手本窗静默（窗口带内零记录）⇒ suite/no-delete-corroboration（owner= 有值、act=none）---
+  : > "$root/contrib-data/logs/notify.log"
+  printf '[%s] notify: digest 卡已建 %s（snapshot=…）\n' "$own_ts" "$own_stem" >> "$root/contrib-data/logs/notify.log"
+  printf '{"d":4}\n' > "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap before
+  rm -f "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap after
+  wa__st_case delete-owner-silent suite no-delete-corroboration
+  wa__st_count delete-owner-silent suite 1
+
+  # --- 26 D-α 窗口内追加的具名记录不构成所有权（回填旧时间戳态）⇒ suite ---
+  #     该追加自身另被既有 append 分支判 suite/timestamp-out-of-window（窗口带内零合规记录）⇒ 双重覆盖
+  : > "$root/contrib-data/logs/notify.log"
+  printf '[%s] notify: 本窗活跃记录（不具名）\n' "$act_ts" >> "$root/contrib-data/logs/notify.log"
+  printf '{"d":5}\n' > "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap before
+  printf '[%s] notify: digest 卡已建 %s（回填旧时间戳伪造）\n' "$own_ts" "$own_stem" >> "$root/contrib-data/logs/notify.log"
+  rm -f "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap after
+  wa__st_case delete-owner-forged-backfill suite no-delete-corroboration 2
+  wa__st_count delete-owner-forged-backfill suite 2
+
+  # --- 27 D-α 窗口内追加的具名记录不构成所有权（当前时间戳态）⇒ suite ---
+  #     锚钉到 now−90（touch -t 作用在**目录**上）：D-β 近邻因此不成立，本形态才真正只考验 D-α 的字节区规则；
+  #     该追加形态合规 ⇒ 自身判 external（看起来像写手记录），但仍买不到所有权
+  : > "$root/contrib-data/logs/notify.log"
+  printf '{"d":6}\n' > "$root/contrib-data/pending/$own_stem.json"
+  wa__st_snap before
+  printf '[%s] notify: digest 卡已建 %s（当前时间戳伪造）\n' "$in_ts" "$own_stem" >> "$root/contrib-data/logs/notify.log"
+  rm -f "$root/contrib-data/pending/$own_stem.json"
+  touch -t "$(date -r $((now - 90)) +%Y%m%d%H%M.%S)" "$root/contrib-data/pending"
+  wa__st_snap after
+  wa__st_case delete-owner-forged-now suite no-delete-corroboration 2
+  wa__st_count delete-owner-forged-now external 1
+
   if [[ "$fails" -eq 0 ]]; then
-    printf 'WA-SELFTEST PASS（22 形态全部与预期一致）\n'
+    printf 'WA-SELFTEST PASS（26 形态全部与预期一致）\n'
     return 0
   fi
   printf 'WA-SELFTEST FAIL（%d 项不符）\n' "$fails"
