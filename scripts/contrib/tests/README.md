@@ -145,12 +145,12 @@ t_finish
 
 | 退役件（09-13 E 波） | 现行替代面 |
 |---|---|
-| `run-watch.sh` | operator 班次（default profile agent cron，每小时 :02）；六节点 感知→分诊→造→过闸→守候→学习 |
+| `run-watch.sh`（09-13 退役） | operator 班次（default profile agent cron，每小时 :02）；六节点 感知→分诊→造→过闸→守候→学习 |
 | `scan_gate.sh` / `mail_gate.sh` | operator 班次 survey（gh issue 增量 / himalaya 只读邮件面）；建卡走 `kanban_card.sh` |
 | `deep-check.sh` / `deep_check_gate.sh` / `run-deepcheck.sh` / `deepcheck_card.sh` | kanban swarm 深检（`--resources deepcheck:global`）。**注意区分**：深检**产物路径** `contrib-data/runs/deep-check/` 未退役，仍被 `scripts/approval/auto-gate.sh` 与 `rq.sh` 消费 |
 | `own_pr_watch.sh` | 无自动调用方——own-PR 由 operator 守候（gh 实查 + default 板执行卡）；`l2_ledger.sh check` 子命令保留供巡检调用 |
 | `e2e-smoke.sh` / `detect/`（5 类捕获自证） | 覆盖并入 `run.sh` 四维度（unit / contract / e2e / static）；全链黑盒由 `e2e/` 承载 |
-| `quota_circuit.sh` / `state_brief.sh` / `duty_card.sh` / `coder_upstream_gate.sh` | operator 班次（同 `run-watch.sh` 行） |
+| `quota_circuit.sh` / `state_brief.sh` / `duty_card.sh` / `coder_upstream_gate.sh` | operator 班次（同 `run-watch.sh` 行，09-13 退役） |
 
 **引用面清单（删件提交同批自检）**：`git rm` 一个被引用的脚本时，同一提交必须扫这四个面，并把「现在时」引用改成替代面或直接删句——
 ① `CLAUDE.md` ② `scripts/**/*.md` ③ `scripts/**/*.sh` 的注释 ④ `scripts/contrib/tests/stubs/*` 头注释。
@@ -158,4 +158,4 @@ t_finish
 
 **豁免面（命中不修）**：`scripts/contrib/tests/acceptance/**`（冻结的存量验收脚本，不在 `run.sh` 四维度覆盖集内）+ `scripts/contrib/tests/lib/sandbox.sh`（seam 导出与注释）——这两面随退役整批处置，不在逐件修复卡里单独动。
 
-**存量待办**：`CLAUDE.md` 两处（邮件检查段、快车道段）仍以现在时描述已退役编排，改写被人批闸拦下（写保护名单），未绕过。
+**存量待办**：`CLAUDE.md` 两处（邮件检查段、快车道段）仍以现在时描述已退役编排，改写被人批闸拦下（写保护名单），未绕过。**09-14 已产好人批补丁**：`contrib-data/pending/claude-md-doc-layer-20260914/claude-md.patch`（`git apply` 即落，已 `--check` 验可干净套用；同目录 `howto.md` 含等价手工改法）——落笔后本表自检的现在时命中归零（本表两行已带 09-13 退役标记）。
