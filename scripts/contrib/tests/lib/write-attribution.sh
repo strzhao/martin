@@ -17,18 +17,25 @@
 #   追加语义 head -c <before_size> after 的 sha256 == before 快照哈希 ∧ inode 不变
 #   记录形态 追加块**逐行**落在该写手输出字母表内（无块级容错：套件写入不得被生产写入掩蔽）
 #   时序自证 追加块中 ≥1 条记录的内嵌时间戳 ∈ [窗口起−120s, 窗口止+120s]
-#   时序近邻 corroborated-* 另需 |佐证记录时间戳 − 变更文件 mtime| ≤ 30s（存在性佐证会被
+#   时序近邻 corroborated-* 另需 |佐证记录时间戳 − 锚| ≤ 30s（存在性佐证会被
 #            「套件恰在佐证写手活跃窗内写入」掩蔽 ⇒ 必须钉住「改文件」与「落记录」的同次运行近邻性）
+#   删除时点锚 删除不留内容、也没有「被删那一刻」的文件 mtime（= 其创建时刻）⇒ corroborated-delete
+#            的锚改取**父目录 mtime**（富快照 sidecar `<out>.dirs` 承载；语义 = 该目录最后一次条目增删，
+#            unlink 即触发；是删除时刻的上界，同目录无后续条目增删时恰等于删除时刻）
 #   金丝雀短路 变更文件新增内容含 `S4-P1-` 前缀行 ⇒ 无条件 suite/canary-marker（先于佐证判定；
-#            本 harness 注入物是确定事实，真实泄漏仍由存在性 + 时序近邻拦截）
+#            本 harness 注入物是确定事实，真实泄漏仍由存在性 + 时序近邻拦截）；
+#            删除类无内容可读 ⇒ 改判**路径形态**（basename 以 `S4-P1-` 开头），先于清单匹配
 #   默认 deny：任一证据不成立（含清单缺失/空/不可解析、路径新增/删除）⇒ 归 suite。
 #
 # API（契约逐字，见 state.md「契约规约」）：
 #   wa_registry_default <tests_root>             → stdout=清单路径；env WA_REGISTRY 覆盖
 #   wa_snapshot <repo_root> <out>                → 富快照 <sha256>\t<size>\t<mtime>\t<inode>\t<relpath>
+#                                                  + 目录侧车 <out>.dirs（同 5 列，sha 列=<DIR>、size 列=0）
 #   wa_classify <repo> <before> <after> <reg> <out> <t0> <t1> → 逐变更文件 WA-CLASS 行 + 末行计数
 #   wa_selftest <tmpdir>                         → 合成树全形态自证（rc=0 iff 全部与预期一致）
-#   wa_inject <mode> <repo_root> <registry>      → canary-create / canary-append / external-append
+#   wa_inject <mode> <repo_root> <registry> [<arg4> [<arg5>]] → canary-create / canary-append /
+#     external-append / delete-plant <repo> <reg> <canary|external> /
+#     delete-fire <repo> <reg> <path> <canary|external>（两段式删除对照；每次恰 1 行 WA-INJECT）
 #   wa_wait_external <repo> <before_snap> <max_sec> [poll_sec] → 弹性等待真实生产写手落笔
 #
 # 纪律：
@@ -135,7 +142,8 @@ wa__alpha_valid() {
 
 # wa__registry_load <registry> → 载入 WA_R_* 数组；rc 0=合法；2=缺失/空/结构非法（fail-closed）
 # 结构：非注释非空行必须恰 5 个 TAB 字段且逐字段非空；mode ∈ 闭集；
-#   append-records ⇒ 字母表首捕获组为记录时间戳；corroborated-* ⇒ 佐证路径非 :none。
+#   append-records ⇒ 字母表首捕获组为记录时间戳；corroborated-* ⇒ 佐证路径非 :none；
+#   corroborated-delete 另需字母表恒为 :none（字段 4/5 的语义位不得互换 ⇒ DbC 双向校验）。
 WA_R_N=0
 wa__registry_load() {
   local reg="${1:-}" line="" nf=0 f1="" f2="" f3="" f4="" f5=""
@@ -166,8 +174,13 @@ wa__registry_load() {
       corroborated-rewrite|corroborated-create)
         [[ "$f5" == ':none' ]] && { wa__fail "corroborated-* 条目佐证路径不得为 :none: ${f1}"; return 2; }
         ;;
+      corroborated-delete)
+        # 删除类 DbC：字段 4 必须 :none ∧ 字段 5 必须非 :none（缺一 ⇒ fail-closed，禁静默降级）
+        [[ "$f4" == ':none' ]] || { wa__fail "corroborated-delete 条目字母表必须为 :none（删除无内容形态可自证）: ${f1}"; return 2; }
+        [[ "$f5" != ':none' ]] || { wa__fail "corroborated-delete 条目佐证路径不得为 :none: ${f1}"; return 2; }
+        ;;
       *)
-        wa__fail "mode 不在闭集 {append-records,corroborated-rewrite,corroborated-create}: ${f3}"
+        wa__fail "mode 不在闭集 {append-records,corroborated-rewrite,corroborated-create,corroborated-delete}: ${f3}"
         return 2
         ;;
     esac
@@ -198,11 +211,31 @@ wa__registry_match() {
   return 1
 }
 
+# wa__registry_match_mode <path> <mode> → stdout=首个「mode 相符且路径匹配」的条目下标；rc 1=无
+# ⚠ 删除分支**必须**经本函数取行：wa__registry_match 是首匹配即返回，而同一路径面可能先命中
+#   创建行（本例 `pending/*` 的 create 行在前）⇒ 用它取删除行机械不可达（E-1）。
+wa__registry_match_mode() {
+  local p="${1:-}" want="${2:-}" i=0
+  for ((i = 0; i < WA_R_N; i++)); do
+    [[ "${WA_R_MODE[$i]}" == "$want" ]] || continue
+    # shellcheck disable=SC2254
+    case "$p" in
+      ${WA_R_PAT[$i]}) printf '%s' "$i"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # =============================================================================
 # 2. 富快照（内容 + 元数据一次承载，避免双快照取点不同步）
 # =============================================================================
 
 # wa_snapshot <repo_root> <out> → 0；2=contrib-data 缺失 / stat/find 失败 / 快照为空（禁空快照）
+#   主文件 <out>：<sha256>\t<size>\t<mtime>\t<inode>\t<relpath>（格式/行数语义冻结，逐字节不变）
+#   侧车 <out>.dirs：目录表，同 5 列但 sha 列恒字面量 `DIR`、size 列恒 `0`（承载目录 mtime 删除锚）；
+#     含 contrib-data 自身与其全部子目录；与主文件同一次遍历、同 `sort -z` 序。
+#     落盘走临时件 + mv（禁产出半份 sidecar）；**所有失败返回路径都清掉 `<out>.dirs` 与本轮临时件**
+#     ——$ART 固定路径复用场景下，上一轮 sidecar 会冒充本轮锚（R-9①）。
 wa_snapshot() {
   local repo_root="${1:-}" out="${2:-}"
   if [[ -z "$repo_root" || -z "$out" ]]; then
@@ -214,25 +247,47 @@ wa_snapshot() {
     return 2
   fi
   local list="${out}.list.$$" sorted="${out}.sorted.$$"
-  if ! ( cd "$repo_root" && find contrib-data -type f -print0 ) > "$list" 2>/dev/null; then
-    rm -f "$list" "$sorted"
+  local dirs="${out}.dirs" dirs_tmp="${out}.dirs.tmp.$$"
+  rm -f "$dirs" "$dirs_tmp"
+  if ! ( cd "$repo_root" && find contrib-data \( -type f -o -type d \) -print0 ) > "$list" 2>/dev/null; then
+    rm -f "$list" "$sorted" "$dirs" "$dirs_tmp"
     wa__fail "find contrib-data 失败: $repo_root"
     return 2
   fi
   if ! sort -z < "$list" > "$sorted" 2>/dev/null; then
-    rm -f "$list" "$sorted"
+    rm -f "$list" "$sorted" "$dirs" "$dirs_tmp"
     wa__fail "sort -z 失败"
     return 2
   fi
-  : > "$out" || { rm -f "$list" "$sorted"; wa__fail "快照文件不可写: $out"; return 2; }
-  local rel="" f="" st="" size="" mt="" ino="" sha_line="" sha="" n=0
+  : > "$out" || { rm -f "$list" "$sorted" "$dirs" "$dirs_tmp"; wa__fail "快照文件不可写: $out"; return 2; }
+  : > "$dirs_tmp" || { rm -f "$list" "$sorted" "$out" "$dirs" "$dirs_tmp"; wa__fail "侧车文件不可写: $dirs"; return 2; }
+  local rel="" f="" st="" size="" mt="" ino="" sha_line="" sha="" n=0 nd=0
   while IFS= read -r -d '' rel; do
     f="$repo_root/$rel"
+    # 快照遍历期间被并发删除：该条目在本次快照中不存在（合法瞬态）；其余情况 fail-closed
+    if [[ ! -e "$f" ]]; then
+      continue
+    fi
+    if [[ -d "$f" ]]; then
+      st="$(stat -f '%m %i' "$f" 2>/dev/null)" || st=""
+      if [[ -z "$st" ]]; then
+        if [[ -e "$f" ]]; then
+          rm -f "$list" "$sorted" "$dirs" "$dirs_tmp"
+          wa__fail "目录 stat 失败: $rel"
+          return 2
+        fi
+        continue
+      fi
+      mt="${st%% *}"
+      ino="${st#* }"
+      printf 'DIR\t0\t%s\t%s\t%s\n' "$mt" "$ino" "$rel" >> "$dirs_tmp"
+      nd=$((nd + 1))
+      continue
+    fi
     st="$(stat -f '%z %m %i' "$f" 2>/dev/null)" || st=""
     if [[ -z "$st" ]]; then
-      # 快照遍历期间被并发删除：文件在本次快照中不存在（合法瞬态）；其余情况 fail-closed
       if [[ -e "$f" ]]; then
-        rm -f "$list" "$sorted"
+        rm -f "$list" "$sorted" "$dirs" "$dirs_tmp"
         wa__fail "stat 失败: $rel"
         return 2
       fi
@@ -246,7 +301,7 @@ wa_snapshot() {
     sha="${sha_line%% *}"
     if [[ -z "$sha" ]]; then
       if [[ -e "$f" ]]; then
-        rm -f "$list" "$sorted"
+        rm -f "$list" "$sorted" "$dirs" "$dirs_tmp"
         wa__fail "shasum 失败: $rel"
         return 2
       fi
@@ -257,9 +312,16 @@ wa_snapshot() {
   done < "$sorted"
   rm -f "$list" "$sorted"
   if [[ "$n" -lt 1 || ! -s "$out" ]]; then
+    rm -f "$dirs" "$dirs_tmp"
     wa__fail "快照为空（contrib-data 无文件）: $repo_root"
     return 2
   fi
+  if [[ "$nd" -lt 1 ]]; then
+    rm -f "$dirs" "$dirs_tmp"
+    wa__fail "目录侧车为空（contrib-data 自身缺行）: $repo_root"
+    return 2
+  fi
+  mv "$dirs_tmp" "$dirs" 2>/dev/null || { rm -f "$dirs" "$dirs_tmp"; wa__fail "侧车落盘失败: $dirs"; return 2; }
   return 0
 }
 
@@ -394,12 +456,34 @@ wa__marker_hit_new() {
   return "$rc"
 }
 
-# wa__classify_one <repo_root> <path> <kind C|D|M> <before_line> <after_line> <lo_key> <hi_key>
+# wa__dirmtime <目录侧车文件> <目录相对路径> → stdout=mtime epoch；rc 1=侧车缺 / 无该目录行 / mtime 不可解析
+# 删除的时点锚。侧车行格式 `<DIR>\t0\t<mtime>\t<inode>\t<relpath>` ⇒ 按第 5 列精确等值取第 3 列
+# （禁用 grep 子串匹配：relpath 含正则元字符时语义漂移）。目录名经 ENVIRON 传入（同 wa__alpha_ts_re 纪律）。
+wa__dirmtime() {
+  local snap="${1:-}" dir="${2:-}" mt=""
+  [[ -n "$snap" && -n "$dir" && -f "$snap" ]] || return 1
+  mt="$(WA_DIR_ARG="$dir" awk -F'\t' 'BEGIN { d = ENVIRON["WA_DIR_ARG"] } $5 == d { print $3; exit }' "$snap" 2>/dev/null)" || mt=""
+  case "${mt}" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s' "$mt"
+  return 0
+}
+
+# wa__classify_one <repo_root> <path> <kind C|D|M> <before_line> <after_line> <lo_key> <hi_key> <after_dirs>
 #   → 置 WA_CLS/WA_REASON/WA_EXTRA（不发射；发射由调用方统一做）
+#   <after_dirs>：after 富快照的目录侧车路径（`<after>.dirs`），仅删除分支消费。
 wa__classify_one() {
-  local repo_root="$1" path="$2" kind="$3" bline="$4" aline="$5" lo_key="$6" hi_key="$7"
+  local repo_root="$1" path="$2" kind="$3" bline="$4" aline="$5" lo_key="$6" hi_key="$7" after_dirs="${8:-}"
   local idx="" mode="" writer="" alpha="" corr=""
   WA_EXTRA=""
+  # ---- 删除类的 marker 路径短路（**上提到清单匹配之前**，面内面外同；R-1）----
+  # 删除不留内容 ⇒ 既有「新增内容含 marker 行」短路对 D 天然失效，路径是 D 唯一可读的自证面。
+  if [[ "$kind" == "D" ]]; then
+    case "${path##*/}" in
+      "${WA_MARKER_PREFIX}"*) wa__r_suite "canary-marker"; WA_EXTRA="marker=hit"; return 0 ;;
+    esac
+  fi
   if ! idx="$(wa__registry_match "$path")"; then
     # 面外路径：marker 短路优先（注入物自证归属；QA 抓出的口径缺口 —— 原实现只在注册面分支判 marker，
     # 使「判据面外新建 S4-P1- 文件」落 outside-surface 而不判红，与「无条件 suite」契约不符）
@@ -439,10 +523,37 @@ wa__classify_one() {
     return 0
   fi
 
-  # ---- 面内删除：任何 mode 都不允许（生产写手不改写历史；删除=证据链断裂）----
+  # ---- 面内删除：仅显式 opt-in 的 corroborated-delete 面放行（其余 mode 面内一律判红）----
+  # 证据合取（全部机械、零人眼）：路径 ∈ 删除面（闭集显式行）∧ 删除时点锚可取（父目录 mtime）∧
+  #   佐证日志存在**在窗**合规记录 ∧ |记录 ts − 锚| ≤ WA_CORR_PROXIMITY。任一不成立 ⇒ suite（默认 deny）。
   if [[ "$kind" == "D" ]]; then
-    wa__r_suite "deleted"
-    WA_EXTRA="writer=${writer}"
+    local didx="" dwriter="" dcorr="" ddir="" anchor=""
+    if ! didx="$(wa__registry_match_mode "$path" "corroborated-delete")"; then
+      # 既有语义逐字保留：append-records / corroborated-rewrite / corroborated-create 面内的删除仍判红
+      wa__r_suite "deleted"
+      WA_EXTRA="writer=${writer}"
+      return 0
+    fi
+    dwriter="${WA_R_WRITER[$didx]}"
+    dcorr="${WA_R_CORR[$didx]}"
+    ddir=""
+    case "$path" in
+      */*) ddir="${path%/*}" ;;
+    esac
+    anchor="$(wa__dirmtime "$after_dirs" "$ddir")" || anchor=""
+    if [[ -z "$anchor" ]]; then
+      # 锚不可用（侧车缺 / 父目录不在目录表 / mtime 非十进制）⇒ 保守方向判红
+      wa__r_suite "no-delete-corroboration"
+      WA_EXTRA="writer=${dwriter} dir_mtime=none"
+      return 0
+    fi
+    if wa__corroborated "$repo_root" "$dcorr" "$lo_key" "$hi_key" "$anchor"; then
+      wa__r_external "corroborated-delete-ok"
+      WA_EXTRA="writer=${dwriter} Δt=${WA_CORR_DT}s ts=${WA_CORR_TS} dir_mtime=${anchor}"
+    else
+      wa__r_suite "no-delete-corroboration"
+      WA_EXTRA="writer=${dwriter} Δt=${WA_CORR_DT} ts=${WA_CORR_TS} dir_mtime=${anchor}"
+    fi
     return 0
   fi
 
@@ -617,7 +728,7 @@ wa_classify() {
     WA_LAST_TS=""
     WA_CORR_TS=""
     WA_CORR_DT=""
-    wa__classify_one "$repo_root" "$path" "$kind" "$bline" "$aline" "$lo_key" "$hi_key"
+    wa__classify_one "$repo_root" "$path" "$kind" "$bline" "$aline" "$lo_key" "$hi_key" "${after}.dirs"
     wa__emit "$out" "$path"
   done < "$changed"
   rm -f "$changed"
@@ -654,16 +765,19 @@ wa__first_idx() {
   return 1
 }
 
-# wa_inject <mode> <repo_root> <registry> → 0；2=未知 mode / 清单无可用目标 / 注入物自证失败
-#   stdout=WA-INJECT 证据行（可 grep、可追责）
+# wa_inject <mode> <repo_root> <registry> [<arg4> [<arg5>]] → 0；2=未知 mode / 清单无可用目标 / 注入物自证失败
+#   stdout=**恰 1 行** WA-INJECT 证据行（可 grep、可追责；调用方按单行 sed 解析 path=，多行会致清理面失效）
+#   两段式删除对照（「窗口内创建 + 窗口内删除」在前后快照里双双不可见 ⇒ 必须拆成两段）：
+#     delete-plant <repo> <reg> <canary|external>           → 快照**之前**植入探针文件
+#     delete-fire  <repo> <reg> <path> <canary|external>    → 窗口**之内**真删（external 变体另落佐证记录）
 wa_inject() {
-  local mode="${1:-}" repo_root="${2:-}" reg="${3:-}"
+  local mode="${1:-}" repo_root="${2:-}" reg="${3:-}" a4="${4:-}" a5="${5:-}"
   if [[ -z "$mode" || -z "$repo_root" || -z "$reg" ]]; then
     wa__fail "wa_inject 参数缺失"
     return 2
   fi
   wa__registry_load "$reg" || return 2
-  local i="" p="" f="" line="" tsre="" now="" epoch=""
+  local i="" p="" f="" line="" tsre="" now="" epoch="" clog="" clf=""
   now="$(date '+%Y-%m-%d %H:%M:%S')"
   epoch="$(date +%s)"
   case "$mode" in
@@ -711,8 +825,76 @@ wa_inject() {
       printf 'WA-INJECT mode=%s path=%s line=%s\n' "$mode" "$p" "$line"
       return 0
       ;;
+    delete-plant)
+      # 取首个 corroborated-delete 行（删除面显式 opt-in；无 ⇒ fail-closed）
+      case "${a4}" in
+        canary|external) : ;;
+        *) wa__fail "delete-plant variant 不在闭集 {canary,external}: ${a4:-<空>}"; return 2 ;;
+      esac
+      i="$(wa__first_idx corroborated-delete)" || { wa__fail "清单无 corroborated-delete 目标"; return 2; }
+      p="${WA_R_PAT[$i]}"
+      p="${p%/\*}"
+      if [[ "$a4" == "canary" ]]; then
+        p="${p}/${WA_MARKER_PREFIX}delete-${epoch}-$$.json"
+      else
+        p="${p}/probe-delete-${epoch}-$$.json"
+      fi
+      mkdir -p "$repo_root/${p%/*}" || { wa__fail "注入目录不可建: $repo_root/${p%/*}"; return 2; }
+      f="$repo_root/$p"
+      if [[ "$a4" == "canary" ]]; then
+        printf '%smode=delete-plant variant=canary epoch=%s pid=%s\n' "$WA_MARKER_PREFIX" "$epoch" "$$" > "$f" \
+          || { wa__fail "注入写入失败: $p"; return 2; }
+      else
+        printf 'probe variant=external epoch=%s pid=%s\n' "$epoch" "$$" > "$f" \
+          || { wa__fail "注入写入失败: $p"; return 2; }
+      fi
+      # 注入物自证（fail-closed）：文件必须存在且非空；canary 变体首行必须命中路径短路前缀语义
+      [[ -s "$f" ]] || { wa__fail "delete-plant 注入物不存在或为空: $p"; return 2; }
+      if [[ "$a4" == "canary" ]]; then
+        case "$(head -n 1 "$f" 2>/dev/null)" in
+          "${WA_MARKER_PREFIX}"*) : ;;
+          *) wa__fail "delete-plant canary 注入物首行无 marker 前缀（短路不可达）: $p"; return 2 ;;
+        esac
+      fi
+      printf 'WA-INJECT mode=delete-plant path=%s variant=%s writer=%s\n' "$p" "$a4" "${WA_R_WRITER[$i]}"
+      return 0
+      ;;
+    delete-fire)
+      case "${a5}" in
+        canary|external) : ;;
+        *) wa__fail "delete-fire variant 不在闭集 {canary,external}: ${a5:-<空>}"; return 2 ;;
+      esac
+      [[ -n "$a4" ]] || { wa__fail "delete-fire 缺 <path> 参数"; return 2; }
+      i="$(wa__first_idx corroborated-delete)" || { wa__fail "清单无 corroborated-delete 目标"; return 2; }
+      f="$repo_root/$a4"
+      [[ -f "$f" ]] || { wa__fail "delete-fire 目标不存在: $a4"; return 2; }
+      # 注入物自证：只允许删本引擎植入的探针（前缀具名）且路径须落在删除面内 —— 防止注入器被误用去删生产文件
+      case "${a4##*/}" in
+        "${WA_MARKER_PREFIX}"delete-*|probe-delete-*) : ;;
+        *) wa__fail "delete-fire 目标非本引擎植入物（basename 须以 ${WA_MARKER_PREFIX}delete- 或 probe-delete- 开头）: $a4"; return 2 ;;
+      esac
+      # shellcheck disable=SC2254
+      case "$a4" in
+        ${WA_R_PAT[$i]}) : ;;
+        *) wa__fail "delete-fire 目标不落在删除面模式内: $a4"; return 2 ;;
+      esac
+      if [[ "$a5" == "external" ]]; then
+        # 佐证记录：与写手 log() 逐字同构（**非行首** marker ⇒ 不触发 canary-marker 短路），再真删
+        clog="${WA_R_CORR[$i]%%|*}"
+        [[ -n "$clog" && "$clog" != ":none" ]] || { wa__fail "corroborated-delete 行佐证路径不可用: ${WA_R_CORR[$i]}"; return 2; }
+        clf="$repo_root/$clog"
+        [[ -f "$clf" ]] || { wa__fail "佐证日志不存在: $clog"; return 2; }
+        printf '[%s] %s: %sdelete-fire epoch=%s pid=%s（与写手 log() 逐字同构）\n' \
+          "$now" "${WA_R_WRITER[$i]}" "$WA_MARKER_PREFIX" "$epoch" "$$" >> "$clf" \
+          || { wa__fail "佐证记录追加失败: $clog"; return 2; }
+      fi
+      rm -f "$f" || { wa__fail "delete-fire 删除失败: $a4"; return 2; }
+      [[ ! -e "$f" ]] || { wa__fail "delete-fire 自证失败（目标删除后仍存在）: $a4"; return 2; }
+      printf 'WA-INJECT mode=delete-fire path=%s variant=%s ts=%s\n' "$a4" "$a5" "$now"
+      return 0
+      ;;
     *)
-      wa__fail "未知注入 mode: ${mode}（闭集 canary-create|canary-append|external-append）"
+      wa__fail "未知注入 mode: ${mode}（闭集 canary-create|canary-append|external-append|delete-plant|delete-fire）"
       return 2
       ;;
   esac
@@ -730,13 +912,14 @@ wa_wait_external() {
   [[ "$poll_sec" -ge 1 ]] || { wa__fail "poll_sec 必须 >=1"; return 2; }
   [[ -s "$before" ]] || { wa__fail "before 快照缺失或为空: $before"; return 2; }
   local cur="${before}.wait.$$" waited=0 polls=0 n=0
+  local cur_dirs="${cur}.dirs" cur_dtmp="${cur}.dirs.tmp.$$"
   while [[ "$waited" -le "$max_sec" ]]; do
-    wa_snapshot "$repo_root" "$cur" || { rm -f "$cur"; return 2; }
+    wa_snapshot "$repo_root" "$cur" || { rm -f "$cur" "$cur_dirs" "$cur_dtmp"; return 2; }
     polls=$((polls + 1))
     n="$("$WA_DEP_DIFF" "$before" "$cur" 2>/dev/null | wc -l | tr -d ' ')"
     if [[ "$n" -gt 0 ]]; then
       printf 'WA-WAIT mode=wait-external polls=%s waited=%s changed=1 diff_lines=%s\n' "$polls" "$waited" "$n"
-      rm -f "$cur"
+      rm -f "$cur" "$cur_dirs" "$cur_dtmp"
       return 0
     fi
     if [[ "$waited" -ge "$max_sec" ]]; then
@@ -746,7 +929,7 @@ wa_wait_external() {
     waited=$((waited + poll_sec))
   done
   printf 'WA-WAIT mode=wait-external polls=%s waited=%s changed=0 diff_lines=0\n' "$polls" "$waited"
-  rm -f "$cur"
+  rm -f "$cur" "$cur_dirs" "$cur_dtmp"
   return 1
 }
 
@@ -778,6 +961,7 @@ wa_selftest() {
     printf 'contrib-data/logs/execute.log\texecute\tappend-records\t%s\t:none\n' "$ALPHA_C"
     printf 'contrib-data/state.json\tnotify\tcorroborated-rewrite\t:none\tcontrib-data/logs/notify.log\n'
     printf 'contrib-data/pending/*\tnotify\tcorroborated-create\t:none\tcontrib-data/logs/notify.log\n'
+    printf 'contrib-data/pending/*\tnotify\tcorroborated-delete\t:none\tcontrib-data/logs/notify.log\n'
   } > "$reg"
   : > "$root/contrib-data/logs/collect.log"
   : > "$root/contrib-data/logs/notify.log"
@@ -970,7 +1154,30 @@ wa_selftest() {
   wa__st_case outside-surface outside-surface outside-surface
   wa__st_count outside-surface outside 1
 
-  # --- 19 清单 fail-closed：空清单 ⇒ exit 2（禁空集静默绿）---
+  # --- 20 删除面内路径被删 + 父目录锚近邻佐证 ⇒ external/corroborated-delete-ok ---
+  printf '{"d":1}\n' > "$root/contrib-data/pending/del-ok.json"
+  printf '[%s] notify: 删除类佐证落笔（消费清理）\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$root/contrib-data/logs/notify.log"
+  wa__st_snap before
+  rm -f "$root/contrib-data/pending/del-ok.json"
+  wa__st_snap after
+  wa__st_case delete-corroborated external corroborated-delete-ok
+
+  # --- 21 删除面内路径被删但佐证缺席（清空佐证日志）⇒ suite/no-delete-corroboration ---
+  : > "$root/contrib-data/logs/notify.log"
+  printf '{"d":2}\n' > "$root/contrib-data/pending/del-nocorr.json"
+  wa__st_snap before
+  rm -f "$root/contrib-data/pending/del-nocorr.json"
+  wa__st_snap after
+  wa__st_case delete-no-corroboration suite no-delete-corroboration
+
+  # --- 22 删除类 marker 路径短路（先于清单匹配，面内面外同）⇒ suite/canary-marker ---
+  printf '%smode=delete-plant\n' "$WA_MARKER_PREFIX" > "$root/contrib-data/pending/${WA_MARKER_PREFIX}delete-x.json"
+  wa__st_snap before
+  rm -f "$root/contrib-data/pending/${WA_MARKER_PREFIX}delete-x.json"
+  wa__st_snap after
+  wa__st_case delete-canary-marker suite canary-marker
+
+  # --- 23 清单 fail-closed：空清单 ⇒ exit 2（禁空集静默绿）---
   local emptyreg="$sb/empty.tsv"
   : > "$emptyreg"
   if wa_classify "$root" "$art/before" "$art/after" "$emptyreg" "$art/empty.out" "$t0" "$t1" 2>/dev/null; then
@@ -981,7 +1188,7 @@ wa_selftest() {
   fi
 
   if [[ "$fails" -eq 0 ]]; then
-    printf 'WA-SELFTEST PASS（19 形态全部与预期一致）\n'
+    printf 'WA-SELFTEST PASS（22 形态全部与预期一致）\n'
     return 0
   fi
   printf 'WA-SELFTEST FAIL（%d 项不符）\n' "$fails"

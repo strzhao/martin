@@ -30,19 +30,41 @@
 #   S11 outside-surface             面外路径（证据行存在、不判失败、不静默丢弃）
 #   S12 零变更                      total=0 ∧ rc=0 ∧ 零 per-file 行
 #   S13 exit 2 fail-closed          清单缺失 / 空 / NF≠5 / 无捕获组 / mode 非法 /
-#                                   corroborated 佐证 :none / 快照缺失 / 窗口非整数
+#                                   corroborated 佐证 :none / 删除行 DbC（字母表非 :none、佐证 :none）/
+#                                   快照缺失 / 窗口非整数
 #   S14 恒等式                      每例核 total == external + suite + outside ∧ unclassified == 0
+#   S15 删除类正例（R3）            corroborated-delete 面：真 rm + 真在窗佐证记录 ⇒ external/corroborated-delete-ok
+#                                   （证据行反查：ts= 真存在于写手日志、dir_mtime= 十进制且 == 实测锚、
+#                                    Δt= 非零且 == 构造偏移；第二 <TS> 轮杀写死文件名/常量 Δt；
+#                                    第三轮 = 同模式两行并存（create 行在前）⇒ D 仍只认 delete 行，E-1）
+#   S16 删除类无佐证（R3）          锚可取但无在窗记录 ⇒ suite/no-delete-corroboration；
+#                                   S-03 边界 |Δ|=30s ⇒ external / 31s ⇒ suite（含 |·| 对侧）
+#   S17 面外删除（无 marker，R3）   未登记路径被删 ⇒ outside-surface（S-06/S-11：不冒领 external、不误计 suite）
+#   S18 面外删除（有 marker，R3）   未登记且 basename 以 S4-P1- 开头的路径被删 ⇒ suite/canary-marker
+#                                   （R-1：删除类路径短路先于一切，面外也判红）
+#   S19 混合窗口等值恒等式（R3）    同窗 4 external + 1 suite + 1 outside ⇒ external==4 ∧ suite==1 ∧ outside==1
+#                                   ∧ 三类和==total ∧ total==窗口差集文件数 ∧ unclassified==0（S-12，等值断言）
 #   M1/M2 mutation 抗性             库副本注入「一律 external」「未注册也放行」→ 同一检查器必转红
-#   E1–E3 影子端到端                canary-create / canary-append / external-append 真跑 s4
+#   E1–E5 影子端到端                canary-create / canary-append / external-append / canary-delete（三轮等量）/
+#                                   external-delete 真跑 s4；E6 = 影子树零残留守卫
 #   G1–G3 守卫不回归                s4 命令位 /usr/bin/diff == 2、t1-04 == 1、裸 diff == 0、
 #                                   各恰 1 行 `-x /usr/bin/diff`；diff-pin-canary 套件仍 rc=0；无 skip 降级
 #   N1–N3 断言条数防删锚            s4 4.P1 段 / t1-04 4.1 段断言行数 ≥ 改造前基线（冻结常量）
 #
-# 所依据的谓词口径版本：state.md `## 验收场景` **第 2 轮定向重审后**的版本，即
+# 所依据的谓词口径版本：state.md `## 验收场景` **第 2 轮定向重审后**的版本 + **第 3 轮删除类（R3）**，即
 #   ① 类别闭集 = 三值 {suite, external, outside-surface}（场景3.P1 / 4.P4 同口径）；
 #   ② reason 闭集含 `canary-marker`（新增内容含以 `S4-P1-` 开头的行 ⇒ 无条件 suite，先于佐证判定）；
 #   ③ `corroborated-*` 成立需两条同时满足：佐证日志在窗有合规记录 ∧ |佐证 ts − 变更文件 mtime| ≤ 30s；
-#   ④ 清单 10 条 + 覆盖守卫三条声明式排除谓词（谓词面归单测 C16，本套件不重复求值）。
+#   ④ 清单 10 条 + 覆盖守卫三条声明式排除谓词（谓词面归单测 C16，本套件不重复求值）；
+#   ⑤ 删除类（R3）：kind==D ∧ basename 以 `S4-P1-` 开头 ⇒ 无条件 suite/canary-marker（先于一切，面内面外同）；
+#      corroborated-delete 面内需 删除时点锚可取（父目录 mtime，sidecar `<out>.dirs`）∧ 佐证日志在窗合规记录
+#      ∧ |记录 ts − 锚| ≤ 30s ⇒ external/corroborated-delete-ok；否则 suite/no-delete-corroboration；
+#      锚不可取（sidecar 缺/父目录不在目录表/mtime 非十进制）同样 ⇒ suite/no-delete-corroboration（EXTRA dir_mtime=none）；
+#      reason 闭集新增两令牌：external `corroborated-delete-ok` / suite `no-delete-corroboration`；
+#      面内非 corroborated-delete 行（append-records / corroborated-rewrite / corroborated-create）的删除
+#      仍为 suite/`deleted`（既有语义逐字保留）；面外未登记路径的删除仍为 outside-surface（R-1 的 marker 短路除外）；
+#   ⑥ 注入旋钮 s4 侧 4→6（+`canary-delete` / `external-delete`，两段式 delete-plant/delete-fire：plant 先于快照、
+#      fire 在 run.sh 之后）；t1-04 旋钮闭集保持 4 值（未知值 fail-closed，属 per-file 语义，本套件不代其求值）。
 #
 # 纪律：
 #   - 每条断言硬失败（无 SKIP / 无 warn 降级 / 无 `|| true` 宽容 / 无条件放行）
@@ -130,8 +152,8 @@ _class_counts() { # <out> → "external suite outside unknown"（文件缺失 �
   awk '/^WA-CLASS / {
       r=""
       for (i=1;i<=NF;i++) { if (index($i,"reason=") == 1) r=substr($i,8) }
-      if (r=="registered-append-ok" || r=="corroborated-ok") e++
-      else if (r=="not-append-only" || r=="inode-changed" || r=="alphabet-violation" || r=="empty-append" || r=="timestamp-out-of-window" || r=="created-unallowed" || r=="deleted" || r=="no-corroboration" || r=="canary-marker") s++
+      if (r=="registered-append-ok" || r=="corroborated-ok" || r=="corroborated-delete-ok") e++
+      else if (r=="not-append-only" || r=="inode-changed" || r=="alphabet-violation" || r=="empty-append" || r=="timestamp-out-of-window" || r=="created-unallowed" || r=="deleted" || r=="no-corroboration" || r=="canary-marker" || r=="no-delete-corroboration") s++
       else if (r=="outside-surface") o++
       else x++
     }
@@ -184,9 +206,9 @@ _identity_report() { # <stdout-file> <out-file>
   awk '/^WA-CLASS / {
       cat=$2; r=""; p=""
       for (i=1;i<=NF;i++) { if (index($i,"reason=")==1) r=substr($i,8); if (index($i,"path=")==1) p=substr($i,6) }
-      if (r=="registered-append-ok" || r=="corroborated-ok") expc="external"
+      if (r=="registered-append-ok" || r=="corroborated-ok" || r=="corroborated-delete-ok") expc="external"
       else if (r=="outside-surface") expc="outside"
-      else if (r=="not-append-only" || r=="inode-changed" || r=="alphabet-violation" || r=="empty-append" || r=="timestamp-out-of-window" || r=="created-unallowed" || r=="deleted" || r=="no-corroboration" || r=="canary-marker") expc="suite"
+      else if (r=="not-append-only" || r=="inode-changed" || r=="alphabet-violation" || r=="empty-append" || r=="timestamp-out-of-window" || r=="created-unallowed" || r=="deleted" || r=="no-corroboration" || r=="canary-marker" || r=="no-delete-corroboration") expc="suite"
       else expc="UNKNOWN"
       if (expc=="UNKNOWN") printf "VIOL reason 越界: %s（path=%s）\n", r, p
       else if (expc=="outside") { if (cat!="outside" && cat!="outside-surface") printf "VIOL class/reason 失配: class=%s reason=%s path=%s\n", cat, r, p }
@@ -293,6 +315,168 @@ _case_asserts() { # <tag> <want-rc> [<path> <reasons>] ...
     assert_eq "$rep" "" "$tag 分类行 path=$1 reason∈{$2}"
     shift 2
   done
+}
+
+# =============================================================================
+# 删除类（R3）合成面：corroborated-delete 清单行 + 删除时点锚（父目录 mtime）+ 佐证近邻
+#   依据：state.md `## 设计文档`「归属规则（新增部分）」/「契约规约」清单 schema、sidecar、边界值、example；
+#         `## 验收场景` S-01…S-07 / S-11 / S-12（含 R-1 面外 marker 短路、R-5 点名子句）。
+#   合成面构成（**独立于** S1–S13/M1/M2 的 SYN_REG，不改其产物）：
+#     `contrib-data/pending/*`   = corroborated-delete（writer=notify，佐证 `contrib-data/logs/notify.log`）
+#     `contrib-data/logs/notify.log` = append-records（字母表须含捕获组；承接写手自身日志追加）
+#     `contrib-data/scratch/`    = 不登记 ⇒ outside-surface 对照面
+#   锚构造纪律：本面锚一律由**真 rm** 产生（目录 mtime = 该目录最后一次条目增删时刻），
+#     不用 `touch -t` 伪造（`touch -t` 构造目录锚属单测 C33 的形态）；佐证记录的 ts 由**实测锚**推出
+#     （构造偏移），构造序镜像生产实测：锚 10:04:43 / 记录 10:04:34（偏移 9s）。
+# =============================================================================
+SYN_DEL_REG="$WA_SB/registry-delete.tsv"
+PIN_STAT=/usr/bin/stat
+DEL_DIR="contrib-data/pending"
+DEL_LOG="contrib-data/logs/notify.log"
+DEL_TS_A="20260914-090949"          # worker 生产实测三件的 <TS>（S-01 回归锚）
+DEL_TS_B="20260914-101010"          # 第二个 <TS>（S-01 反空转：杀写死文件名/时间戳）
+DEL_P_A="$DEL_DIR/digest-$DEL_TS_A.json"
+DEL_P_A_BODY="$DEL_DIR/digest-$DEL_TS_A.body.md"
+DEL_P_A_CARD="$DEL_DIR/digest-$DEL_TS_A.card.json"
+DEL_P_B="$DEL_DIR/digest-$DEL_TS_B.json"
+DEL_OUT="contrib-data/scratch/draft.md"
+DEL_MARK_PROBE="contrib-data/scratch/S4-P1-delete-probe.txt"
+DEL_SUITE_PROBE="$DEL_DIR/S4-P1-suite-probe.txt"
+ALPHA_NOTIFY="^\\[${TSTAMP_RE}\\] notify: "
+
+{
+  printf '%s\tnotify\tappend-records\t%s\t:none\n' "$DEL_LOG" "$ALPHA_NOTIFY"
+  printf '%s/*\tnotify\tcorroborated-delete\t:none\t%s\n' "$DEL_DIR" "$DEL_LOG"
+} > "$SYN_DEL_REG"
+# E-1 形态（生产清单同形）：同一路径模式两行并存——create 行在**前**、delete 行在后；
+# 契约「D 只认 corroborated-delete 行」⇒ 删除必须走 delete 行（禁「首匹配即返回」）。
+SYN_DEL_MULTI_REG="$WA_SB/registry-delete-multi.tsv"
+{
+  printf '%s\tnotify\tappend-records\t%s\t:none\n' "$DEL_LOG" "$ALPHA_NOTIFY"
+  printf '%s/*\tnotify\tcorroborated-create\t%s\t%s\n' "$DEL_DIR" "$ALPHA_NOTIFY" "$DEL_LOG"
+  printf '%s/*\tnotify\tcorroborated-delete\t:none\t%s\n' "$DEL_DIR" "$DEL_LOG"
+} > "$SYN_DEL_MULTI_REG"
+DEL_REG=""   # 逐轮可覆写（缺省取 SYN_DEL_REG 的值）
+
+_del_before() { # <tag> [plant-relpath...] → 建删除类合成根（plant 先于 before 快照植入）+ before 快照
+  local tag="$1" rc p
+  shift
+  SYN_ROOT="$WA_SB/syn.$tag"
+  mkdir -p "$SYN_ROOT/contrib-data/logs" "$SYN_ROOT/contrib-data/pending" "$SYN_ROOT/contrib-data/scratch"
+  # 窗口外 seed 记录（佐证搜索的阴性背景；S16a 的「记录缺席」正是靠它不可用）
+  printf '[2026-01-01 00:00:00] notify: seed-out-of-window\n' > "$SYN_ROOT/$DEL_LOG"
+  printf '[2026-01-01 00:00:01] notify: seed-out-of-window-2\n' >> "$SYN_ROOT/$DEL_LOG"
+  printf '{"digest":"%s"}\n' "$DEL_TS_A" > "$SYN_ROOT/$DEL_P_A"
+  printf 'body\n' > "$SYN_ROOT/$DEL_P_A_BODY"
+  printf '{"card":1}\n' > "$SYN_ROOT/$DEL_P_A_CARD"
+  printf 'draft\n' > "$SYN_ROOT/$DEL_OUT"
+  for p in "$@"; do
+    mkdir -p "$SYN_ROOT/$(dirname "$p")"
+    printf 'planted\n' > "$SYN_ROOT/$p"
+  done
+  SNAP_B="$WA_SB/$tag.before.snap"
+  SNAP_A="$WA_SB/$tag.after.snap"
+  _wa_call wa_snapshot "$SYN_ROOT" "$SNAP_B" > "$WA_SB/$tag.snapb.out" 2>&1
+  rc=$?
+  [ "$rc" = "0" ] || _fail "前置 wa_snapshot(before) rc=0" "rc=$rc tag=${tag}（删除类合成树）"
+  [ -s "$SNAP_B" ] || _fail "前置 快照非空" "tag=${tag}；快照为空 ${SNAP_B}"
+}
+
+_del_record() { # <ts-str> <n> → 写手日志追加 n 条在窗佐证记录（字母表内；n=被删路径数）
+  local ts="$1" n="$2" i=1
+  while [ "$i" -le "$n" ]; do
+    printf '[%s] notify: digest 卡已建 t_shadow%d（联调 fixture）\n' "$ts" "$i" >> "$SYN_ROOT/$DEL_LOG"
+    i=$((i + 1))
+  done
+}
+
+_del_rm_paths() { # <relpath...> → 真 rm（产生真锚：父目录 mtime 更新为删除瞬间）
+  local p
+  for p in "$@"; do
+    rm -f "$SYN_ROOT/$p"
+    [ ! -e "$SYN_ROOT/$p" ] || _fail "前置 真 rm 生效" "path=${p} 仍存在（kind=D 与锚均不成立）"
+  done
+}
+
+DEL_ANCHOR=""; DEL_TSSTR=""
+_del_anchor_now() { # <reldir> → 设 DEL_ANCHOR = 实测父目录 mtime（与 after 快照同刻同源）
+  DEL_ANCHOR="$("$PIN_STAT" -f %m "$SYN_ROOT/$1")"
+  case "$DEL_ANCHOR" in
+    ''|*[!0-9]*) _fail "前置 目录锚为十进制 epoch" "stat -f %m $SYN_ROOT/$1 ⇒ [${DEL_ANCHOR}]" ;;
+  esac
+}
+
+_del_pos() { # <tag> <offset-s> <relpath...> → 真 rm + 实测锚 + 由锚推出的在窗佐证记录 + classify
+  # 清单取 ${DEL_REG:-$SYN_DEL_REG}（多行/单行两形态共用同一驱动）
+  local tag="$1" off="$2"
+  shift 2
+  _del_rm_paths "$@"
+  _del_anchor_now "$DEL_DIR"
+  DEL_TSSTR="$("$PIN_DATE" -r "$((DEL_ANCHOR - off))" '+%Y-%m-%d %H:%M:%S')"
+  _del_record "$DEL_TSSTR" "$#"
+  _syn_after "$tag" "$((DEL_ANCHOR - 300))" "$DEL_ANCHOR" "${DEL_REG:-$SYN_DEL_REG}"
+}
+
+_diffset_n() { # <before-snap> <after-snap> → 窗口差集文件数（**独立口径**：按快照行逐路径比对，不信引擎自报）
+  local bm="$WA_SB/diffset.b" am="$WA_SB/diffset.a"
+  awk '{ p=""; for (i=1;i<=NF;i++) { if (index($i,"contrib-data/")>0) { p=$i; break } } if (p!="") print p "\t" $0 }' "$1" > "$bm"
+  awk '{ p=""; for (i=1;i<=NF;i++) { if (index($i,"contrib-data/")>0) { p=$i; break } } if (p!="") print p "\t" $0 }' "$2" > "$am"
+  awk -F'\t' '
+    NR==FNR { b[$1]=substr($0, index($0,"\t")+1); next }
+    { a[$1]=substr($0, index($0,"\t")+1) }
+    END {
+      n=0
+      for (p in b) { if (!(p in a)) n++; else if (b[p] != a[p]) n++ }
+      for (p in a) { if (!(p in b)) n++ }
+      print n+0
+    }' "$bm" "$am"
+}
+
+_line_for_path() { # <out-file> <relpath> → 该 path 的首条 WA-CLASS 行（无则空）
+  awk -v wp="$2" '
+    /^WA-CLASS / {
+      p=""
+      for (i=1;i<=NF;i++) { if (index($i,"path=")==1) p=substr($i,6) }
+      if (p == wp) { print; exit }
+    }' "$1"
+}
+_ev_dt() { # <line> → Δt 的十进制秒（无则空）
+  printf '%s\n' "$1" | sed -n 's/.*Δt=\([0-9][0-9]*\)s\{0,1\}.*/\1/p'
+}
+_ev_dirmtime() { # <line> → dir_mtime 十进制 epoch（无则空）
+  printf '%s\n' "$1" | sed -n 's/.*dir_mtime=\([0-9][0-9]*\).*/\1/p'
+}
+_ev_ts() { # <line> → ts 字段值（可含空格；截到 ` dir_mtime=` 或行尾）
+  local rest="$1"
+  case "$rest" in
+    *" ts="*) rest="${rest#* ts=}" ;;
+    *) printf ''; return 0 ;;
+  esac
+  printf '%s' "${rest%% dir_mtime=*}"
+}
+_del_ev_asserts() { # <tag> <relpath> <expect-anchor> <expect-ts> <expect-dt> → 删除类证据行字段反查
+  local tag="$1" p="$2" anchor="$3" ts="$4" dt="$5" line dirm tsgot hits dec
+  line="$(_line_for_path "$R_OUT" "$p")"
+  assert_ne "$line" "" "${tag} 证据行存在（path=${p}）"
+  dirm="$(_ev_dirmtime "$line")"
+  assert_ne "$dirm" "" "${tag} 证据行带 dir_mtime=<epoch>（path=${p}）"
+  case "$dirm" in
+    ''|*[!0-9]*) dec="nondecimal" ;;
+    *) dec="decimal" ;;
+  esac
+  assert_eq "$dec" "decimal" "${tag} dir_mtime 为十进制表示（实得 [${dirm}]）"
+  assert_eq "$dirm" "$anchor" "${tag} dir_mtime == 实测父目录锚（期望 ${anchor}，实得 [${dirm}]）"
+  assert_eq "$(_ev_dt "$line")" "$dt" "${tag} Δt=${dt}（实测构造偏移；非零、非硬编码常量）"
+  assert_ne "$(_ev_dt "$line")" "0" "${tag} Δt 非零（S-02 证伪：Δt 恒 0 即红）"
+  tsgot="$(_ev_ts "$line")"
+  assert_eq "$tsgot" "$ts" "${tag} 证据行 ts= 与构造记录时刻一致（期望 [${ts}]，实得 [${tsgot}]）"
+  hits="$(awk -v t="$ts" 'index($0,t)>0 {n++} END{print n+0}' "$SYN_ROOT/$DEL_LOG")"
+  assert_ne "$hits" "0" "${tag} ts= 反查写手日志命中 ${hits} 行（S-02：证据行的记录时刻必须真实存在）"
+}
+_ev_sum() { # <ev-dump> <key> → 末条 `WA total=` 行中的 key 值（无则空；用于影子 e2e 输出转储）
+  awk -v k="$2" '
+    /WA total=/ { n=split($0, a, " "); for (i=1;i<=n;i++) { if (index(a[i], k "=") == 1) v=substr(a[i], length(k)+2) } }
+    END { if (v != "") print v }' "$1"
 }
 
 # =============================================================================
@@ -453,7 +637,7 @@ assert_eq "$(_class_line_count "$R_OUT")" "0" "S12 零变更无 per-file 分类�
 assert_eq "$(_identity_report "$R_SO" "$R_OUT")" "" "S12 零变更账目恒等式"
 
 # =============================================================================
-t_case "S13 fail-closed：清单缺失/空/NF≠5/无捕获组/mode 非法/佐证 :none/快照缺失/窗口非整数 → exit 2"
+t_case "S13 fail-closed：清单缺失/空/NF≠5/无捕获组/mode 非法/佐证 :none/删除行 DbC/快照缺失/窗口非整数 → exit 2"
 _syn_before s13
 _syn_after s13 "$W0" "$W1"
 S13_SO="$R_SO"; S13_OUT="$R_OUT"
@@ -481,7 +665,160 @@ _fc_case "S13e mode 非法" "2" "$SNAP_B" "$WA_SB/reg.badmode.tsv" "$W0" "$W1"
 _fc_case "S13f corroborated 佐证 :none" "2" "$SNAP_B" "$WA_SB/reg.conone.tsv" "$W0" "$W1"
 _fc_case "S13g 快照缺失" "2" "$WA_SB/no-such-snapshot.snap" "$SYN_REG" "$W0" "$W1"
 _fc_case "S13h 窗口非整数" "2" "$SNAP_B" "$SYN_REG" "abc" "$W1"
+# S13i/S13j（S-08 的删除面半边）：corroborated-delete 行 DbC —— 字段4 必须 :none、字段5 必须非 :none
+printf '%s/*\tnotify\tcorroborated-delete\t^OK$\t%s\n' "$DEL_DIR" "$DEL_LOG" > "$WA_SB/reg.delalpha.tsv"
+printf '%s/*\tnotify\tcorroborated-delete\t:none\t:none\n' "$DEL_DIR" > "$WA_SB/reg.delnocorr.tsv"
+_fc_case "S13i 删除行字母表非 :none" "2" "$SNAP_B" "$WA_SB/reg.delalpha.tsv" "$W0" "$W1"
+_fc_case "S13j 删除行佐证 :none" "2" "$SNAP_B" "$WA_SB/reg.delnocorr.tsv" "$W0" "$W1"
 assert_eq "$(_identity_report "$S13_SO" "$S13_OUT")" "" "S13 对照：同输入 + 合法清单 rc=0 且恒等式成立（防「恒 exit 2」假通过）"
+
+# =============================================================================
+t_case "S15 删除类正例：真 rm + 真在窗佐证记录 ⇒ external/corroborated-delete-ok（S-01 回归锚三件 + 第二 <TS> 轮）"
+# 轮 A：worker 生产实测同形三件（digest-20260914-090949.{json,body.md,card.json}），构造偏移 9s（镜像生产 10:04:43/10:04:34）
+_del_before s15a
+_del_pos s15a 9 "$DEL_P_A" "$DEL_P_A_BODY" "$DEL_P_A_CARD"
+S15A_ANCHOR="$DEL_ANCHOR"; S15A_TS="$DEL_TSSTR"
+_case_asserts "S15a" "0" \
+  "$DEL_P_A" "corroborated-delete-ok" \
+  "$DEL_P_A_BODY" "corroborated-delete-ok" \
+  "$DEL_P_A_CARD" "corroborated-delete-ok" \
+  "$DEL_LOG" "registered-append-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "S15a 删除类正例 suite=0（生产实测同形三件必须全归 external；禁假红）"
+assert_eq "$(_wa_sum "$R_SO" external)" "4" "S15a external=4（三件删除 + 写手日志自身追加；S-09 既有 append 语义不回归）"
+assert_eq "$(_wa_sum "$R_SO" outside)" "0" "S15a outside=0"
+_del_ev_asserts "S15a" "$DEL_P_A" "$S15A_ANCHOR" "$S15A_TS" "9"
+_del_ev_asserts "S15a" "$DEL_P_A_BODY" "$S15A_ANCHOR" "$S15A_TS" "9"
+_del_ev_asserts "S15a" "$DEL_P_A_CARD" "$S15A_ANCHOR" "$S15A_TS" "9"
+
+# 轮 B（S-01 反空转）：第二个 <TS> + 不同构造偏移 ⇒ 同判 external（杀写死文件名/写死时间戳/常量 Δt）
+_del_before s15b "$DEL_P_B"
+_del_pos s15b 5 "$DEL_P_B"
+S15B_ANCHOR="$DEL_ANCHOR"; S15B_TS="$DEL_TSSTR"
+_case_asserts "S15b" "0" "$DEL_P_B" "corroborated-delete-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "S15b suite=0（第二 <TS> 轮）"
+assert_eq "$(_wa_sum "$R_SO" external)" "2" "S15b external=2（删除 1 + 日志追加 1）"
+_del_ev_asserts "S15b" "$DEL_P_B" "$S15B_ANCHOR" "$S15B_TS" "5"
+
+# 轮 C（E-1 形态）：同一路径模式两行并存且 create 行在前 ⇒ D 仍必须走 corroborated-delete 行（禁首匹配即返回）
+DEL_REG="$SYN_DEL_MULTI_REG"
+_del_before s15c
+_del_pos s15c 9 "$DEL_P_A"
+S15C_ANCHOR="$DEL_ANCHOR"; S15C_TS="$DEL_TSSTR"
+DEL_REG=""
+_case_asserts "S15c" "0" "$DEL_P_A" "corroborated-delete-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "S15c 双行 registry（create 行在前）删除仍归 external（E-1：D 只认 corroborated-delete 行）"
+_del_ev_asserts "S15c" "$DEL_P_A" "$S15C_ANCHOR" "$S15C_TS" "9"
+
+# =============================================================================
+t_case "S16 删除类无佐证：锚可取但无在窗记录 ⇒ suite/no-delete-corroboration；边界 |Δ|=30s⇒external / 31s⇒suite"
+# S16a：锚存在、佐证记录缺席（写手日志仅窗口外 seed）⇒ 保守判红；证据行仍须带 dir_mtime（S-07：锚有值、佐证缺席）
+_del_before s16a
+_del_rm_paths "$DEL_P_A"
+_del_anchor_now "$DEL_DIR"
+S16A_ANCHOR="$DEL_ANCHOR"
+_syn_after s16a "$((S16A_ANCHOR - 300))" "$S16A_ANCHOR" "$SYN_DEL_REG"
+_case_asserts "S16a" "0" "$DEL_P_A" "no-delete-corroboration"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "S16a suite=1（无在窗佐证 ⇒ 不放行）"
+assert_eq "$(_wa_sum "$R_SO" external)" "0" "S16a external=0（不得因路径命中托管面就放行）"
+S16A_LINE="$(_line_for_path "$R_OUT" "$DEL_P_A")"
+assert_ne "$(_ev_dirmtime "$S16A_LINE")" "" "S16a 失败路径仍带 dir_mtime（S-07：锚有值、佐证缺席）"
+assert_eq "$(_ev_dirmtime "$S16A_LINE")" "$S16A_ANCHOR" "S16a 失败路径 dir_mtime == 实测锚"
+
+# S16b/S16c：同路径同操作，仅佐证时刻不同（|Δ|=30 ⇒ external；|Δ|=31 ⇒ suite；S-03 边界含端点）
+_del_before s16b
+_del_pos s16b 30 "$DEL_P_A"
+S16B_ANCHOR="$DEL_ANCHOR"; S16B_TS="$DEL_TSSTR"
+_case_asserts "S16b" "0" "$DEL_P_A" "corroborated-delete-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "S16b |Δ|=30s ⇒ external ∧ suite=0（含边界）"
+_del_ev_asserts "S16b" "$DEL_P_A" "$S16B_ANCHOR" "$S16B_TS" "30"
+
+_del_before s16c
+_del_pos s16c 31 "$DEL_P_A"
+S16C_ANCHOR="$DEL_ANCHOR"
+_case_asserts "S16c" "0" "$DEL_P_A" "no-delete-corroboration"
+# S-03 谓词 = 「suite==1 ∧ **该 path** 非 external」（该 path 的定性由上一行 _case_asserts 钉死）。
+# 本合成面必然另有**恰 1 条** external = 测试自身为构造佐证而写入的 notify.log 追加（registered-append-ok）
+# ⇒ 按**归属**收窄：全局 external 恰 1 且该行归属佐证日志，而非被删路径。
+# （原「external==0」把构造副作用当判据，与预注册谓词不符；见 QA 报告 S16c/S16e 根因取证。）
+assert_eq "$(_wa_sum "$R_SO" external)" "1" "S16c 全局 external=1（唯一一条 = 构造佐证用的 notify.log 追加）"
+assert_contains "$(grep -m1 '^WA-CLASS external ' "$R_OUT")" "path=$DEL_LOG" "S16c 该 external 行归属 = 佐证日志（非被删路径）"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "S16c |Δ|=31s ⇒ suite=1"
+assert_eq "$(_ev_dirmtime "$(_line_for_path "$R_OUT" "$DEL_P_A")")" "$S16C_ANCHOR" \
+  "S16c 失败路径 dir_mtime == 实测锚（锚仍在，仅近邻不成立）"
+
+# S16d/S16e：|·| 对侧（记录 ts 落在锚之后 +30s/+31s，仍在窗口松弛 ±120s 内）——同一 |Δ| 判据的对称性
+_del_before s16d
+_del_pos s16d -30 "$DEL_P_A"
+S16D_ANCHOR="$DEL_ANCHOR"; S16D_TS="$DEL_TSSTR"
+_case_asserts "S16d" "0" "$DEL_P_A" "corroborated-delete-ok"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "S16d |Δ|=30s（记录在锚之后）⇒ external"
+_del_ev_asserts "S16d" "$DEL_P_A" "$S16D_ANCHOR" "$S16D_TS" "30"
+
+_del_before s16e
+_del_pos s16e -31 "$DEL_P_A"
+S16E_ANCHOR="$DEL_ANCHOR"
+_case_asserts "S16e" "0" "$DEL_P_A" "no-delete-corroboration"
+# 同 S16c：S-03 谓词只要求「该 path 非 external」（上一行 _case_asserts 已钉死），
+# 构造佐证所写的 notify.log 追加恒贡献恰 1 条 external ⇒ 按归属收窄断言。
+assert_eq "$(_wa_sum "$R_SO" external)" "1" "S16e 全局 external=1（唯一一条 = 构造佐证用的 notify.log 追加）"
+assert_contains "$(grep -m1 '^WA-CLASS external ' "$R_OUT")" "path=$DEL_LOG" "S16e 该 external 行归属 = 佐证日志（非被删路径）"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "S16e |Δ|=31s（记录在锚之后）⇒ suite=1"
+assert_eq "$(_ev_dirmtime "$(_line_for_path "$R_OUT" "$DEL_P_A")")" "$S16E_ANCHOR" \
+  "S16e 失败路径 dir_mtime == 实测锚（对侧轮同样成立）"
+
+# =============================================================================
+t_case "S17 面外删除（无 marker）：未登记路径被删 ⇒ outside-surface（不冒领 external、不误计 suite）"
+_del_before s17
+_del_rm_paths "$DEL_OUT"
+_del_anchor_now contrib-data/scratch
+_syn_after s17 "$((DEL_ANCHOR - 300))" "$DEL_ANCHOR" "$SYN_DEL_REG"
+_case_asserts "S17" "0" "$DEL_OUT" "outside-surface"
+assert_eq "$(_wa_sum "$R_SO" suite)" "0" "S17 面外删除不计 suite（不误判套件写入）"
+assert_eq "$(_wa_sum "$R_SO" external)" "0" "S17 面外删除不冒领 external（S-06/S-11 核心）"
+assert_eq "$(_wa_sum "$R_SO" outside)" "1" "S17 面外删除落 outside 证据行（不静默丢弃）"
+assert_eq "$(_wa_sum "$R_SO" total)" "1" "S17 窗口差集 = 1（仅该删除）"
+
+# =============================================================================
+t_case "S18 面外删除（有 marker）：未登记路径 basename 带 S4-P1- 前缀被删 ⇒ suite/canary-marker（R-1 面外也判红）"
+_del_before s18 "$DEL_MARK_PROBE"
+_del_rm_paths "$DEL_MARK_PROBE"
+_del_anchor_now contrib-data/scratch
+_syn_after s18 "$((DEL_ANCHOR - 300))" "$DEL_ANCHOR" "$SYN_DEL_REG"
+_case_asserts "S18" "0" "$DEL_MARK_PROBE" "canary-marker"
+assert_eq "$(_wa_sum "$R_SO" suite)" "1" "S18 面外 marker 路径删除判 suite=1（面外不豁免）"
+assert_eq "$(_wa_sum "$R_SO" outside)" "0" "S18 marker 路径短路先于面外判定（不计 outside）"
+assert_eq "$(_wa_sum "$R_SO" external)" "0" "S18 不得 external（路径自证面优先）"
+
+# =============================================================================
+t_case "S19 混合窗口等值恒等式：4 external + 1 suite + 1 outside ⇒ 三类计数与窗口差集等值对账"
+_del_before s19
+_del_rm_paths "$DEL_P_A" "$DEL_P_A_BODY" "$DEL_P_A_CARD"          # ① 写手删三件（corroborated-delete）
+printf 'S4-P1-suite-write-probe\n' > "$SYN_ROOT/$DEL_SUITE_PROBE"  # ③ 套件在判据面内写入（marker 内容）
+_del_anchor_now "$DEL_DIR"
+S19_ANCHOR="$DEL_ANCHOR"
+S19_TS="$("$PIN_DATE" -r "$((S19_ANCHOR - 9))" '+%Y-%m-%d %H:%M:%S')"
+_del_record "$S19_TS" 3                                            # ② 写手日志追加（同时构成三件删除的佐证）
+printf 'draft-more\n' >> "$SYN_ROOT/$DEL_OUT"                      # ④ 面外路径被改
+_syn_after s19 "$((S19_ANCHOR - 300))" "$S19_ANCHOR" "$SYN_DEL_REG"
+S19_EXT="$(_wa_sum "$R_SO" external)"; S19_SUI="$(_wa_sum "$R_SO" suite)"
+S19_OUT="$(_wa_sum "$R_SO" outside)"; S19_TOT="$(_wa_sum "$R_SO" total)"
+S19_UNC="$(_wa_sum "$R_SO" unclassified)"; S19_DIFF="$(_diffset_n "$SNAP_B" "$SNAP_A")"
+assert_eq "$R_RC" "0" "S19 rc=0（混合窗口仍成功归类）"
+assert_eq "$S19_DIFF" "6" "S19 独立口径窗口差集文件数 = 6（3 删除 + 1 新建 + 1 日志改写 + 1 面外改写）"
+assert_eq "$S19_EXT" "4" "S19 external==4（等值断言；3 删除 + 1 写手日志追加）"
+assert_eq "$S19_SUI" "1" "S19 suite==1（等值断言；不因删除而漂移）"
+assert_eq "$S19_OUT" "1" "S19 outside==1（等值断言）"
+assert_eq "$((S19_EXT + S19_SUI + S19_OUT))" "$S19_TOT" "S19 三类和 == total（V2 检测器：删除不得走旁路）"
+assert_eq "$S19_TOT" "$S19_DIFF" "S19 total == 窗口差集文件数（独立口径实得 ${S19_DIFF}，非 >=）"
+assert_eq "$S19_UNC" "0" "S19 unclassified==0"
+assert_eq "$(_identity_report "$R_SO" "$R_OUT")" "" "S19 账目恒等式 total==external+suite+outside ∧ unclassified==0"
+assert_eq "$(_expect_report "$R_OUT" "$DEL_P_A" "corroborated-delete-ok")" "" "S19 三件删除①全归 corroborated-delete-ok"
+assert_eq "$(_expect_report "$R_OUT" "$DEL_P_A_BODY" "corroborated-delete-ok")" "" "S19 三件删除②全归 corroborated-delete-ok"
+assert_eq "$(_expect_report "$R_OUT" "$DEL_P_A_CARD" "corroborated-delete-ok")" "" "S19 三件删除③全归 corroborated-delete-ok"
+assert_eq "$(_expect_report "$R_OUT" "$DEL_LOG" "registered-append-ok")" "" "S19 写手日志追加归 registered-append-ok"
+assert_eq "$(_expect_report "$R_OUT" "$DEL_OUT" "outside-surface")" "" "S19 面外改写归 outside-surface"
+assert_eq "$(_expect_report "$R_OUT" "$DEL_SUITE_PROBE" "canary-marker|created-unallowed|no-corroboration")" "" \
+  "S19 套件面内写入归 suite（reason ∈ suite 闭集；见 CONTRACT_AMBIGUOUS 10)）"
 
 # =============================================================================
 t_case "M1 mutation 抗性：库副本注入「一律 external」→ 同一形态结果必与正确版不同"
@@ -705,16 +1042,93 @@ else
   _fail "E3 影子前置" "影子 contrib-data 未建立（拒绝注入式实跑）"
 fi
 
+t_case "E4 影子实跑 canary-delete：套件在窗口内真删 marker 探针 ⇒ 4.P1 必红 ∧ suite≥1 ∧ reason=canary-marker ∧ 窗口差集非空 ∧ 三轮等量"
+if [ "$E2E_OK" = "1" ]; then
+  if ! _wait_quiet 300; then
+    _fail "E4 并发前置" "检测到并发 s4 进程；共享 artifact 根 ${ART} 禁并发"
+  else
+    E4_LINES=""; E4_SUITES=""; E4_VERDICTS=""; E4_ROUND=1
+    while [ "$E4_ROUND" -le 3 ]; do
+      E4_TAG="E4 r${E4_ROUND}"
+      if [ "$E4_ROUND" -gt 1 ] && ! _wait_quiet 300; then
+        _fail "${E4_TAG} 并发前置" "检测到并发 s4 进程；共享 artifact 根 ${ART} 禁并发"
+      fi
+      _e2e_case canary-delete
+      E4_RC="$E_RC"; E4_EV="$E_EV"; E4_BEFORE="$E_BEFORE"; E4_AFTER="$E_AFTER"
+      assert_ne "$E4_RC" "0" "${E4_TAG} 退出码 ≠ 0（窗口内真删 ⇒ 4.P1 必判红）"
+      assert_ne "$(awk '/ACCEPTANCE-FAIL/{n=1} END{print n+0}' "$E4_EV")" "0" \
+        "${E4_TAG} 输出含 ACCEPTANCE-FAIL（套件删除被判红）"
+      assert_ne "$(awk '/WA-CLASS suite /{n++} END{print n+0}' "$E4_EV")" "0" \
+        "${E4_TAG} 存在 WA-CLASS suite 分类行"
+      assert_ne "$(awk '/WA-CLASS suite .*reason=canary-marker([[:space:]]|$)/{n=1} END{print n+0}' "$E4_EV")" "0" \
+        "${E4_TAG} suite 行 reason=canary-marker（删除类路径短路口径）"
+      assert_ne "$(awk '/WA-INJECT mode=delete-plant/{n=1} END{print n+0}' "$E4_EV")" "0" \
+        "${E4_TAG} 两段式注入 plant 段落 WA-INJECT 行（契约 stdout，可追责）"
+      assert_ne "$(awk '/WA-INJECT mode=delete-fire/{n=1} END{print n+0}' "$E4_EV")" "0" \
+        "${E4_TAG} 两段式注入 fire 段落 WA-INJECT 行（窗口内删除事件）"
+      E4_TOT="$(_ev_sum "$E4_EV" total)"; E4_TOT="${E4_TOT:-0}"
+      E4_DL="$(_ev_sum "$E4_EV" diff_lines)"; E4_DL="${E4_DL:-0}"
+      assert_ne "$E4_TOT" "0" "${E4_TAG} 窗口差集非空（total=${E4_TOT}；S-04 冻结口径）"
+      assert_ne "$E4_DL" "0" "${E4_TAG} 冻结口径 diff_lines 非空（diff_lines=${E4_DL}）"
+      assert_eq "$E4_AFTER" "$E4_BEFORE" "${E4_TAG} canary 注入物零残留（运行后影子文件集与运行前一致）"
+      E4_LINES="$E4_LINES $(awk '/WA-CLASS /{c++} END{print c+0}' "$E4_EV")"
+      E4_SUITES="$E4_SUITES $(awk '/WA-CLASS suite /{c++} END{print c+0}' "$E4_EV")"
+      if [ "$E4_RC" = "0" ]; then E4_VERDICTS="${E4_VERDICTS}${E4_VERDICTS:+ }GREEN"; else E4_VERDICTS="${E4_VERDICTS}${E4_VERDICTS:+ }RED"; fi
+      E4_ROUND=$((E4_ROUND + 1))
+    done
+    assert_eq "$E4_VERDICTS" "RED RED RED" "E4 三轮结论一致（均判红；S-13）"
+    E4_L1="$(printf '%s' "$E4_LINES" | awk '{print $1}')"
+    E4_L2="$(printf '%s' "$E4_LINES" | awk '{print $2}')"
+    E4_L3="$(printf '%s' "$E4_LINES" | awk '{print $3}')"
+    E4_S1="$(printf '%s' "$E4_SUITES" | awk '{print $1}')"
+    E4_S2="$(printf '%s' "$E4_SUITES" | awk '{print $2}')"
+    E4_S3="$(printf '%s' "$E4_SUITES" | awk '{print $3}')"
+    assert_ne "$E4_L1" "0" "E4 证据行数非零（防「三轮皆 0 行」的空转等值）"
+    assert_eq "$E4_L2" "$E4_L1" "E4 三轮证据行数相等（r2=${E4_L2} == r1=${E4_L1}；杀证据 append 漂移）"
+    assert_eq "$E4_L3" "$E4_L1" "E4 三轮证据行数相等（r3=${E4_L3} == r1=${E4_L1}）"
+    assert_eq "$E4_S2" "$E4_S1" "E4 三轮 suite 计数相等（r2=${E4_S2} == r1=${E4_S1}）"
+    assert_eq "$E4_S3" "$E4_S1" "E4 三轮 suite 计数相等（r3=${E4_S3} == r1=${E4_S1}）"
+    assert_ne "$E4_S1" "0" "E4 每轮 suite ≥ 1（实得 ${E4_S1}）"
+  fi
+else
+  _fail "E4 影子前置" "影子 contrib-data 未建立（$SHADOW 已存在，拒绝注入式实跑）"
+fi
+
+t_case "E5 影子实跑 external-delete：登记写手删除其所辖文件 ⇒ 4.P1 PASS ∧ external≥1 ∧ reason=corroborated-delete-ok"
+if [ "$E2E_OK" = "1" ]; then
+  if ! _wait_quiet 300; then
+    _fail "E5 并发前置" "检测到并发 s4 进程；共享 artifact 根 ${ART} 禁并发"
+  else
+    _e2e_case external-delete
+    E5_EV="$E_EV"
+    assert_ne "$(awk '/PASS 4\.P1/{n=1} END{print n+0}' "$E5_EV")" "0" "E5 4.P1 PASS（登记写手的删除不误红）"
+    E5_EXT="$(_ev_sum "$E5_EV" external)"; E5_EXT="${E5_EXT:-0}"
+    assert_ne "$E5_EXT" "0" "E5 external ≥ 1（实得 ${E5_EXT}）"
+    assert_ne "$(awk '/WA-CLASS external .*reason=corroborated-delete-ok([[:space:]]|$)/{n=1} END{print n+0}' "$E5_EV")" "0" \
+      "E5 落 reason=corroborated-delete-ok 行（删除类正例证据可 grep）"
+    E5_SUI="$(_ev_sum "$E5_EV" suite)"; E5_SUI="${E5_SUI:-1}"
+    assert_eq "$E5_SUI" "0" "E5 suite=0（4.P1 核心断言口径）"
+    E5_UNC="$(_ev_sum "$E5_EV" unclassified)"; E5_UNC="${E5_UNC:-1}"
+    assert_eq "$E5_UNC" "0" "E5 unclassified=0（归属完整性）"
+    assert_ne "$(_ev_sum "$E5_EV" total)" "" "E5 引擎末行计数行落盘（可 grep）"
+    assert_ne "$(awk '/WA-INJECT mode=delete-fire/{n=1} END{print n+0}' "$E5_EV")" "0" \
+      "E5 注入落 WA-INJECT mode=delete-fire 行（窗口内删除事件可追责）"
+    assert_eq "$E_AFTER" "$E_BEFORE" "E5 注入物零残留（运行后影子文件集与运行前一致）"
+  fi
+else
+  _fail "E5 影子前置" "影子 contrib-data 未建立（拒绝注入式实跑）"
+fi
+
 if [ "$SHADOW_CREATED" = "1" ]; then
   rm -rf "$SHADOW"
   SHADOW_CREATED=0
 fi
 
-t_case "E4 影子树零残留：实跑结束不得在仓内留下影子 contrib-data"
+t_case "E6 影子树零残留：实跑结束不得在仓内留下影子 contrib-data"
 if [ -e "$SHADOW" ]; then
-  _fail "E4 影子树已清理" "${SHADOW} 仍存在（本套件退出后必须零仓内残留）"
+  _fail "E6 影子树已清理" "${SHADOW} 仍存在（本套件退出后必须零仓内残留）"
 else
-  _pass "E4 影子树已清理（${SHADOW} 不存在）"
+  _pass "E6 影子树已清理（${SHADOW} 不存在）"
 fi
 
 # =============================================================================
@@ -848,4 +1262,19 @@ t_finish
 #     （S2b 无佐证、S2c 佐证齐备）。
 #  7) 段界锚：4.P1/4.1 段落的提取依赖既有段标（`P="4.P1"`/`4.P1 [det-machine]`、`t_case "4.1"/"4.2"`）。
 #     设计声明冻结 driver 逐字保留；若段标被重命名，G3/N1/N2 会显式转红（段界不可提取）而非静默放宽。
+#  8) 删除类失败路径（`no-delete-corroboration`）的 EXTRA 字段值语义：`## 设计文档`「归属规则」把该分支写作
+#     `EXTRA: writer=<w> Δt=<…> ts=<…> dir_mtime=<epoch>`，但「锚可取 ∧ 佐证缺席」时 `Δt`/`ts` 取何值（最近记录？
+#     缺席占位？）未被钉死。本套件只对 `dir_mtime` 硬断言（S-07 明文「锚有值、佐证缺席」），未对失败路径的
+#     `Δt`/`ts` 求值——与既有 ⑤ 的处置同构（不推测未声明的值语义）。
+#  9) `|Δ|` 的对称性：设计写 `|记录 ts − 锚| ≤ 30s`（绝对差），而 example/边界段只给出「记录早于锚」的样例。
+#     本套件按字面 |·| 对「记录晚于锚 +30s / +31s」（S16d/S16e，仍在窗口松弛 ±120s 内）同样求值；若实现只做
+#     单侧比较（锚 − 记录），这两轮会红并暴露口径分歧，属如实上报而非推测。
+# 10) S19 的「套件面内写入」reason 令牌：S-12 只写「套件在 `pending/` 写 marker 文件（suite）」未点名 token；
+#     且该路径在 `corroborated-delete` 面上属 **新建**（C），而设计对 C/M 只写「取首个匹配行（谁在前都走同一
+#     corroborated 分支）」。本套件对该行接受 reason ∈ {canary-marker, created-unallowed, no-corroboration}
+#     （三者 class 同为 suite ⇒ class 仍被钉死）；若判成 corroborated-ok/external，则 S19 的 `suite==1` 等值断言
+#     转红（S-12 明文要求该写入判 suite，故不是放宽而是按场景求值）。
+# 11) 删除类注入行的透传：`## 契约规约` 只声明 `wa_inject` 自身的 stdout 形态（`WA-INJECT mode=delete-plant|delete-fire …`），
+#     未声明 s4 是否把两行透传到自身输出。本套件沿用 E1 的既有先例（`WA-INJECT` 可在 s4 输出中转储）并对
+#     plant/fire 两行分别断言；若不透传 ⇒ 红（审计链缺口）而非静默放宽。
 # =============================================================================

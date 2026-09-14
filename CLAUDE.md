@@ -99,7 +99,7 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 
 ## 生产零写入判据的写入归属（s4 4.P1 / t1-04 4.1）
 
-改「套件对生产 contrib-data 零写入」判据，或看到 s4 4.P1 / t1-04 4.1 因生产写手（approval-collect / notify 等）在窗口内落笔而红时，**先读 [`scripts/contrib/tests/README.md`](scripts/contrib/tests/README.md) 的「写入归属引擎」节** —— 引擎 `scripts/contrib/tests/lib/write-attribution.sh` + 清单 `scripts/contrib/tests/lib/production-writers.tsv`（三值类别 suite/external/outside-surface、字母表与佐证近邻规则、四个注入旋钮 `S4_P1_INJECT`、覆盖守卫与残余风险）；生产侧复跑配方见该节末指针。
+改「套件对生产 contrib-data 零写入」判据，或看到 s4 4.P1 / t1-04 4.1 因生产写手（approval-collect / notify 等）在窗口内落笔而红时，**先读 [`scripts/contrib/tests/README.md`](scripts/contrib/tests/README.md) 的「写入归属引擎」节** —— 引擎 `scripts/contrib/tests/lib/write-attribution.sh` + 清单 `scripts/contrib/tests/lib/production-writers.tsv`（三值类别 suite/external/outside-surface、字母表与佐证近邻规则、**删除类归属 `corroborated-delete`（父目录 mtime 锚 + 富快照侧车 `<out>.dirs`）**、六个注入旋钮 `S4_P1_INJECT`（含删除类两段式 `canary-delete` / `external-delete`）、覆盖守卫与残余风险）；生产侧复跑配方见该节末指针。
 
 ## Hermes Agent 环境
 
