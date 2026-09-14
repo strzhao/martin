@@ -48,6 +48,7 @@ LOCKDIR="${L2_LEDGER_LOCKDIR:-/tmp/contrib-l2ledger.lock}"
 LOG_DIR="$CONTRIB/logs"
 LOG="$LOG_DIR/l2-ledger.log"
 DEFAULT_REPO="NousResearch/hermes-agent"
+SELF_DECIDED=""
 
 # 与 rq.sh 同一 secret 口径：任何字段命中即拒绝写入
 SECRET_RE='ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
@@ -74,10 +75,11 @@ usage() {
   cat >&2 <<'EOF'
 用法:
   l2_ledger.sh record --kind own-PR|evidence|release-gate|other (--issue N | --pr N)
-      --channel "<渠道标签>" --approval "<批准原文>" [--rq rq-xxx] [--branch B] [--url U]
-      [--summary S] [--dry-run]
+      --channel "<渠道标签>" (--approval "<批准原文>" | --self-decided "<自决理由>")
+      [--rq rq-xxx] [--branch B] [--url U] [--summary S] [--dry-run]
+      ※ --self-decided = operator 自决路（宪法 §12）；release-gate 拒绝自决（ALWAYS_L2）
   l2_ledger.sh publish --worktree <git 目录> --branch B --title T
-      (--approval "<会话内明示原文>" | --rq <state=approved 的 rq id>)
+      (--approval "<会话内明示原文>" | --rq <state=approved 的 rq id> | --self-decided "<自决理由>")
       [--repo owner/name] [--remote fork] [--base main] [--body-file F]
       [--issue N] [--pr N] [--channel "<渠道标签>"] [--dry-run]
   l2_ledger.sh check (--branch B | --pr N) [--ledger PATH]
@@ -120,6 +122,35 @@ disp_cn() {
 ledger_has() {
   [[ -f "$LEDGER" ]] || return 1
   grep -qF -- "$1" <(tr -d '\r' <"$LEDGER")
+}
+
+# ---- 自决路与日写动作上限（09-14 用户拍板：判断优先，机械层只做极端异常兜底）----
+# 阈值定调：正常量级 1-3 写动作/日。软告警 10（照常执行，WARNING 进日志供简报拣选）；
+# 硬闸 30（物理拒绝——正常 10 倍以上才触发，到达即属失控/循环/被俘形态，与 AI 判断对错无关）。
+LEDGER_DAILY_WARN=10
+LEDGER_DAILY_HARD=30
+daily_cap_check() {
+  local today n
+  today="$(date '+%Y-%m-%d')"
+  n=0
+  [[ -f "$LEDGER" ]] && n="$(grep -c "^${today}" "$LEDGER" 2>/dev/null || true)"
+  n="${n:-0}"
+  if (( n >= LEDGER_DAILY_HARD )); then
+    die "当日对外写动作已 ${n} 条（硬闸 ${LEDGER_DAILY_HARD}，极端异常兜底）——停止写动作；正常 1-3/日，达此数必属异常，需人工核查后再放行"
+  fi
+  if (( n >= LEDGER_DAILY_WARN )); then
+    echo "l2_ledger.sh: WARNING 当日对外写动作 ${n} 条（软告警线 ${LEDGER_DAILY_WARN}）——超出正常量级" >&2
+  fi
+}
+
+# resolve_self_decided <kind>：把 --self-decided 归一化成批准原文；ALWAYS_L2 机械拒绝
+# （release-gate = 物理不可逆，永远要用户具体批准——机制层，operator 无权重做，宪法 §12）
+resolve_self_decided() {
+  local kind="$1"
+  [[ -z "$SELF_DECIDED" ]] && return 0
+  [[ "$kind" == "release-gate" ]] && die "release-gate 属 ALWAYS_L2（物理不可逆），拒绝自决路——必须用户具体批准（宪法 §12）"
+  [[ -z "$(sanitize "$approval")" ]] || die "--self-decided 与 --approval 互斥（自决动作不需要也不允许同时挂用户批准）"
+  approval="自决: ${SELF_DECIDED}"
 }
 
 # 幂等预检：本脚本可判定的重复形态（rq 锚 / 分支锚优先；URL 锚仅在无其它锚时作为唯一判据
@@ -185,6 +216,7 @@ cmd_record() {
       --url)      url="${2:-}"; shift 2 ;;
       --channel)  channel="${2:-}"; shift 2 ;;
       --approval) approval="${2:-}"; shift 2 ;;
+      --self-decided) SELF_DECIDED="${2:-}"; shift 2 ;;
       --summary)  summary="${2:-}"; shift 2 ;;
       --dry-run)  dry="true"; shift ;;
       -h|--help)  usage ;;
@@ -199,7 +231,8 @@ cmd_record() {
   [[ -n "$issue" || -n "$pr" ]] || die "record 需 --issue 或 --pr（台账锚点）"
   [[ -n "$channel" ]] || die "record 缺 --channel（渠道标签，如 \"L2-B 会话内批准\"）"
   # fail-closed：无批准原文 = 无 L2 依据，拒绝落账（宁可漏记，不可伪造依据）
-  [[ -n "$(sanitize "$approval")" ]] || die "record 缺 --approval（批准来源原文；L2 语义：对外动作必有批准）"
+  resolve_self_decided "$kind"
+  [[ -n "$(sanitize "$approval")" ]] || die "record 缺批准来源（--approval \"<批准原文>\" 或 --self-decided \"<自决理由>\"；L2 语义：对外动作必有批准或自决留痕）"
   [[ -z "$issue" || "$issue" =~ ^[0-9]+$ ]] || die "record --issue 必须是数字"
   [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || die "record --pr 必须是数字"
 
@@ -218,6 +251,7 @@ cmd_record() {
     [[ "$dry" == "true" ]] || log "record ${OUT_RQ:-${OUT_BRANCH:-$issue}} 已在账（幂等跳过）"
     return 0
   fi
+  [[ "$dry" == "true" ]] || daily_cap_check
   if ! append_ledger; then
     echo "l2_ledger.sh: approved.log 写入失败（路径/权限异常：${LEDGER}）" >&2
     return 9
@@ -280,6 +314,7 @@ cmd_publish() {
       --rq)        rq="${2:-}"; shift 2 ;;
       --channel)   channel="${2:-}"; shift 2 ;;
       --approval)  approval="${2:-}"; shift 2 ;;
+      --self-decided) SELF_DECIDED="${2:-}"; shift 2 ;;
       --dry-run)   dry="true"; shift ;;
       -h|--help)   usage ;;
       *) die "publish 未知参数: $1" ;;
@@ -293,6 +328,7 @@ cmd_publish() {
   CHANNEL="$(sanitize "${channel:-L2-B 会话内批准}")"
 
   # ① 批准证据（fail-closed 核心闸；置于一切 git/gh 动作之前——无批准即零动作）
+  resolve_self_decided "own-PR"
   local evidence=""
   if [[ -n "$rq" ]]; then
     local st
@@ -303,10 +339,11 @@ cmd_publish() {
   elif [[ -n "$(sanitize "$approval")" ]]; then
     evidence="$(sanitize "$approval")"
   else
-    die "publish 缺批准证据：--approval \"<会话内明示原文>\" 或 --rq <state=approved 的 rq id>"
+    die "publish 缺批准证据：--approval \"<会话内明示原文>\" 或 --rq <state=approved 的 rq id> 或 --self-decided \"<自决理由>\""
   fi
   assert_no_secret "$evidence" "--approval"
   assert_no_secret "$title" "--title"
+  [[ "$dry" == "true" ]] || daily_cap_check
 
   # ② git 上下文校验
   if ! "$GIT_BIN" -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
