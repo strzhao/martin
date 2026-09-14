@@ -1512,6 +1512,20 @@ cmd_approve() {
       prs="$(GH_REPO="$(cfg '.repo' 'NousResearch/hermes-agent')" "$GH_BIN" pr list --search "$iss in:body" --state open --json number 2>/dev/null \
         | jq -r --arg own "$own_pr" '[.[]?.number | tostring | select(. != $own)] | join(",")' 2>/dev/null || true)"
       fi
+      # ── own-PR refresh 路豁免（卡 t_fc3f1e9f）────────────────────────────────
+      # refresh 路（execute.sh 的 MODE=refresh-branch）的动作对象就是 item.pr 自身 ⇒
+      # 「该 issue 被别的车引用 / 被 salvage」恰是健康态（维护者的收编车正文明写 salvage 我方 PR），
+      # 按占坑判死会误拦。谓词与 execute.sh 的 MODE 判定同源（孪生面，改一处必改另一处）：
+      # item.pr 非空 + config allow_own_pr_refresh=true + 该 issue 的 BRANCH.md 有独立行 refresh: yes；
+      # 任一不满足 ⇒ 逐字节等价走原占坑判定（新开车照拦）。
+      if [[ -n "$own_pr" && "$own_pr" != "null" && "$(cfg '.allow_own_pr_refresh' 'false')" == "true" ]]; then
+        local bmd
+        bmd="$(ls -t "$CONTRIB"/runs/*-issue"$iss"/BRANCH.md 2>/dev/null | head -1 || true)"
+        if [[ -n "$bmd" ]] && grep -qE '^[[:space:]]*-?[[:space:]]*refresh:[[:space:]]*yes[[:space:]]*$' "$bmd" 2>/dev/null; then
+          log "approve $id: refresh 路豁免占坑检查（own-PR #$own_pr 即动作对象，档案声明 refresh: yes）"
+          prs=""
+        fi
+      fi
       if [[ -n "$prs" && "$prs" != "null" ]]; then
         # 停摆豁免（卡 t_b8ef4f58）：与 execute.sh ttl_verify 第 2 项同源同步演进。
         # 全部停摆 → 豁免继续发卡；任一活跃 → 走原判死文案（一字不改）；

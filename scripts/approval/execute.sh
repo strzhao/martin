@@ -220,6 +220,19 @@ ttl_verify() {
     return 1
   fi
   fi
+  # ── own-PR refresh 路豁免（卡 t_fc3f1e9f）────────────────────────────────────
+  # refresh 路（下方 MODE=refresh-branch）的动作对象就是 item.pr 自身 ⇒「该 issue 被别的车
+  # 引用 / 被 salvage」恰是健康态，按占坑判死会误拦。与 notify.sh 发卡前占坑闸同谓词
+  # （孪生面，改一处必改另一处）：item.pr 非空 + config allow_own_pr_refresh=true +
+  # 该 issue 的 BRANCH.md 有独立行 refresh: yes；任一不满足 ⇒ 逐字节等价走原占坑判定。
+  if [[ -n "$own" && "$own" != "null" && "$(cfg '.allow_own_pr_refresh' 'false')" == "true" ]]; then
+    local bmd
+    bmd="$(ls -t "$CONTRIB"/runs/*-issue"${ISSUE}"/BRANCH.md 2>/dev/null | head -1 || true)"
+    if [[ -n "$bmd" ]] && grep -qE '^[[:space:]]*-?[[:space:]]*refresh:[[:space:]]*yes[[:space:]]*$' "$bmd" 2>/dev/null; then
+      log "TTL 占坑复验：refresh 路豁免占坑检查（own-PR #$own 即动作对象，档案声明 refresh: yes）"
+      prs=""
+    fi
+  fi
   if [[ -n "$prs" ]]; then
     local old_ifs="$IFS"
     IFS=","
