@@ -944,9 +944,12 @@ check_eq "refresh 门: execute.sh 含 force 字样的行恒 1（falsify 锚）" 
 # 原判据写死 ==1，而卡 t_fc3f1e9f 的 refresh 豁免修复合法地新增了第二个调用点
 # （execute.sh 的 MODE 判定 + 占坑豁免谓词）⇒ 断言失真为红；且写死计数对新增调用点
 # 恒脆（每加一处就误报）。逐调用点对齐才既保「缺省 false 在位」语义又不误伤。
+# 红队 F3（2026-09-14）：总数侧原用单引号字面量匹配（`cfg '\.allow_own_pr_refresh'`），
+# 双引号写法 `cfg ".allow_own_pr_refresh"` 恒不计入 ⇒ 该形态的新增调用点逃逸。
+# 改用引号字符类 ["'] 同时覆盖两种写法（本班实证：加一条双引号调用点，旧式恒 2、新式 3）。
 check_eq "refresh 门: allow_own_pr_refresh 缺省 false（全部调用点默认值在位）" \
   "$(grep -c "cfg '.allow_own_pr_refresh' 'false'" "$EXECUTE" 2>/dev/null | tr -d ' ')" \
-  "$(grep -c "cfg '\.allow_own_pr_refresh'" "$EXECUTE" 2>/dev/null | tr -d ' ')"
+  "$(grep -cE "cfg [\"']\.allow_own_pr_refresh[\"']" "$EXECUTE" 2>/dev/null | tr -d ' ')"
 
 check_eq "plist StartInterval=90" "$(defaults read "$PLIST" StartInterval 2>/dev/null)" "90"
 check_eq "plist RunAtLoad=false" "$(defaults read "$PLIST" RunAtLoad 2>/dev/null)" "0"

@@ -1462,7 +1462,7 @@ occ_all_stalled() { # <repo> <foreign_pr_csv> → rc 0=全部停摆放行 | 1=�
 # 非空 ⇒ 真占坑（保留进判定）；空 ⇒ 兄弟腿，剔除。
 # fail-closed：BRANCH.md/worktree 不可用、git 取证失败、或某 PR 的 files 取证失败 ⇒ 该项原样保留。
 occ_overlap_filter() { # <repo> <pr_csv> <worktree> → stdout: 过滤后仍需按占坑判定的 csv
-  local repo="$1" csv="$2" wt="$3" p pfiles out="" old_ifs ours_f pr_f
+  local repo="$1" csv="$2" wt="$3" p praw pfiles out="" old_ifs ours_f pr_f
   ours_f="$(mktemp -t occ-ours.XXXXXX 2>/dev/null)" || { printf '%s' "$csv"; return 0; }
   pr_f="$(mktemp -t occ-pr.XXXXXX 2>/dev/null)" || { rm -f "$ours_f"; printf '%s' "$csv"; return 0; }
   if [[ -z "$wt" || ! -d "$wt" ]] \
@@ -1473,7 +1473,15 @@ occ_overlap_filter() { # <repo> <pr_csv> <worktree> → stdout: 过滤后仍需�
   old_ifs="$IFS"; IFS=","
   for p in $csv; do
     [[ -z "$p" ]] && continue
-    pfiles="$(GH_REPO="$repo" "$GH_BIN" pr view "$p" --json files --jq '.files[].path' 2>/dev/null)" || pfiles=""
+    praw="$(GH_REPO="$repo" "$GH_BIN" pr view "$p" --json files,changedFiles 2>/dev/null)" || praw=""
+    # 截断守卫（红队 F1，2026-09-14）：gh 的 --json files 内含 files(first:100)，引用车文件数
+    # 超过 100 时被静默截断 ⇒ 我方文件不在前 100 会让「真占坑」被当兄弟腿剔除（放行，fail-open）。
+    # 判据 = files 条数 < changedFiles ⇒ 取证不完整 ⇒ 保留该车（与 gh 取证失败同处理，fail-closed）。
+    if [[ -z "$praw" ]] \
+      || [[ "$(jq -r 'if (type == "object") and has("changedFiles") and (.changedFiles != null) then ((.files | length) < .changedFiles) else true end' <<<"$praw" 2>/dev/null)" != "false" ]]; then
+      out="${out}${out:+,}$p"; continue
+    fi
+    pfiles="$(jq -r '.files[]? | .path' <<<"$praw" 2>/dev/null)"
     if [[ -z "$pfiles" ]]; then
       out="${out}${out:+,}$p"; continue
     fi

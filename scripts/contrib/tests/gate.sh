@@ -117,6 +117,7 @@ twin_find() { # <name> <path-glob> → ROOTS 逐根查找，sort | sed -n '1p' �
 # launchd cwd=/ 下相对 draft 一律 -f 失败 ⇒ 用户已批准的 own-PR 被静默吃掉、rq 落 failed。
 TWIN_SPECS=(
   'occ_all_stalled|/^occ_all_stalled() {/,/^}/ { /^occ_all_stalled() {/d; /^[[:space:]]*#/d; /^[[:space:]]*$/d; s/[[:space:]][[:space:]]*/ /g; p; }'
+  'occ_overlap_filter|/^occ_overlap_filter() {/,/^}/ { /^occ_overlap_filter() {/d; /^[[:space:]]*#/d; /^[[:space:]]*$/d; s/[[:space:]][[:space:]]*/ /g; p; }'
   'draft-relpath-abs|/[Dd][Rr][Aa][Ff][Tt]" != \/\*/ { s/DRAFT/draft/g; s/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//; p; }'
 )
 twin_norm() { # <file> <sed 程序> → 该 idiom 的归一化抽取流（纯 sed；stdout 承载）
