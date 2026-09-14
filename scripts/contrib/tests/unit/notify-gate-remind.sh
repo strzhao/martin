@@ -43,8 +43,11 @@ seed_gate_db() {
   return 0
 }
 
-# gate_rows → human-gate 事件行数；gate_key_field <task_id> <字段> → 该 key 行的字段值
-gate_rows() { grep -c '"class":"human-gate"' "$EVENTS_FILE" 2>/dev/null || true; }
+# gate_rows → human-gate 事件行数；gate_key_rows <task_id> → 该 key 的行数
+# （一律走 jq：账本有两种合法形态——jq 紧凑行与 python json.dumps 带空格行
+#  （_flush_attempts_bump/_flush_push_mark 整本重写），grep 单形态断言会被格式打红）
+gate_rows() { jq -s '[.[] | select(.class == "human-gate")] | length' "$EVENTS_FILE" 2>/dev/null || echo 0; }
+gate_key_rows() { jq -s --arg k "gate-$1" '[.[] | select(.key == $k)] | length' "$EVENTS_FILE" 2>/dev/null || echo 0; }
 gate_key_field() {
   jq -r --arg k "gate-$1" --arg f "$2" 'select(.key == $k) | .[$f]' "$EVENTS_FILE" 2>/dev/null || true
 }
@@ -122,7 +125,7 @@ seed_gate_db t_idem "[draft] 幂等用例" blocked 20000
 sb_notify flush >/dev/null
 sb_notify flush >/dev/null
 assert_exit 0 $?
-assert_eq "$(grep -c '"key":"gate-t_idem"' "$EVENTS_FILE")" "1" "同 key 恒单行"
+assert_eq "$(gate_key_rows t_idem)" "1" "同 key 恒单行"
 assert_eq "$(gate_key_field t_idem occurrences)" "2" "occurrences 累计到 2"
 assert_eq "$(gate_rows)" "1" "行数不随轮次增长"
 
@@ -172,6 +175,19 @@ sb_notify flush >/dev/null
 assert_exit 0 $?
 assert_eq "$(gate_rows)" "0" "零 human-gate 事件"
 assert_file_contains "$SB_ROOT/contrib-data/logs/notify.log" "gate-remind: 板读取失败" "失败态落日志"
+
+# ================= ⑦ 账本双形态（紧凑 / json.dumps 带空格）不产生重复行 =================
+
+t_case "账本带空格形态（python 重写后）仍单行：同 key 不被追加成第二行"
+sb_new >/dev/null 2>&1
+EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
+sb_config_set '.gate_remind_hours = 3 | .notify_digest = false'
+seed_gate_db t_dual "[draft] 双形态用例" blocked 20000
+sb_notify flush >/dev/null      # 叙事批挂账 → _flush_attempts_bump 用 json.dumps 整本重写（带空格形态）
+assert_file_contains "$EVENTS_FILE" '"class": "human-gate"' "第一轮后账本已是带空格形态"
+sb_notify flush >/dev/null      # 第二轮：双形态读法（_event_line_of）应原位更新而非追加
+assert_eq "$(gate_key_rows t_dual)" "1" "同 key 仍恒单行（未因格式差异重复成行）"
+assert_eq "$(gate_key_field t_dual occurrences)" "2" "原位更新 occurrences=2"
 
 sb_cleanup
 t_finish
