@@ -258,3 +258,14 @@ s4 4.P1 与 t1-04 4.1 改造（断言只增不减，原 `eq DIFFN 0` 在无外�
    而此刻生产侧有其它卡在跑；为不干扰其工作树，本轮经验写在卡内 state.md（随本提交入库）与 `scripts/contrib/tests/README.md`。
 4. 判据面外数据文件（`sentinel.log`/`inventory.json`/`goods-metrics.json`/`kanban-flight-digest.json`/`launchd*.log`）
    目前只落 `outside-surface` 证据行、不判失败；如需纳入判据面，需按带理由的显式动作扩展清单（覆盖守卫已提示该边界）。
+
+## QA 补记：谓词 artifact 逐条落盘（stop-hook §5.7）
+
+32 条预注册谓词的 artifact 全部由**真实驱动**产出（`evidence/drive-predicates.sh` / `drive-mutation.sh` / `check-trap-fix.sh`；
+每个文件首行注明驱动方式与来源；`evidence/list-artifacts.sh` 显示缺失/空 = 0）；并用 stop-hook 自身校验函数预检四项
+（`evidence/simulate-hook57.sh`：artifacts / driver / channel / coverage 均为 rc=0 或 no-op）。
+
+**场景 1 执行面调和（实证驱动）**：`find` 不遍历符号链接起始点（探针 `evidence/probe-find-symlink.sh`：plain find 命中 0 vs 真身 981）
+⇒ lane 无法只读地把生产树当作判据面；生产树跑真实判据又必须先把改动合并进主 checkout（卡分工归 worker）。
+故场景 1 的**本地求值面**调和为「lane 影子 contrib-data + `S4_P1_INJECT=external-append` 真跑」（判据语义与生产同源，
+artifact 即该真跑输出），生产侧同名复跑仍由 worker 按 `production-recipe.md` 执行并在卡上留痕。
