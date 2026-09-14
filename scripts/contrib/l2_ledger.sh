@@ -203,6 +203,34 @@ append_ledger() {
   return 0
 }
 
+# emit_self_decided_event — 宪法 §12「可见性契约 2：当日全部自决动作进当日简报」的机制落点。
+# 为什么必须由落账处自己 emit：自决动作此前只写 approved.log / l2-ledger.log，而 notify.sh 的
+# flush 只读 contrib-data/events.jsonl ⇒ 自决路在结构上永远进不了简报（09-15 首单实证：
+# 00:15:46 执行完，01:0x 当日简报文件仍不存在，靠班次手写兜底）。落账是自决路的唯一必经点，
+# 事件在这里 emit 即覆盖全部自决动作（record + publish 两条路共用本函数）。
+# 简报级路由（route=brief，不进微信批）由 notify.sh 的 is_brief_only 决定：class `self-decided`
+# 在 config.brief_only_classes 闭集内（replace 语义见 notify.sh 注释）。
+# 边界：emit 失败只记日志、绝不改变台账写入结果（台账是权威，简报是它的可读投影）；
+# --dry-run 与幂等跳过路（already_ledgered 早返回）不 emit。key 带落账时刻 ⇒ 同锚点的一日多次
+# 自决各成一行（同 key 会被 notify.sh 合并成 occurrences+1 而丢掉前一条的可见性）。
+emit_self_decided_event() {
+  [[ -n "$SELF_DECIDED" ]] || return 0
+  [[ "${OUT_DRY:-false}" == "true" ]] && return 0
+  local anchor="${OUT_RQ:-}"
+  [[ -n "$anchor" ]] || anchor="${OUT_BRANCH:-}"
+  [[ -n "$anchor" ]] || anchor="${OUT_PR:+pr${OUT_PR}}"
+  [[ -n "$anchor" ]] || anchor="issue${OUT_ISSUE:-0}"
+  local key
+  key="selfdecided-${anchor}-$(date +%s)"
+  if bash "$MARTIN/scripts/contrib/notify.sh" event self-decided --key "$key" --channel contrib \
+      --summary "自决: $(sanitize "$SELF_DECIDED")（${OUT_KIND} ${anchor}）" >>"$LOG" 2>&1; then
+    log "self-decided 事件已入账（key=${key}）"
+  else
+    log "self-decided 事件 emit 失败（key=${key}）——台账已落，当日简报可见性缺失"
+  fi
+  return 0
+}
+
 # ---------------- record ----------------
 cmd_record() {
   local kind="" issue="" pr="" rq="" branch="" url="" channel="" approval="" summary="" dry="false"
@@ -256,6 +284,7 @@ cmd_record() {
     echo "l2_ledger.sh: approved.log 写入失败（路径/权限异常：${LEDGER}）" >&2
     return 9
   fi
+  emit_self_decided_event
   return 0
 }
 
@@ -440,6 +469,7 @@ cmd_publish() {
       "$LEDGER" >&2
     return 9
   fi
+  emit_self_decided_event
   printf 'PUBLISHED %s branch=%s ledger=%s\n' "${pr_url:-无URL}" "$branch" "$LEDGER"
   return 0
 }

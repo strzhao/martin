@@ -10,6 +10,9 @@
 #            拒 main|master / 拒指向上游的 remote / 已有 PR 幂等（零 push，仅补台账）/
 #            --dry-run 零写调用 / push 失败零台账 / gh pr create 失败零台账 /
 #            台账写失败 rc=9（push 已发生的显式暴露）
+#   自决路可见性（宪法 §12 契约 2）：record/publish --self-decided → 恰 emit 一条 self-decided
+#           事件（channel=contrib / route=brief）；幂等、--dry-run、常规批准路零 emit；
+#           emit 失败不回滚台账（台账是权威，简报是投影）
 # 全程沙箱影子 stub（gh/git）+ 沙箱 MARTIN_DIR：零真实 gh、零真实 git push、
 # 零生产 approved.log 写入（断言只读 $SB_ROOT/approved.log）。
 set -uo pipefail
@@ -209,6 +212,62 @@ sb_run -e "APPROVED_LOG=$SB_ROOT/nodir/approved.log" \
   "bash \"\$MARTIN_DIR/$L2_REL\" publish --worktree \"$WORKTREE\" --branch feat/lbfail --title T --approval 批" >/dev/null
 assert_exit 9 $? "台账写失败 exit 9"
 assert_eq "$(grep -c ' push ' "$CALLS" 2>/dev/null || true)" "1" "push 确实已发生（暴露面成立）"
+
+# ---------------- ④ 自决路可见性（宪法 §12 契约 2）：落账即 emit 简报级事件 ----------------
+# 自决动作只写 approved.log / l2-ledger.log，而 flush 只读 events.jsonl ⇒ 落账处必须自己 emit，
+# 否则自决路在结构上永远进不了当日简报（09-15 首单实证）。本组断言锁三件事：
+#   ① 自决 record/publish 各 emit 恰一条 class=self-decided（channel=contrib、route=brief）；
+#   ② 幂等跳过 / --dry-run / 常规批准路零 emit（既有分支语义逐字不变）；
+#   ③ emit 是投影：失败不影响台账写入结果。
+EVENTS="$SB_ROOT/contrib-data/events.jsonl"
+
+t_case "record --self-decided：落账 + emit self-decided 事件（class/channel/route/锚）"
+sb_config_set '.brief_only_classes = ["own-pr-info", "visual-run-done", "self-decided"]'
+: >"$EVENTS"
+before="$(ledger_lines)"
+sb_l2 record --kind evidence --issue 91653 --channel "operator 自决路（§12）" \
+  --self-decided "已批动作类（常规可逆），草稿双审已过" --branch contrib/selfdecided-a >/dev/null
+assert_exit 0 $? "自决 record exit 0"
+assert_eq "$(( $(ledger_lines) - before ))" "1" "台账 +1（落账不受影响）"
+assert_eq "$(jq -s 'length' "$EVENTS")" "1" "恰 emit 1 条事件"
+assert_eq "$(jq -sr '.[0].class' "$EVENTS")" "self-decided" "class=self-decided"
+assert_eq "$(jq -sr '.[0].channel' "$EVENTS")" "contrib" "channel=contrib（flush 合法闭集）"
+assert_eq "$(jq -sr '.[0].route' "$EVENTS")" "brief" "route=brief（简报级，不进微信批）"
+assert_eq "$(jq -sr '.[0].pushed' "$EVENTS")" "false" "pushed=false（待下轮 flush 入简报）"
+assert_contains "$(jq -sr '.[0].summary' "$EVENTS")" "自决: 已批动作类" "summary 带自决理由"
+assert_contains "$(jq -sr '.[0].key' "$EVENTS")" "selfdecided-contrib/selfdecided-a-" "key = 前缀 + 落账锚 + 时刻"
+
+t_case "自决 emit 与幂等/dry-run/常规批准路正交（既有分支语义不变）"
+n="$(jq -s 'length' "$EVENTS")"
+sb_l2 record --kind evidence --issue 91653 --channel "operator 自决路（§12）" \
+  --self-decided "重复" --branch contrib/selfdecided-a >/dev/null
+assert_eq "$(jq -s 'length' "$EVENTS")" "$n" "同锚幂等跳过 → 零 emit"
+sb_l2 record --kind other --issue 555 --channel "L2-B" --self-decided "干跑" \
+  --branch contrib/selfdecided-dry --dry-run >/dev/null
+assert_eq "$(jq -s 'length' "$EVENTS")" "$n" "--dry-run → 零 emit"
+sb_l2 record --kind evidence --issue 556 --channel "L2-B 会话内批准" \
+  --approval "用户明示" --branch contrib/approved-path >/dev/null
+assert_eq "$(jq -s 'length' "$EVENTS")" "$n" "常规批准路 → 零 emit（非自决不 emit）"
+
+t_case "publish --self-decided：发布路同样 emit（第二条调用点）"
+n="$(jq -s 'length' "$EVENTS")"
+before="$(ledger_lines)"
+sb_run -e "STUB_GH_PR_CREATE_URL=https://github.com/NousResearch/hermes-agent/pull/91653" \
+  "bash \"\$MARTIN_DIR/$L2_REL\" publish --worktree \"$WORKTREE\" --branch feat/selfdecided --title T --self-decided \"评论类可逆动作\" " >/dev/null
+assert_exit 0 $? "自决 publish exit 0"
+assert_eq "$(( $(ledger_lines) - before ))" "1" "台账 +1"
+assert_eq "$(( $(jq -s 'length' "$EVENTS") - n ))" "1" "emit +1"
+assert_eq "$(jq -sr '.[-1].class' "$EVENTS")" "self-decided" "末条 class=self-decided"
+assert_contains "$(jq -sr '.[-1].key' "$EVENTS")" "selfdecided-feat/selfdecided-" "key 锚 = 分支"
+
+t_case "emit 失败不改台账结果：notify.sh 不可达时仍 rc=0 且台账已落"
+mv "$SB_ROOT/scripts/contrib/notify.sh" "$SB_ROOT/scripts/contrib/notify.sh.hidden"
+before="$(ledger_lines)"
+sb_l2 record --kind evidence --issue 557 --channel "operator 自决路（§12）" --self-decided "无通知器" \
+  --branch contrib/selfdecided-b >/dev/null
+assert_exit 0 $? "notify.sh 不可达 → 仍 exit 0（投影失败不回滚权威）"
+assert_eq "$(( $(ledger_lines) - before ))" "1" "台账照旧落账"
+mv "$SB_ROOT/scripts/contrib/notify.sh.hidden" "$SB_ROOT/scripts/contrib/notify.sh"
 
 sb_cleanup
 t_finish
