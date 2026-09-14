@@ -81,7 +81,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 - **none**：仅限真不可造（需维护者拍板方向/schema 级/域外/纯观察），note 写硬理由（「没有现成的」不算理由）。连续 ≥3 次 none = 造货能力报警回炉
 
 **forge 台账实查口径（09-13 实证，判 goods 前必做）**：`forge.sh check` 的 `in-flight` ≠ 有货——立项即建分支（含 worktree），未开工或未提交都长期停在 in-flight。实查一条命令：`git -C ~/workspace/hermes-agent rev-list --count origin/main..refs/heads/forge/<b>` = 0 且该 worktree `status --porcelain` 为空 = **空壳**（head 往往就是它立项时的上游提交），不可当 offered/forge-lane 依据。09-13 实测 12 条 forge 分支：5 条真有提交（weixin 系 4 + kanban-retry-notify），7 条零提交空壳、立项 2.2–3.5 天 ⇒ 归「立项欠账」（重启造货 or 结项），不是库存；出手判定引用库存前逐条实查，勿照抄 forge.sh 状态列
-- **`needs-decision` 也可能是死件（09-13 新增；inventory 缺终态枚举期间的止血口径）**：判 goods 前对每条候选件 gh 实查载体 PR 的 `state`/`merged_at`——载体被关且未合入 ⇒ 件随载体出局，**不得当 offer 弹药**，也**不要用 `spent` 兜底**（`spent`=已被收编=KPI 正信号，合并会污染计数）。存量实例：`commit-1d0e71e822`（FTS 四点加固；载体内 #86062 于 09-11T13:47:08Z 被 teknium1 关闭、`merged_at=null`、+453 LOC；该件在 PR 分支内的现形 sha = `17b1bc182c38`，作者仍是 strzhao）。
+- **死件归宿 = `dead` 终态（09-14 起可执行；此前「inventory 缺终态枚举期间的止血口径」已退位）**：判 goods 前对每条候选件 gh 实查载体 PR 的 `state`/`merged_at`——载体被关且未合入 ⇒ 件随载体出局，**当场用 `forge.sh set-status <id> dead` 如实登记**（值域含 `dead`/`idea`，提交 `57d277a`；单测 `scripts/contrib/tests/unit/forge-status-enum.sh` 40 断言；`check` 原样打印 status 列）。语义分列不可混：`spent`=**已被收编**（KPI 正信号，**禁拿来兜底死件**，合并会污染计数）/ `dead`=载体已死、内容出局、不再作 offer 弹药。存量实例：`commit-1d0e71e822`（FTS 四点加固；载体内 #86062 于 09-11T13:47:08Z 被 teknium1 关闭、`merged_at=null`、+453 LOC；该件在 PR 分支内的现形 sha = `17b1bc182c38`，作者仍是 strzhao）——**09-14 已迁 `dead`**（用户 12:29 批量放行，`approved.log:52`；数据面回退 = `cp contrib-data/inventory.json.bak-<ts> contrib-data/inventory.json`，演练 sha 逐字节回 `1fbb1c32…`）。
 
 ### 3.3 竞品吸收 A/B/C（发现占坑/重叠 PR 后 30 分钟内判定）
 
