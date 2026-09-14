@@ -172,6 +172,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 ### 4.2 L2 提交流（现用钳夹，勿绕行）
 
 起草成稿（含审批中文摘要段）→ `rq.sh add`（`--premises-json` 必填：逐条 {claim, evidence, verified_at}；`--ammo-json` 弹药）→ `rq.sh set-draft` → `bash scripts/contrib/notify.sh approve <rq-id>`（发审批卡+部署 tunnel 页）→ auto-gate 判 L2-auto 或等微信。**premise 死亡的项绝不推审批卡**（推前逐条实查）。executed 前查 approved.log 去重。
+**⚠ 发卡前「占坑闸」对 own-PR refresh 路会误拦（09-14 shift-40 实证，已立 `[fix] t_fc3f1e9f`）**：`notify.sh` 发卡前 TTL 轻复验（~1512）与 `execute.sh` 的 `ttl_verify`（~214，**孪生实现**）把「body 里提到该 issue 号的开放 PR」当占坑者（仅排除 `.pr` 自身）⇒ 刷新我方自有 PR 时，**我方 PR 自身的 salvage 收编车就是「占坑者」**（#109758：110023/110544/110073 三辆引用）⇒ rq 被置 `rejected`、审批卡不发、tunnel 不部署。停摆豁免（>21 天全停摆）对活跃 salvage 车恒不触发。⇒ **起草 refresh 类 rq 前先跑** `gh pr list --search "<PR号> in:body" --state open --json number`：非空 ⇒ 该件今日必被拦（先确认豁免已落地再起草）。另：`rq.sh` 的 `rejected` 是**终态**（transition 表 `expired|rejected|executed` 无出口）且 id = `rq-<date>-<issue>` ⇒ **误拦一次烧掉当天该 issue 的提案槽**，重发起只能**次日新 id**（禁 `set`/`amend` 复活，别在死路上试）。推送达面同理：该类事件按 `premise-dead`（push 路）落账，措辞会读成「竞品占坑」——若确属误拦，用**同 key 重发**修正 summary（`cmd_event` 命中同 key 时原位更新 `.summary`；`.class`/`.route` 不随之改，故仍在 push 路）。
 **审批卡推送失败 ≠ 永久卡死（09-14 实证）**：iLink `rate limited`（与 shift-28~33 的 flush rc=1 同族，可能是 `stale_session` 误分类）会连吃 3 次尝试并记账（`approvals[date].fail`）；但 **`~/.hermes/scripts/contrib-sweep.sh:15` 每日 09:17 跑 `notify.sh approve --all`** ⇒ 失败项次日自动重推（实例 `rq-20260914-65100` 累计 6 败后由该 job 兜底）。⇒ 处置 = 记账 + 在 journal 写明「重推 actor = 明晨 09:17」，**不重复立卡、不 resolve、不手工反复重试**（每次重试都会重开 30s 闸）。
 
 ### 4.3 forge（造货）
