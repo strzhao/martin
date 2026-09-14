@@ -1454,7 +1454,7 @@ occ_all_stalled() { # <repo> <foreign_pr_csv> → rc 0=全部停摆放行 | 1=�
   return 0
 }
 
-# 占坑粒度收窄（卡 t_3f9b2a1c）：同伞形 issue 的兄弟腿不构成占坑。
+# 占坑粒度收窄（卡 t_5421e45a）：同伞形 issue 的兄弟腿不构成占坑。
 # 现网缺口：占坑判定按「body 里提到该 issue 号的开放 PR」一刀切 ⇒ 伞形 issue 下的兄弟腿车
 # （各自修**不同文件**、不同根因，如 #110728 的 5 腿）会把新开车误判 premise 死亡；而
 # `rq.sh` 的 rejected 是终态且 id 含日期 ⇒ 误拦一次即烧掉当天该 issue 的提案槽。
@@ -1559,7 +1559,7 @@ cmd_approve() {
           prs=""
         fi
       fi
-      # ── 占坑粒度收窄（卡 t_3f9b2a1c）：同伞形 issue 的兄弟腿（变更文件无交集）不构成占坑 ──
+      # ── 占坑粒度收窄（卡 t_5421e45a）：同伞形 issue 的兄弟腿（变更文件无交集）不构成占坑 ──
       # 前提 = 该 issue 有 BRANCH.md 且其 worktree 可用（我方待推分支的文件集可读）；
       # 不满足 ⇒ $prs 原样保留（fail-closed，与旧行为逐字节等价，新开车无档案时照拦）。
       if [[ -n "$prs" && "$prs" != "null" ]]; then
