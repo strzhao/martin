@@ -940,8 +940,13 @@ done
 # （force 能力不得从 refresh 分支扩散到 push-only/build-and-push 路）；闸默认 false 亦锁死。
 check_eq "refresh 门: execute.sh 含 force 字样的行恒 1（falsify 锚）" \
   "$(grep -c -- '--force' "$EXECUTE" 2>/dev/null | tr -d ' ')" "1"
-check_eq "refresh 门: allow_own_pr_refresh 缺省 false（cfg 缺省值在位）" \
-  "$(grep -c "cfg '.allow_own_pr_refresh' 'false'" "$EXECUTE" 2>/dev/null | tr -d ' ')" "1"
+# 默认值锁死判据 =「带 'false' 缺省的调用点数 == 调用点总数」（空集不算在位）。
+# 原判据写死 ==1，而卡 t_fc3f1e9f 的 refresh 豁免修复合法地新增了第二个调用点
+# （execute.sh 的 MODE 判定 + 占坑豁免谓词）⇒ 断言失真为红；且写死计数对新增调用点
+# 恒脆（每加一处就误报）。逐调用点对齐才既保「缺省 false 在位」语义又不误伤。
+check_eq "refresh 门: allow_own_pr_refresh 缺省 false（全部调用点默认值在位）" \
+  "$(grep -c "cfg '.allow_own_pr_refresh' 'false'" "$EXECUTE" 2>/dev/null | tr -d ' ')" \
+  "$(grep -c "cfg '\.allow_own_pr_refresh'" "$EXECUTE" 2>/dev/null | tr -d ' ')"
 
 check_eq "plist StartInterval=90" "$(defaults read "$PLIST" StartInterval 2>/dev/null)" "90"
 check_eq "plist RunAtLoad=false" "$(defaults read "$PLIST" RunAtLoad 2>/dev/null)" "0"
