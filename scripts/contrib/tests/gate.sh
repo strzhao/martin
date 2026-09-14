@@ -110,9 +110,17 @@ twin_find() { # <name> <path-glob> → ROOTS 逐根查找，sort | sed -n '1p' �
   done
   return 1
 }
-twin_norm() { # <file> → occ_all_stalled() 函数体归一化流（纯 sed；stdout 承载）
-  sed -n '/^occ_all_stalled() {/,/^}/p' "$1" \
-    | sed '1d; /^[[:space:]]*#/d; /^[[:space:]]*$/d; s/[[:space:]][[:space:]]*/ /g'
+# 孪生 idiom 表：每项 = <名称>|<sed 程序>（-n 静默模式；程序自身负责抽取 + 归一化）。
+# 本门的存在理由 = 「notify.sh / execute.sh 必须同步演进」这条口径的机械化。新增共享 idiom
+# 一律在此加一行，勿再写第二段硬编码比对块。
+# 2026-09-14 实证（rq-20260914-110728）：execute.sh 缺 notify.sh 的 draft 相对路径归一化行，
+# launchd cwd=/ 下相对 draft 一律 -f 失败 ⇒ 用户已批准的 own-PR 被静默吃掉、rq 落 failed。
+TWIN_SPECS=(
+  'occ_all_stalled|/^occ_all_stalled() {/,/^}/ { /^occ_all_stalled() {/d; /^[[:space:]]*#/d; /^[[:space:]]*$/d; s/[[:space:]][[:space:]]*/ /g; p; }'
+  'draft-relpath-abs|/[Dd][Rr][Aa][Ff][Tt]" != \/\*/ { s/DRAFT/draft/g; s/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//; p; }'
+)
+twin_norm() { # <file> <sed 程序> → 该 idiom 的归一化抽取流（纯 sed；stdout 承载）
+  sed -n "$2" "$1" 2>/dev/null
 }
 TWIN_TARGET_STATE=0 # 默认态（env/flag 均空）=仓级不变量；TARGET 态（任一非空）对缺失可 SKIP
 if [[ -n "${MARTIN_GATE_TARGET:-}" || -n "$TARGET_FLAG" ]]; then
@@ -130,31 +138,38 @@ if [[ -z "$TWIN_A" || -z "$TWIN_B" ]]; then
 "}孪生源缺失: *contrib*/notify.sh"
   fi
 else
-  TWIN_NA="$(twin_norm "$TWIN_A")"
-  TWIN_NB="$(twin_norm "$TWIN_B")"
-  if [[ -z "$TWIN_NA" || -z "$TWIN_NB" ]]; then
-    TWIN_STATUS="FAIL" # 抽取/归一化为空即 FAIL（fail-closed，禁静默绿）
-    [[ -z "$TWIN_NA" ]] && TWIN_DETAILS="occ_all_stalled 抽取/归一化为空: $TWIN_A"
-    [[ -z "$TWIN_NB" ]] && TWIN_DETAILS="${TWIN_DETAILS:+"$TWIN_DETAILS
-"}occ_all_stalled 抽取/归一化为空: $TWIN_B"
-  else
+  for _twin_spec in ${TWIN_SPECS[@]+"${TWIN_SPECS[@]}"}; do
+    _twin_name="${_twin_spec%%|*}"
+    _twin_prog="${_twin_spec#*|}"
+    TWIN_NA="$(twin_norm "$TWIN_A" "$_twin_prog")"
+    TWIN_NB="$(twin_norm "$TWIN_B" "$_twin_prog")"
+    if [[ -z "$TWIN_NA" || -z "$TWIN_NB" ]]; then
+      TWIN_STATUS="FAIL" # 抽取/归一化为空即 FAIL（fail-closed，禁静默绿）
+      [[ -z "$TWIN_NA" ]] && TWIN_DETAILS="${TWIN_DETAILS:+"$TWIN_DETAILS
+"}${_twin_name} 抽取/归一化为空: $TWIN_A"
+      [[ -z "$TWIN_NB" ]] && TWIN_DETAILS="${TWIN_DETAILS:+"$TWIN_DETAILS
+"}${_twin_name} 抽取/归一化为空: $TWIN_B"
+      continue
+    fi
     TWIN_DOUT="$(/usr/bin/diff <(printf '%s\n' "$TWIN_NA") <(printf '%s\n' "$TWIN_NB") 2>&1)"
     TWIN_DRC=$?
     case "$TWIN_DRC" in
-      0) TWIN_STATUS="PASS" ;;
+      0) : ;; # 该 idiom 两侧逐字节一致
       1) # rc 1=漂移；detail 取 diff 输出首个 ^[<>] 内容行
         TWIN_STATUS="FAIL"
         TWIN_DLINE="$(printf '%s\n' "$TWIN_DOUT" | sed -n '/^[<>] /{p;q;}')"
         # ${TWIN_B} 花括号形态与 $TWIN_B 展开逐字节同义；用花括号是为避开本门关 3
         # 全角 regex（\$(\w+) 紧贴全角括号会被自检命中），运行时输出不变。
-        TWIN_DETAILS="occ_all_stalled 孪生体漂移（$TWIN_A vs ${TWIN_B}）: $TWIN_DLINE"
+        TWIN_DETAILS="${TWIN_DETAILS:+"$TWIN_DETAILS
+"}${_twin_name} 孪生体漂移（$TWIN_A vs ${TWIN_B}）: $TWIN_DLINE"
         ;;
       *) # rc ≥2=diff 故障 fail-closed
         TWIN_STATUS="FAIL"
-        TWIN_DETAILS="diff 故障 rc=$TWIN_DRC: $(first_line "$TWIN_DOUT")"
+        TWIN_DETAILS="${TWIN_DETAILS:+"$TWIN_DETAILS
+"}${_twin_name} diff 故障 rc=$TWIN_DRC: $(first_line "$TWIN_DOUT")"
         ;;
     esac
-  fi
+  done
 fi
 
 # --- shebang 分流 ---
