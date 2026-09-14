@@ -936,6 +936,13 @@ for f in "$RQ" "$NOTIFY" "$COLLECT" "$EXECUTE" "$0"; do
 done
 (( SYNTAX_BAD == 0 )) && say_pass "bash -n 全部新/改脚本通过"
 
+# refresh-branch（卡 t_2b06fd69）静态门：卡面 falsify 锚 = execute.sh 含 force 字样的行恒 =1
+# （force 能力不得从 refresh 分支扩散到 push-only/build-and-push 路）；闸默认 false 亦锁死。
+check_eq "refresh 门: execute.sh 含 force 字样的行恒 1（falsify 锚）" \
+  "$(grep -c -- '--force' "$EXECUTE" 2>/dev/null | tr -d ' ')" "1"
+check_eq "refresh 门: allow_own_pr_refresh 缺省 false（cfg 缺省值在位）" \
+  "$(grep -c "cfg '.allow_own_pr_refresh' 'false'" "$EXECUTE" 2>/dev/null | tr -d ' ')" "1"
+
 check_eq "plist StartInterval=90" "$(defaults read "$PLIST" StartInterval 2>/dev/null)" "90"
 check_eq "plist RunAtLoad=false" "$(defaults read "$PLIST" RunAtLoad 2>/dev/null)" "0"
 check_eq "plist AbandonProcessGroup=true（launchd 进程组收割教训）" "$(defaults read "$PLIST" AbandonProcessGroup 2>/dev/null)" "1"

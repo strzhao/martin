@@ -613,6 +613,177 @@ check_eq "10.D: execute 退出码 0" "0" "$K_RC"
 check_contains "10.D: 回退 build-and-push（worktree: workspace）" "--workspace worktree:" "$H_LOG"
 check_contains "10.D: 不产生 dir: 参数（空目录陷阱被绕开）" "0" \
   "$(grep -c -- '--workspace dir:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+
+printf '=== 场景10.E-10.L：refresh-branch（刷新既有 PR 分支；09-14 用户授权 L2-B）===\n'
+# 契约（卡 t_2b06fd69）：① 闸缺键/false ⇒ 行为不变 ② 闸开+档案声明 ⇒ dry-run 打印复推形态且无 gh pr create
+#   ③ push-only / build-and-push 逐字不变 ④ 远端非自家 fork ⇒ 拒；另加 HEAD/脏树/缺 PR 锚/急停优先四态。
+# 红线：GIT_BIN 换沙箱 stub（零真实 git 写、零网络）；GH_BIN 走既有 stub（零 gh 真写）；
+#       APPROVED_LOG 恒指沙箱替身；绝不调用真 collect/tunnel deploy。
+cat > "$SB3/git-stub" <<'GITSTUB'
+#!/bin/bash
+# 沙箱 stub git（refresh-branch 专用，GIT_BIN seam）：逐条记录 argv，行为由 GIT_* 环境变量驱动
+printf '=== git %s\n' "$*" >> "${GIT_CALL_LOG:?}"
+case "$*" in
+  *"remote get-url"*)
+    if [[ -n "${GIT_REMOTE_URL:-}" ]]; then printf '%s\n' "$GIT_REMOTE_URL"; exit 0; fi
+    echo "error: No such remote 'fork'" >&2; exit 2 ;;
+  *"symbolic-ref"*)
+    if [[ -n "${GIT_HEAD_BRANCH:-}" ]]; then printf '%s\n' "$GIT_HEAD_BRANCH"; exit 0; fi
+    exit 1 ;;
+  *"status --porcelain"*)
+    [[ "${GIT_DIRTY:-0}" == "1" ]] && printf ' M dirty.txt\n'
+    exit 0 ;;
+  *) exit "${GIT_STUB_RC:-0}" ;;
+esac
+GITSTUB
+chmod +x "$SB3/git-stub"
+GITENV=(GIT_BIN="$SB3/git-stub" GIT_CALL_LOG="$SB3/g.log")
+FORK_URL="https://github.com/strzhao/hermes-agent.git"
+UPSTREAM_URL="https://github.com/NousResearch/hermes-agent.git"
+BRANCH_T="fix/test-ownpr-branch"
+
+state_of_rq() { jq -r --arg id "$1" '.items[] | select(.id == $id) | .state' "$SB3/data/ready-queue.json"; }
+write_branch_md() { # <issue> <worktree> <branch> <refresh 行（空串=不声明）>
+  mkdir -p "$SB3/data/runs/2026-09-08-issue$1"
+  printf '# BRANCH — %s\n\n- worktree：`%s`\n%s\n' "$3" "$2" "$4" \
+    > "$SB3/data/runs/2026-09-08-issue$1/BRANCH.md"
+}
+ownpr_item() { # <issue> <pr|none> <tag> → 打印新 rq id（approved 态 + 草稿；rq id = 日期+issue 唯一）
+  local issue="$1" pr="$2" tag="$3" id="" draft="" args=()
+  args=(--issue "$issue" --disposition own-PR --score 14 --title "own-PR ${tag} ${issue}" --lane deep)
+  [[ "$pr" != "none" ]] && args+=(--pr "$pr")
+  id="$(env "${RQ_ENV[@]}" bash "$RQ" add "${args[@]}")"
+  draft="$SB3/data/pending/$id.md"
+  printf '<!-- 内部备注 -->\nown-PR %s 载荷。\n' "$tag" > "$draft"
+  env "${RQ_ENV[@]}" bash "$RQ" set-draft "$id" "$draft" >/dev/null
+  env "${RQ_ENV[@]}" bash "$RQ" set "$id" awaiting-approval >/dev/null
+  env "${RQ_ENV[@]}" bash "$RQ" set "$id" approved >/dev/null
+  printf '%s' "$id"
+}
+write_refresh_config() { # <allow_own_pr_push> [allow_own_pr_refresh]
+  cat > "$SB3/data/config.json" <<EOF
+{
+  "repo": "NousResearch/hermes-agent",
+  "ready_min_score": 11,
+  "allow_own_pr_push": $1,
+  "allow_own_pr_refresh": $2,
+  "approval_ttl_hours": 48,
+  "notify_dry_run": false,
+  "notify_target": "weixin:test-target@sandbox"
+}
+EOF
+}
+
+printf '%s\n' '--- 10.E：闸缺键（config 无 allow_own_pr_refresh）⇒ 行为不变 ---'
+write_branch_md 103914 "$SB3/wt103914" "$BRANCH_T" "- refresh: yes"
+: > "$SB3/h.log"; : > "$SB3/g.log"
+E_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$FORK_URL" GIT_HEAD_BRANCH="$BRANCH_T" \
+  bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || E_RC=$?
+E_H="$(cat "$SB3/h.log")"
+check_eq "10.E: execute 退出码 0" "0" "$E_RC"
+check_contains "10.E: 仍是 coder 卡路（行为不变）" "--assignee coder" "$E_H"
+check_contains "10.E: mode 仍 push-only" "mode: push-only" "$E_H"
+check_eq "10.E: 零 git 调用（refresh 未触发）" "0" "$(grep -c '=== git' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.E: 状态保持 approved（原路不推进）" "approved" "$(state_of_rq "$ID_K")"
+
+printf '%s\n' '--- 10.F：闸开 + 档案声明（列表式）⇒ dry-run 只打印刷新计划 ---'
+write_refresh_config true true
+write_branch_md 103915 "$SB3/wt103914" "$BRANCH_T" "- refresh: yes"
+ID_R1="$(ownpr_item 103915 999001 refresh)"
+: > "$SB3/h.log"; : > "$SB3/g.log"
+F_OUT="$(env "${RQ_ENV[@]}" "${GITENV[@]}" APPROVAL_DRY_RUN=true \
+  bash "$EXECUTE" "$ID_R1" approved 2>&1)"
+check_contains "10.F: dry-run 打印 fetch origin" "fetch origin" "$F_OUT"
+check_contains "10.F: dry-run 打印 rebase origin/main" "rebase origin/main" "$F_OUT"
+check_contains "10.F: dry-run 打印复推形态（force-with-lease）" "--force-with-lease" "$F_OUT"
+check_eq "10.F: dry-run 零 gh pr create" "0" "$(printf '%s' "$F_OUT" | grep -c 'gh pr create' | tr -d ' ')"
+check_eq "10.F: dry-run 零 hermes CLI 调用（不建 coder 卡）" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.F: dry-run 零 git 调用（纯打印）" "0" "$(grep -c '=== git' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.F: dry-run 不改状态（仍 approved）" "approved" "$(state_of_rq "$ID_R1")"
+
+printf '%s\n' '--- 10.G：闸开 + 档案声明（裸行式）⇒ 真跑（stub git 逐条验 argv）---'
+write_branch_md 103915 "$SB3/wt103914" "$BRANCH_T" "refresh: yes"
+: > "$SB3/h.log"; : > "$SB3/g.log"; : > "$SB3/gh.log"
+LEDGER_BEFORE_R="$(ledger_lines "$SB3/approved.log")"
+G_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$FORK_URL" GIT_HEAD_BRANCH="$BRANCH_T" \
+  bash "$EXECUTE" "$ID_R1" approved >/dev/null 2>&1 || G_RC=$?
+G_LOG="$(cat "$SB3/g.log")"
+check_eq "10.G: execute 退出码 0" "0" "$G_RC"
+check_contains "10.G: 先 fetch origin" "fetch origin" "$G_LOG"
+check_contains "10.G: 再 rebase origin/main" "rebase origin/main" "$G_LOG"
+check_contains "10.G: 复推打自家 fork 且打档案声明的分支" "push --force-with-lease fork $BRANCH_T" "$G_LOG"
+check_eq "10.G: push 形态恰 1 次（全链唯一）" "1" "$(grep -c ' push ' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.G: 零裸 force（argv 无独立 force 旗标）" "0" "$(grep -cE -- '(^| )--force( |$)' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.G: 绝不 push 上游（无打 origin 的复推）" "0" "$(grep -c 'push --force-with-lease origin' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.G: 零 gh pr create（刷新不再建 PR）" "0" "$(grep -c 'pr create' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.G: 成功路不回滚 rebase（无 abort 调用）" "0" "$(grep -c 'rebase --abort' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.G: 零 hermes CLI 调用（不建 coder 卡）" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.G: rq 推进 executed" "executed" "$(state_of_rq "$ID_R1")"
+check_eq "10.G: 台账 +1 行" "1" "$(( $(ledger_lines "$SB3/approved.log") - LEDGER_BEFORE_R ))"
+G_LED="$(tail -1 "$SB3/approved.log")"
+check_contains "10.G: 台账标 refresh-branch" "refresh-branch" "$G_LED"
+check_contains "10.G: 台账锚 PR #999001" "/pull/999001" "$G_LED"
+
+printf '%s\n' '--- 10.H：远端指向上游 ⇒ 拒（只打自家 fork）---'
+write_branch_md 103916 "$SB3/wt103914" "$BRANCH_T" "refresh: yes"
+ID_R2="$(ownpr_item 103916 999002 refresh-upstream)"
+: > "$SB3/g.log"; : > "$SB3/gh.log"
+H_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$UPSTREAM_URL" GIT_HEAD_BRANCH="$BRANCH_T" \
+  bash "$EXECUTE" "$ID_R2" approved >/dev/null 2>&1 || H_RC=$?
+check_eq "10.H: 拒（退出码非 0）" "1" "$H_RC"
+check_eq "10.H: 零 fetch/rebase/push（拒在动作之前）" "0" "$(grep -c 'fetch origin\|push \|rebase' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.H: rq 置 failed" "failed" "$(state_of_rq "$ID_R2")"
+
+printf '%s\n' '--- 10.I：worktree HEAD 与档案分支不一致 ⇒ 拒 ---'
+write_branch_md 103917 "$SB3/wt103914" "$BRANCH_T" "refresh: yes"
+ID_R3="$(ownpr_item 103917 999003 refresh-headmismatch)"
+: > "$SB3/g.log"
+I_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$FORK_URL" GIT_HEAD_BRANCH="fix/other-branch" \
+  bash "$EXECUTE" "$ID_R3" approved >/dev/null 2>&1 || I_RC=$?
+check_eq "10.I: 拒（退出码非 0）" "1" "$I_RC"
+check_eq "10.I: 零 push" "0" "$(grep -c ' push ' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.I: rq 置 failed" "failed" "$(state_of_rq "$ID_R3")"
+
+printf '%s\n' '--- 10.J：worktree 有未提交改动 ⇒ 拒（不 rebase 脏树）---'
+write_branch_md 103918 "$SB3/wt103914" "$BRANCH_T" "refresh: yes"
+ID_R4="$(ownpr_item 103918 999004 refresh-dirty)"
+: > "$SB3/g.log"
+J_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$FORK_URL" GIT_HEAD_BRANCH="$BRANCH_T" GIT_DIRTY=1 \
+  bash "$EXECUTE" "$ID_R4" approved >/dev/null 2>&1 || J_RC=$?
+check_eq "10.J: 拒（退出码非 0）" "1" "$J_RC"
+check_eq "10.J: 零 fetch/rebase/push" "0" "$(grep -c 'fetch origin\|push \|rebase' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.J: rq 置 failed" "failed" "$(state_of_rq "$ID_R4")"
+
+printf '%s\n' '--- 10.K：主闸急停优先（push=false + refresh=true）⇒ 零动作 ---'
+write_refresh_config false true
+write_branch_md 103919 "$SB3/wt103914" "$BRANCH_T" "refresh: yes"
+ID_R5="$(ownpr_item 103919 999005 refresh-stop)"
+: > "$SB3/h.log"; : > "$SB3/g.log"
+K5_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$FORK_URL" GIT_HEAD_BRANCH="$BRANCH_T" \
+  bash "$EXECUTE" "$ID_R5" approved >/dev/null 2>&1 || K5_RC=$?
+check_eq "10.K: 急停生效（退出码 0，交会话路）" "0" "$K5_RC"
+check_eq "10.K: 零 git 调用" "0" "$(grep -c '=== git' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.K: 零 hermes CLI 调用" "0" "$(grep -c '=== hermes' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.K: 状态保持 approved（refresh 不得绕过急停）" "approved" "$(state_of_rq "$ID_R5")"
+check_contains "10.K: 急停事件入账" "approval-manual-required" "$(cat "$EV3" 2>/dev/null)"
+
+printf '%s\n' '--- 10.L：缺 PR 锚（item.pr 空）⇒ 拒（只刷新既有 PR）---'
+write_refresh_config true true
+write_branch_md 103920 "$SB3/wt103914" "$BRANCH_T" "refresh: yes"
+ID_R6="$(ownpr_item 103920 none refresh-nopr)"
+: > "$SB3/g.log"
+L_RC=0
+env "${RQ_ENV[@]}" "${GITENV[@]}" GIT_REMOTE_URL="$FORK_URL" GIT_HEAD_BRANCH="$BRANCH_T" \
+  bash "$EXECUTE" "$ID_R6" approved >/dev/null 2>&1 || L_RC=$?
+check_eq "10.L: 拒（退出码非 0）" "1" "$L_RC"
+check_eq "10.L: 零 git 调用（锚缺即停）" "0" "$(grep -c '=== git' "$SB3/g.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.L: rq 置 failed" "failed" "$(state_of_rq "$ID_R6")"
 rm -rf "$SB3"
 
 printf '\n==== 汇总 ====\n'

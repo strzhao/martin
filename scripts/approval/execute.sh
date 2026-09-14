@@ -18,8 +18,12 @@
 # drill 件（id 以 -drill 结尾）: 跳过 gh 读写与 approved.log（rq budget drill 不计额同款先例），
 #   只落 run 记录；状态推进/回收/回执照常。
 #
+#   own-PR approved 且分流为 refresh-branch（分支档案声明 refresh: yes + config allow_own_pr_refresh）
+#   → 本执行器就地刷新既有 PR 的分支（fetch origin → rebase origin/main → 复推自家 fork）；
+#     每次复推仍逐条 rq 批准（09-14 用户授权 L2-B，见 do_refresh_branch 注释）
+#
 # 环境变量 seam（沙箱测试用，生产缺省=真值）:
-#   CONTRIB_DATA_DIR / MARTIN_DIR / TUNNEL_BIN / GH_BIN / APPROVAL_DRY_RUN / APPROVED_LOG / NOTIFY_DRY_RUN
+#   CONTRIB_DATA_DIR / MARTIN_DIR / TUNNEL_BIN / GH_BIN / GIT_BIN / APPROVAL_DRY_RUN / APPROVED_LOG / NOTIFY_DRY_RUN
 set -uo pipefail
 
 MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
@@ -30,6 +34,8 @@ RQ="$MARTIN/scripts/contrib/rq.sh"
 NOTIFY="$MARTIN/scripts/contrib/notify.sh"
 APPROVED_LOG="${APPROVED_LOG:-$MARTIN/approved.log}"
 GH_BIN="${GH_BIN:-gh}"
+# git 同 l2_ledger.sh 口径（env seam → 缺省真值）；refresh-branch 是唯一调用 git 的分支
+GIT_BIN="${GIT_BIN:-git}"
 # tunnel CLI 装在 nvm node bin（launchd PATH 极简找不到——09-06 装载后实证 rc=127）：
 # env seam 优先 → PATH 查找 → nvm 布局探测（同 collect.sh；被 collect 调起时继承其 export）
 TUNNEL_BIN="${TUNNEL_BIN:-}"
@@ -413,6 +419,89 @@ do_release_gate() { # release-gate approved：hm release approve 回验 → toke
   return 0
 }
 
+# ── refresh-branch：刷新我方既有 PR 的分支（09-14 用户授权 L2-B；approved.log pr=65100 锚）─────
+# 授权原文（用户 2026-09-14 11:36 会话内明示，已挂 approved.log）：「放宽自家 fork force-push
+#   边界——允许对 6 辆 CONFLICTING PR 做 rebase + 复推（只打自家 fork，不碰上游仓）。此为本次
+#   动作类的原则性首批；之后每次实际复推仍逐条走微信批准（L2 纪律不变）。」
+# ⇒ 本模式**不豁免审批**、execute.sh **不自批**：只由 tunnel 短码批准（L2-A）或会话内明示
+#   （L2-B）驱动的 execute.sh 调用触达；own-PR 恒 L2-A/L2-B，永不 L2-auto。
+# 三重闸（任一不满足即与今日行为逐字节等价）：主闸 allow_own_pr_push=true（上方已判，急停优先）
+#   + config allow_own_pr_refresh=true（缺省 false）+ 分支档案声明 refresh: yes。
+# 形态（全文件唯一 push 形态；falsify 锚 = 本文件含 force 字样的行恒 =1）：
+#   fetch origin → rebase origin/main → push 只打自家 fork（禁 push 上游仓、禁裸 force、
+#   禁 gh pr create、禁 main/master —— 后两条由「不调 gh pr create」+「只推 BRANCH.md 声明的功能分支」保证）。
+# 失败姿态：不回滚 rebase、不改 worktree（现场保留供重试）；rq → failed + pipeline-failure 事件。
+do_refresh_branch() {
+  local FORK_REMOTE="fork" url="" cur="" pr_url="" line=""
+  local -a REFRESH_PUSH_ARGS
+  REFRESH_PUSH_ARGS=(push --force-with-lease "$FORK_REMOTE" "$BRANCH_NAME")
+  if [[ -z "$ITEM_PR" ]]; then
+    fail "refresh-branch 缺 PR 锚（item.pr 为空）：本模式只刷新既有 PR 的分支"
+    return 1
+  fi
+  pr_url="https://github.com/${REPO}/pull/${ITEM_PR}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[dry-run] git -C ${WT_DIR} fetch origin"
+    echo "[dry-run] git -C ${WT_DIR} rebase origin/main"
+    echo "[dry-run] git -C ${WT_DIR} ${REFRESH_PUSH_ARGS[*]}"
+    echo "[dry-run] rq.sh set ${ID} executed --note ${pr_url}"
+    [[ -n "$SLUG" ]] && { echo "[dry-run] tunnel rm ${SLUG}"; echo "[dry-run] rq.sh tunnel-removed ${ID}"; }
+    echo "[dry-run] notify.sh receipt ${ID} --summary 已按短码批准刷新既有 PR 分支"
+    return 0
+  fi
+  # ① 远端校验：必须存在且**不指向上游仓**（URL 含 NousResearch/ 即拒；同 l2_ledger.sh 口径）
+  url="$("$GIT_BIN" -C "$WT_DIR" remote get-url "$FORK_REMOTE" 2>/dev/null)" || url=""
+  if [[ -z "$url" ]]; then
+    fail "refresh-branch: worktree ${WT_DIR} 无 ${FORK_REMOTE} 远端（复推必须打自家 fork）"
+    return 1
+  fi
+  case "$url" in
+    *NousResearch/*) fail "refresh-branch: ${FORK_REMOTE} 指向上游仓（${url}），拒绝复推（只打自家 fork）" ; return 1 ;;
+  esac
+  # ② 分支一致 + 工作区干净（防 rebase 打到别的分支 / 带脏改动起 rebase）
+  cur="$("$GIT_BIN" -C "$WT_DIR" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+  if [[ "$cur" != "$BRANCH_NAME" ]]; then
+    fail "refresh-branch: worktree HEAD=${cur:-detached} 与分支档案声明的分支=${BRANCH_NAME} 不一致"
+    return 1
+  fi
+  if [[ -n "$("$GIT_BIN" -C "$WT_DIR" status --porcelain 2>/dev/null)" ]]; then
+    fail "refresh-branch: worktree 有未提交改动，拒绝 refresh（现场保留）"
+    return 1
+  fi
+  log "refresh-branch ${ID}: 刷新 PR #${ITEM_PR} 分支 ${BRANCH_NAME}（worktree=${WT_DIR}，push 只打 ${FORK_REMOTE}）"
+  # ③ fetch origin（只读上游）→ rebase origin/main；冲突/脏树不干净即 abort，worktree 回原状
+  if ! "$GIT_BIN" -C "$WT_DIR" fetch origin >>"$LOG" 2>&1; then
+    fail "refresh-branch: git fetch origin 失败（现场保留）"
+    return 1
+  fi
+  if ! "$GIT_BIN" -C "$WT_DIR" rebase origin/main >>"$LOG" 2>&1; then
+    "$GIT_BIN" -C "$WT_DIR" rebase --abort >>"$LOG" 2>&1 || true
+    fail "refresh-branch: rebase origin/main 未干净通过（已 abort，worktree 回到原状）"
+    return 1
+  fi
+  # ④ 复推（唯一形态，见 REFRESH_PUSH_ARGS）；失败不回滚，rebased 现场保留供重试
+  if ! "$GIT_BIN" -C "$WT_DIR" "${REFRESH_PUSH_ARGS[@]}" >>"$LOG" 2>&1; then
+    fail "refresh-branch: 复推 ${FORK_REMOTE}/${BRANCH_NAME} 失败（rebased 现场保留，未回滚）"
+    return 1
+  fi
+  # ⑤ 台账 + 状态推进 + 回执（台账 5 列口径与 do_approved 一致；渠道标签恒 L2-A 人工批准）
+  line="$(date "+%Y-%m-%dT%H:%M:%S%z") | hermes-contrib | issue #${ISSUE} PR #${ITEM_PR} 分支刷新（refresh-branch，L2-A tunnel 短码批准（slug=${SLUG}）执行，rq ${ID}） | refresh-branch | ${pr_url}"
+  printf '%s\n' "$line" >> "$APPROVED_LOG" 2>/dev/null || { fail "approved.log 写入失败（路径/权限异常：${APPROVED_LOG}）"; return 1; }
+  log "approved.log + ${ID}（refresh-branch，pr=#${ITEM_PR}）"
+  "$RQ" set "$ID" executed --note "$pr_url" >>"$LOG" 2>&1 || { fail "rq set executed 失败"; return 1; }
+  if [[ -n "$SLUG" ]]; then
+    if "$TUNNEL_BIN" rm "$SLUG" >>"$LOG" 2>&1; then
+      "$RQ" tunnel-removed "$ID" >>"$LOG" 2>&1 || true
+    else
+      log "tunnel rm ${SLUG} 失败（7 天 sweep 兜底）"
+    fi
+  fi
+  "$NOTIFY" receipt "$ID" --summary "已按短码批准刷新既有 PR 分支并复推自家 fork：${pr_url}" >>"$LOG" 2>&1 \
+    || log "receipt ${ID} 发送失败（记账与状态推进不受影响）"
+  log "executed ${ID}（verdict=approved，mode=refresh-branch，pr=#${ITEM_PR}，worktree 未回滚）"
+  return 0
+}
+
 do_rejected() {
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "[dry-run] rq.sh set ${ID} rejected --note tunnel 短码否决"
@@ -507,6 +596,14 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
   # 闸开：探测 build 产物定模式（dir: 对缺失路径会 mkdir 空目录——kanban_db.py 空目录陷阱，
   # 故必须 -d + git rev-parse 双校验，不满足回退 build-and-push）
   BRANCH_MD="$(ls -t "$CONTRIB"/runs/*-issue"${ISSUE}"/BRANCH.md 2>/dev/null | head -1 || true)"
+  # refresh-branch 闸门（09-14 用户授权）：config 缺键/false 或分支档案未声明 refresh: yes
+  # ⇒ 走原路（对既有 push-only/build-and-push 路径逐字节等价）
+  ALLOW_REFRESH="$(cfg '.allow_own_pr_refresh' 'false')"
+  # 声明形态宽容：行首（可带列表符 `- `）`refresh: yes` 独立一行即认；其它值/缺失 ⇒ 不启用
+  REFRESH_DECL=""
+  if [[ -n "$BRANCH_MD" ]] && grep -qE '^[[:space:]]*-?[[:space:]]*refresh:[[:space:]]*yes[[:space:]]*$' "$BRANCH_MD" 2>/dev/null; then
+    REFRESH_DECL="yes"
+  fi
   MODE="build-and-push"; WT_DIR=""; BRANCH_NAME=""
   if [[ -n "$BRANCH_MD" ]]; then
     WT_DIR="$(grep -m1 'worktree：`' "$BRANCH_MD" 2>/dev/null | sed -E 's/.*worktree：`([^`]+)`.*/\1/' || true)"
@@ -517,8 +614,17 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
       log "own-PR ${ID}: BRANCH.md 存在但 worktree 校验失败（${WT_DIR:-空}），回退 build-and-push"
       MODE="build-and-push"; WT_DIR=""; BRANCH_NAME=""
     else
-      MODE="push-only"
+      if [[ "$REFRESH_DECL" == "yes" && "$ALLOW_REFRESH" == "true" ]]; then
+        MODE="refresh-branch"
+        log "own-PR ${ID}: 档案声明 refresh: yes + allow_own_pr_refresh=true → mode=refresh-branch（就地刷新既有 PR 分支）"
+      else
+        MODE="push-only"
+      fi
     fi
+  fi
+  if [[ "$MODE" == "refresh-branch" ]]; then
+    do_refresh_branch
+    exit $?
   fi
   if [[ "$DRY_RUN" == "true" ]]; then
     if [[ "$MODE" == "push-only" ]]; then
