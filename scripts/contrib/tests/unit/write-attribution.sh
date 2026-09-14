@@ -17,6 +17,9 @@
 #   C26-C35 删除类归属（corroborated-delete）：正例 / 无佐证 / Δt 30s·31s 边界 / marker 路径短路 /
 #     锚 fail-closed 三态 / 注入两段式（空转防护 + 自证 rc=2）/ mutation 抗性 / worker 实测三件复现锚 /
 #     面外 D 两态 / 混合窗口等值恒等式
+#   C36-C40 删除类跨窗所有权链（D-α，D-β 近邻不成立时的第二依据）：R4 生产形态正例（同 stem 四件 ×
+#     两个 <TS>）/ 有所有权但写手本窗静默 / 窗口内追加的具名记录不构成所有权（回填旧 ts · 当前 ts 两态）/
+#     stem 长度边界 / 混合窗口等值恒等式扩展（D-α 行计入 external）
 #
 # 纪律：合成树自建（mktemp -d），**不依赖真实 contrib-data**；断言只增不减；无 skip/warn 降级。
 # =============================================================================
@@ -557,7 +560,7 @@ t_case "C21 wa_selftest 全形态自证（未 mutate 基线 rc=0）"
 bash -c 'source "$1"; wa_selftest "$2"' _ "$TESTS_ROOT/lib/write-attribution.sh" "$WA_TMP" > "$WA_TMP/selftest.out" 2>&1
 assert_exit "0" "$?" "C21 基线自证 rc=0"
 assert_file_contains "$WA_TMP/selftest.out" "WA-SELFTEST PASS" "C21 自证输出 PASS 行"
-assert_eq "$(grep -c '^WA-SELFTEST ok' "$WA_TMP/selftest.out" | tr -d ' ')" "24" "C21 自证 ok 计数=24（22 形态 + 2 计数断言）"
+assert_eq "$(grep -c '^WA-SELFTEST ok' "$WA_TMP/selftest.out" | tr -d ' ')" "32" "C21 自证 ok 计数=32（26 形态 + 6 计数断言）"
 
 # =============================================================================
 t_case "C22 wa_inject 三模式（含注入物自证与可清爽删除）"
@@ -907,5 +910,182 @@ assert_eq "$(reason_of_path contrib-data/pending/mix-d2.json)" "corroborated-del
 assert_eq "$(cls_of_path contrib-data/pending/mix-suite.json)" "suite" "C35 marker 新建 = suite"
 assert_eq "$(cls_of_path contrib-data/scratch/mix-out.md)" "outside-surface" "C35 面外改写 = outside-surface"
 assert_eq "$(cls_of_path contrib-data/logs/collect.log)" "external" "C35 追加 = external"
+
+# =============================================================================
+# 删除类跨窗所有权链（D-α）：D-β 近邻不成立时，追加「窗口前字节区有具名记录 ∧ 写手本窗活跃」这一依据。
+# -----------------------------------------------------------------------------
+# 所有权 = 佐证日志里一条合规记录的**起始字节偏移 < 该日志在 before 快照中的 size**（结构事实）；
+# 活跃度 = 同一日志有 ts ∈ [t0−120s, t1+120s] 的合规记录。两者同时成立才放行（否则 suite，fail-closed）。
+# 本组用例的夹具：具名记录取 now−5400（远窗口带外，只作所有权）；活跃记录取 now+90（在窗带内、
+# 但与真 rm 产生的锚相距 90s > 30s ⇒ D-β 恒不成立 ⇒ 真正考验 D-α）。
+# =============================================================================
+WA_DA_OWN_TS="$(date -r $((WA_NOW - 5400)) +'%Y-%m-%d %H:%M:%S')"
+WA_DA_ACT_TS="$(date -r $((WA_NOW + 90)) +'%Y-%m-%d %H:%M:%S')"
+wa_da_log() { printf '%s' "$WT/repo/contrib-data/logs/notify.log"; }
+wa_da_off_of() { # <子串> → 该子串所在合规行的起始字节偏移（grep -b；机械核对「窗口前字节区」）
+  LC_ALL=C grep -bE "$WA_ALPHA_N" "$(wa_da_log)" 2>/dev/null | LC_ALL=C grep -F -m1 "$1" | sed -n 's/^\([0-9]*\):.*/\1/p'
+}
+
+t_case "C36 跨窗所有权链正例（R4 生产形态：同 stem 四件 · 两个 <TS> 两轮）⇒ external/ownership-delete-ok"
+for WA_DA_TAG in 20260914-090949 20260914-100442; do
+  WA_DA_STEM="digest-$WA_DA_TAG"
+  : > "$(wa_da_log)"
+  # 构造序（R-8 同族）：① 具名记录先落盘 ⇒ ② 采 before 快照 ⇒ ③ 窗口内真 rm 四件 ⇒ ④ 采 after 快照
+  printf '[%s] notify: digest 卡已建 t_da（snapshot=…/pending/%s.json，idem=…）\n' "$WA_DA_OWN_TS" "$WA_DA_STEM" >> "$(wa_da_log)"
+  for WA_DA_EXT in json body.md card.json digest.md; do
+    printf '{"digest":"r4"}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.$WA_DA_EXT"
+  done
+  snap_before
+  WA_DA_BSIZE="$(wa__snap_field "$WT/before" "contrib-data/logs/notify.log" 2)"
+  for WA_DA_EXT in json body.md card.json digest.md; do
+    rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.$WA_DA_EXT"
+  done
+  # 窗口内写手活跃：落一条在窗记录（不具名）⇒ 该追加自身是 external/registered-append-ok
+  printf '[%s] notify: digest 卡已建 t_new（snapshot=…/pending/digest-20260914-110839.json，idem=…）\n' "$WA_DA_ACT_TS" >> "$(wa_da_log)"
+  snap_after
+  run_classify
+  assert_exit "0" "$?" "C36 [$WA_DA_TAG] wa_classify rc=0"
+  for WA_DA_EXT in json body.md card.json digest.md; do
+    WA_DA_P="contrib-data/pending/$WA_DA_STEM.$WA_DA_EXT"
+    assert_eq "$(cls_of_path "$WA_DA_P")" "external" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") 类别=external"
+    assert_eq "$(reason_of_path "$WA_DA_P")" "ownership-delete-ok" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") reason=ownership-delete-ok"
+    assert_contains "$(cls_line_path "$WA_DA_P")" "writer=notify" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") writer=notify"
+    assert_contains "$(cls_line_path "$WA_DA_P")" "owner=$WA_DA_STEM" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") owner= 四件共同 stem"
+    assert_contains "$(cls_line_path "$WA_DA_P")" "owner_ts=$WA_DA_OWN_TS" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") owner_ts= 写手日志真实记录时间戳"
+    assert_contains "$(cls_line_path "$WA_DA_P")" "owner_log=contrib-data/logs/notify.log" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") owner_log= 承载日志"
+    assert_contains "$(cls_line_path "$WA_DA_P")" "act_ts=$WA_DA_ACT_TS" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") act_ts= 窗口带内活跃记录"
+    assert_not_contains "$(cls_line_path "$WA_DA_P")" "Δt=9s" "C36 [$WA_DA_TAG] $(basename "$WA_DA_P") 非 D-β 路径（近邻确实不成立）"
+  done
+  # 机械核对「该记录位于窗口前字节区」：具名记录起始字节偏移 < before 快照里该日志的 size
+  WA_DA_OFF="$(wa_da_off_of "$WA_DA_STEM")"
+  assert_ne "$WA_DA_OFF" "" "C36 [$WA_DA_TAG] 具名记录起始字节偏移可测（grep -b）"
+  if [ "$WA_DA_OFF" -lt "$WA_DA_BSIZE" ]; then
+    _pass "C36 [$WA_DA_TAG] 具名记录位于窗口前字节区 offset=$WA_DA_OFF < before size=$WA_DA_BSIZE"
+  else
+    _fail "C36 [$WA_DA_TAG] 具名记录位于窗口前字节区" "offset=$WA_DA_OFF >= size=$WA_DA_BSIZE"
+  fi
+  assert_eq "$(sum_key external)" "5" "C36 [$WA_DA_TAG] external=5（四件删除 + 窗口内活跃追加）"
+  assert_eq "$(sum_key suite)" "0" "C36 [$WA_DA_TAG] suite=0（本轮要消除的假红）"
+  assert_eq "$(sum_key total)" "5" "C36 [$WA_DA_TAG] total=5（窗口差集=四件 + 追加）"
+done
+
+# =============================================================================
+t_case "C37 所有权在但写手本窗静默（窗口带内零记录）⇒ suite/no-delete-corroboration"
+WA_DA_STEM="digest-20260914-235959"
+: > "$(wa_da_log)"
+printf '[%s] notify: digest 卡已建 t_da（snapshot=…/pending/%s.json，idem=…）\n' "$WA_DA_OWN_TS" "$WA_DA_STEM" >> "$(wa_da_log)"
+printf '{"digest":"silent"}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+snap_before
+rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+snap_after
+run_classify
+WA_DA_P="contrib-data/pending/$WA_DA_STEM.json"
+assert_eq "$(cls_of_path "$WA_DA_P")" "suite" "C37 类别（写手本窗静默 ⇒ 活跃度不成立）"
+assert_eq "$(reason_of_path "$WA_DA_P")" "no-delete-corroboration" "C37 reason"
+assert_contains "$(cls_line_path "$WA_DA_P")" "owner=$WA_DA_STEM" "C37 失败态仍写 owner=（审计：所有权在）"
+assert_contains "$(cls_line_path "$WA_DA_P")" "act=none" "C37 失败态写 act=none（活跃度缺席）"
+assert_contains "$(cls_line_path "$WA_DA_P")" "ts=none" "C37 D-β 亦无在窗记录（Δ/ts 皆 none）"
+assert_eq "$(sum_key suite)" "1" "C37 suite=1"
+assert_eq "$(sum_key external)" "0" "C37 external=0（所有权单独不足以放行）"
+
+# =============================================================================
+t_case "C38 窗口内追加的具名记录不构成所有权（回填旧 ts / 当前 ts 两态）⇒ suite"
+# 态 A：回填旧时间戳。该追加自身另被既有 append 分支判 suite/timestamp-out-of-window（双重覆盖）
+WA_DA_STEM="digest-20260914-235958"
+: > "$(wa_da_log)"
+printf '[%s] notify: 本窗活跃记录（不具名）\n' "$WA_DA_ACT_TS" >> "$(wa_da_log)"
+printf '{"digest":"forged-a"}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+snap_before
+printf '[%s] notify: digest 卡已建 t_da（snapshot=…/pending/%s.json，回填旧时间戳）\n' "$WA_DA_OWN_TS" "$WA_DA_STEM" >> "$(wa_da_log)"
+rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+snap_after
+run_classify
+WA_DA_P="contrib-data/pending/$WA_DA_STEM.json"
+assert_eq "$(cls_of_path "$WA_DA_P")" "suite" "C38A 类别（窗口内追加的具名记录不是所有权）"
+assert_eq "$(reason_of_path "$WA_DA_P")" "no-delete-corroboration" "C38A reason"
+assert_contains "$(cls_line_path "$WA_DA_P")" "owner=$WA_DA_STEM" "C38A 失败态 owner= 有值（具名记录确实存在，只是不在窗口前字节区）"
+assert_contains "$(cls_line_path "$WA_DA_P")" "act=$WA_DA_ACT_TS" "C38A 失败态 act= 有值（写手本窗活跃，放行仍需所有权）"
+assert_eq "$(cls_of_path contrib-data/logs/notify.log)" "suite" "C38A 该追加自身判 suite（双重覆盖）"
+assert_eq "$(reason_of_path contrib-data/logs/notify.log)" "timestamp-out-of-window" "C38A 追加自身 reason=timestamp-out-of-window"
+assert_eq "$(sum_key suite)" "2" "C38A suite=2（被删物 + 伪造追加）"
+assert_eq "$(sum_key external)" "0" "C38A external=0"
+# 态 B：当前时间戳。锚钉到 now−90（touch -t 作用在**目录**上）⇒ D-β 近邻不成立，本态只考验字节区规则
+WA_DA_STEM="digest-20260914-235957"
+: > "$(wa_da_log)"
+printf '{"digest":"forged-b"}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+snap_before
+printf '[%s] notify: digest 卡已建 t_da（snapshot=…/pending/%s.json，当前时间戳）\n' "$WA_CLS_NOW" "$WA_DA_STEM" >> "$(wa_da_log)"
+rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+touch -t "$(date -r $((WA_NOW - 90)) +%Y%m%d%H%M.%S)" "$WT/repo/contrib-data/pending"
+snap_after
+run_classify
+WA_DA_P="contrib-data/pending/$WA_DA_STEM.json"
+assert_eq "$(cls_of_path "$WA_DA_P")" "suite" "C38B 类别（窗口内追加的具名记录不是所有权）"
+assert_eq "$(reason_of_path "$WA_DA_P")" "no-delete-corroboration" "C38B reason"
+assert_contains "$(cls_line_path "$WA_DA_P")" "owner=$WA_DA_STEM" "C38B 失败态 owner= 有值"
+assert_contains "$(cls_line_path "$WA_DA_P")" "act=$WA_CLS_NOW" "C38B 失败态 act= 有值（在窗记录）"
+assert_eq "$(cls_of_path contrib-data/logs/notify.log)" "external" "C38B 追加形态合规 ⇒ 自身判 external（看起来像写手记录）"
+assert_eq "$(reason_of_path contrib-data/logs/notify.log)" "registered-append-ok" "C38B 追加自身 reason=registered-append-ok"
+assert_eq "$(sum_key suite)" "1" "C38B suite=1（被删物）"
+assert_eq "$(sum_key external)" "1" "C38B external=1（仅那条形态合规的追加；被删物未放行）"
+assert_eq "$(sum_key total)" "2" "C38B total=2"
+
+# =============================================================================
+t_case "C39 stem 长度边界：恰 WA_OWNER_MIN_STEM 适用 / 短一位不适用（fail-closed）"
+assert_eq "$WA_OWNER_MIN_STEM" "8" "C39 常量 WA_OWNER_MIN_STEM=8"
+WA_DA_S8="stem-008"
+WA_DA_S7="stem-00"
+: > "$(wa_da_log)"
+printf '[%s] notify: 具名记录 %s / %s\n' "$WA_DA_OWN_TS" "$WA_DA_S8" "$WA_DA_S7" >> "$(wa_da_log)"
+printf '[%s] notify: 本窗活跃记录（不具名）\n' "$WA_DA_ACT_TS" >> "$(wa_da_log)"
+printf '{"stem":8}\n' > "$WT/repo/contrib-data/pending/$WA_DA_S8.json"
+snap_before
+rm -f "$WT/repo/contrib-data/pending/$WA_DA_S8.json"
+snap_after
+run_classify
+assert_eq "$(cls_of_path "contrib-data/pending/$WA_DA_S8.json")" "external" "C39 恰 8 字符 stem ⇒ 所有权适用"
+assert_eq "$(reason_of_path "contrib-data/pending/$WA_DA_S8.json")" "ownership-delete-ok" "C39 边界正例 reason"
+printf '{"stem":7}\n' > "$WT/repo/contrib-data/pending/$WA_DA_S7.json"
+snap_before
+rm -f "$WT/repo/contrib-data/pending/$WA_DA_S7.json"
+snap_after
+run_classify
+assert_eq "$(cls_of_path "contrib-data/pending/$WA_DA_S7.json")" "suite" "C39 短一位（7 字符）stem ⇒ 所有权不适用"
+assert_eq "$(reason_of_path "contrib-data/pending/$WA_DA_S7.json")" "no-delete-corroboration" "C39 边界反例 reason"
+assert_contains "$(cls_line_path "contrib-data/pending/$WA_DA_S7.json")" "owner=$WA_DA_S7" "C39 失败态 owner= 仍写实际 stem（审计）"
+assert_eq "$(sum_key external)" "0" "C39 短 stem 不得冒领 external（子串命中不算所有权）"
+
+# =============================================================================
+t_case "C40 混合窗口等值恒等式扩展：D-α 行计入 external · 三类和==total==窗口差集"
+WA_DA_STEM="mixdigest-20260914"
+: > "$(wa_da_log)"
+printf '[%s] notify: digest 卡已建 t_da（snapshot=…/pending/%s.json，idem=…）\n' "$WA_DA_OWN_TS" "$WA_DA_STEM" >> "$(wa_da_log)"
+printf '{"mix":6}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+printf '{"mix":7}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.body.md"
+printf 'seed\n' > "$WT/repo/contrib-data/scratch/mix-out2.md"
+snap_before
+rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.json" "$WT/repo/contrib-data/pending/$WA_DA_STEM.body.md"
+printf '[%s] notify: 本窗活跃记录（不具名）\n' "$WA_DA_ACT_TS" >> "$(wa_da_log)"
+printf '%smode=mix-suite2\n' "$WA_MARKER_PREFIX" > "$WT/repo/contrib-data/pending/mix-suite2.json"
+printf 'outside change\n' > "$WT/repo/contrib-data/scratch/mix-out2.md"
+snap_after
+run_classify
+WA_DA_MIX_N="$(awk -F'\t' 'NR == FNR { b[$5] = $0; next } { a[$5] = $0 }
+  END { n = 0
+    for (p in b) if (!(p in a)) n++
+    for (p in a) { if (!(p in b)) n++; else if (a[p] != b[p]) n++ }
+    print n }' "$WT/before" "$WT/after")"
+assert_eq "$WA_DA_MIX_N" "5" "C40 窗口差集=5（2 删除 + 1 追加 + 1 新建 + 1 面外改写）"
+assert_eq "$(sum_key external)" "3" "C40 external=3（2 条 D-α 删除 + 1 条追加）"
+assert_eq "$(sum_key suite)" "1" "C40 suite=1（marker 新建）"
+assert_eq "$(sum_key outside)" "1" "C40 outside=1（面外改写）"
+assert_eq "$(sum_key total)" "$WA_DA_MIX_N" "C40 total==窗口差集文件数（等值，非 >=）"
+assert_eq "$(( $(sum_key external) + $(sum_key suite) + $(sum_key outside) ))" "$(sum_key total)" "C40 三类和==total（D-α 行不计旁路）"
+assert_eq "$(sum_key unclassified)" "0" "C40 unclassified=0"
+assert_eq "$(cls_of_path "contrib-data/pending/$WA_DA_STEM.json")" "external" "C40 D-α 删除逐文件归类（json）"
+assert_eq "$(reason_of_path "contrib-data/pending/$WA_DA_STEM.body.md")" "ownership-delete-ok" "C40 D-α 删除逐文件归类（body.md）"
+assert_eq "$(cls_of_path contrib-data/pending/mix-suite2.json)" "suite" "C40 marker 新建 = suite"
+assert_eq "$(cls_of_path contrib-data/scratch/mix-out2.md)" "outside-surface" "C40 面外改写 = outside-surface"
+assert_eq "$(cls_of_path contrib-data/logs/notify.log)" "external" "C40 追加 = external"
 
 t_finish
