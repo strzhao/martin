@@ -139,6 +139,15 @@ if [[ -z "$TWIN_A" || -z "$TWIN_B" ]]; then
 "}孪生源缺失: *contrib*/notify.sh"
   fi
 else
+  # 空表守卫（fail-closed）：spec 表为 0 项时下面的循环零次、TWIN_STATUS 停在初值 PASS
+  # ⇒ 整个孪生门被静默关闭（2026-09-14 实证：清空 spec 条目 + 删 execute.sh 归一化行后
+  # 仍报 PASS / rc=0，被删那行本该由第 2 个 idiom 抓到）。阈值取 0 不取 2：单 idiom 孪生对
+  # 是 1b9ba49 泛化前的合法形态（1 项仍在真跑），只有「零项」等价于门不存在；
+  # 「条目被裁剪」这一面不由此守卫覆盖，检测查询见 [fix] t_d61f8326 的 escalate 行。
+  if [[ "${#TWIN_SPECS[@]}" -eq 0 ]]; then
+    TWIN_STATUS="FAIL"
+    TWIN_DETAILS="spec 表为空（fail-closed，禁静默绿）"
+  fi
   for _twin_spec in ${TWIN_SPECS[@]+"${TWIN_SPECS[@]}"}; do
     _twin_name="${_twin_spec%%|*}"
     _twin_prog="${_twin_spec#*|}"
