@@ -959,21 +959,47 @@ cmd_event() {
 
 # ---------------- flush（告警聚合推送，分渠两级渲染） ----------------
 # _flush_brief_mark <brief_keys_json_file> <channel> — 简报级降级标记：原行 pushed=true + route=brief
-# （route=brief 行=operator 当日简报消费队列，账本可查；经 line-splice 保原行形态）。
+# （route=brief 行=operator 当日简报消费队列，账本可查；经 line-splice 保原行形态），
+# **同时把该行 append 进当日简报文件 $CONTRIB/briefs/<today>.md 的固定小节**——否则「降级进
+# 当日简报」只是一句无人兑现的账本标记（09-14 实证：账本标 route=brief，简报文件里 grep = 0）。
+# 幂等：① 降级行不再进批（pushed=true）⇒ 重复 flush 不会二次追加；② 追加前按 key 查重（簇重推
+# 会把 pushed 拨回 false 重新入批）⇒ 同 key 只成行一次。简报写失败只记日志、不回滚降级标记
+# （账本仍是唯一权威，简报是它的可读投影）。
 # 红线：不推进 last_flush_epoch、不占 attempts、不触发 osascript。
 _flush_brief_mark() {
-  local keys_file="$1" ch="$2" upd="/tmp/contrib-brief-upd-$$.tsv" k ln
+  local keys_file="$1" ch="$2" upd="/tmp/contrib-brief-upd-$$.tsv" k ln bf
+  bf="$CONTRIB/briefs/$(today).md"
   : > "$upd"
   while IFS= read -r k; do
     [[ -n "$k" ]] || continue
     ln="$(_event_line_of "$k" "$ch")"
     [[ -n "$ln" ]] || continue
     printf '%s\t%s\t%s\n' "$ln" '{}' '.pushed = true | .route = "brief"' >> "$upd"
+    _brief_append_record "$bf" "$k" "$ln"
   done < <(jq -r '.[]' "$keys_file" 2>/dev/null)
   if [[ -s "$upd" ]]; then
     _events_splice "$upd"
   fi
   rm -f "$upd"
+}
+
+# _brief_append_record <brief_file> <key> <账本行号> — 单条 route=brief 行落当日简报（append-only）。
+#   形态：`- <ts> ｜ <class> ｜ \`<key>\` ｜ <summary> ｜ <channel>`（summary 的换行/制表折叠为空格，
+#   保证恒单行）；文件不存在则建 `# contrib 简报 <date>` 头 + 固定小节头；小节头惰性补写
+#   （既有人写简报不会被重排）。查重按反引号包裹的 key 做定长匹配，命中即跳过。
+_brief_append_record() {
+  local bf="$1" k="$2" ln="$3" hdr='## 简报队列（机械落账）' tick='`' rec=''
+  grep -qF -- "$tick$k$tick" "$bf" 2>/dev/null && return 0
+  rec="$(sed -n "${ln}p" "$EVENTS" 2>/dev/null | jq -r \
+    '[(.ts // ""), (.class // ""), ((.key // "") | "`" + . + "`"), ((.summary // "") | gsub("[\n\r\t]"; " ")), (.channel // "contrib")] | join(" ｜ ")' 2>/dev/null || true)"
+  [[ -n "$rec" ]] || { log "brief: 账本行解析失败（key=${k} line=${ln}），本轮不落简报"; return 0; }
+  mkdir -p "$CONTRIB/briefs" 2>/dev/null || true
+  if [[ ! -f "$bf" ]]; then
+    printf '# contrib 简报 %s\n' "$(today)" >> "$bf" 2>/dev/null || { log "brief: 建头失败 $bf"; return 0; }
+  fi
+  grep -qF -- "$hdr" "$bf" 2>/dev/null || printf '\n%s\n\n' "$hdr" >> "$bf" 2>/dev/null || true
+  printf -- '- %s\n' "$rec" >> "$bf" 2>/dev/null || log "brief: 写入失败（key=${k} file=${bf}）"
+  return 0
 }
 
 # _flush_channel <channel> <ep> → rc —— 单渠道批次：选择 →（brief 降级标记）→ 渲染 → 发送 → 标记。

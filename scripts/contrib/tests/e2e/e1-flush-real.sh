@@ -128,6 +128,37 @@ assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "true
 assert_eq "$(jq -r 'select(.key == "e1-brief") | .attempts' "$EVENTS_FILE")" "0" "降级不占 attempts"
 assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "0" "降级不占当日告警限额"
 assert_eq "$(jq -r '.last_flush_epoch' "$STATE_FILE")" "0" "标记动作不推进 last_flush_epoch"
+# 09-14 修：降级不止是账本标记——同一条行必须落进当日简报文件（此前的黑洞：账本标 route=brief，
+# briefs/<date>.md 里 grep 该 key = 0，全机无消费者）
+BRIEF_FILE="$SB_ROOT/contrib-data/briefs/$(date +%F).md"
+[[ -f "$BRIEF_FILE" ]] && _pass "当日简报文件已建（route=brief 真落文件）" || _fail "当日简报文件已建" "缺失 $BRIEF_FILE"
+assert_file_contains "$BRIEF_FILE" "# contrib 简报 $(date +%F)" "简报文件头（惰性创建）"
+assert_file_contains "$BRIEF_FILE" "## 简报队列（机械落账）" "固定小节头"
+assert_file_contains "$BRIEF_FILE" '`e1-brief`' "记录行含 key（反引号形态，查重锚）"
+assert_file_contains "$BRIEF_FILE" "own-pr-info" "记录行含 class"
+assert_file_contains "$BRIEF_FILE" ' ｜ ' "记录行字段分隔（ts ｜ class ｜ key ｜ summary ｜ channel）"
+assert_eq "$(grep -cF -- 'e1-brief' "$BRIEF_FILE")" "1" "该 key 恰一行（不重复）"
+assert_eq "$(grep -c '^- ' "$BRIEF_FILE")" "1" "记录形态=单行列表项（恒单行）"
+assert_not_contains "$(cat "$BRIEF_FILE")" '"summary"' "简报不落 raw JSON（人读面）"
+
+t_case "E1i: 幂等——同 key 二次入批（簇重推把 pushed 拨回 false 的同形前置态）不得重复成行"
+# 生产 repush 路径会把已推行的 pushed 拨回 false 重新入批；简报落账必须按 key 查重。
+# ⚠ 账本是逐行 JSONL（`_event_line_of` 按行 grep + line-splice）⇒ 改行必须 `jq -c`：
+#   默认 jq 会 pretty-print 成多行，把账本行结构打碎（本用例首跑即栽在此，红队可复现）。
+jq -c 'if .key == "e1-brief" then .pushed = false else . end' "$EVENTS_FILE" >"$EVENTS_FILE.tmp" \
+  && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
+assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "false" "前置态：该行确已拨回未推"
+BRIEF_SHA_BEFORE="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
+sb_state_set '.last_flush_epoch = 0'
+before_hermes="$(stub_count hermes)"
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+assert_exit 0 $?
+assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "true" "重推轮账本重新标已派发（证明该 key 真被再处理）"
+assert_eq "$(jq -r 'select(.key == "e1-brief") | .route' "$EVENTS_FILE")" "brief" "重推轮账本仍标 route=brief"
+assert_eq "$(grep -cF -- 'e1-brief' "$BRIEF_FILE")" "1" "简报文件仍恰一行（幂等，不重复追加）"
+assert_eq "$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')" "$BRIEF_SHA_BEFORE" "简报文件逐字节未变（查重命中即零写入）"
+assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "0" "幂等轮仍不占当日限额"
+assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "幂等轮零外发"
 
 t_case "E1h: brief_only_classes 覆盖 = replace 语义（表内类降级、缺省表类不再降级）"
 sb_cleanup
