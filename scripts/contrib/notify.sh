@@ -35,9 +35,6 @@
 #     notify.sh send-digest 唯一外发通道发送）；flight 登记同 kind 单飞；done+sent:true 消费轮
 #     零账本动作（双写禁止）且本轮不建新卡（防卡风暴）；卡失败/stale → fallback_ai()（原 claude -p
 #     内联摘要路整段保留为兜底，3 败 osascript 不变）。机械路径/_send/限额/channel 语义零变化
-#   - 人门提醒（gate-remind，09-14 缺口根治）：flush 内机械检测 contrib 板 blocked 且超
-#     gate_remind_hours 的 `[draft]`/`[fix]` 卡（人门卡在用户侧无送达面）→ 落 human-gate
-#     事件（key=gate-<task_id>，账本 key 幂等）；config 缺 key = 关闭
 #   - 测试沙箱：CONTRIB_DATA_DIR=<dir> 可把账本/配置整体指向临时目录
 #   - 命令 seam：TUNNEL_BIN / HERMES_BIN / OSASCRIPT_BIN / GATEWAY_PROBE_BIN / CLAUDE_BIN
 #
@@ -58,12 +55,6 @@ CONFIG="$CONTRIB/config.json"
 QUEUE="$CONTRIB/ready-queue.json"
 EVENTS="$CONTRIB/events.jsonl"
 STATE="$CONTRIB/notify-state.json"
-# 人门检测读的板库（contrib 域唯一目标板，只读）。直读板库、不走 hermes kanban CLI：
-# CLI 在 delegated worker 上下文被 write fence 拒（原文「kanban: delegate_task child contexts
-# cannot mutate Kanban tasks or boards」）⇒ 用它会把检测放进一个会静默失效的依赖里；
-# 读法固定 `?immutable=1`（09-14 实测：同刻 immutable rc=0 / mode=ro rc=14「unable to open
-# database file」，因板库为 WAL 且静止时刻无 -wal/-shm）。
-GATE_DB="$HOME/.hermes/kanban/boards/contrib/kanban.db"
 RQ="$MARTIN/scripts/contrib/rq.sh"
 LOCK="${NOTIFY_LOCK:-/tmp/contrib-notify.lock}"
 # 命令 seam（默认值=现状硬编码；测试套件经此注入影子 stub，生产语义零改变）
@@ -1048,42 +1039,6 @@ _flush_channel() {
   return "$rc"
 }
 
-# ---------------- 人门提醒（gate-remind：blocked 的 [draft]/[fix] 卡无送达面） ----------------
-# 缺口（2026-09-14 operator 实证）：人门卡（`[draft]`/`[fix]`）停在 blocked 等裁决，而 contrib
-# 板零微信订阅（`kanban_notify_subs` 0 条）+ 简报不看卡 + 班次 job deliver=local
-# ⇒ **用户永远不会被问到**，只能靠人主动开板。本函数 = 零 LLM 机械检测，挂在每轮 flush 上
-# （唯一不依赖任何人注意力的位置）：读板 → 把「blocked ∧ 标题含 `[draft]`/`[fix]` ∧
-# now-created_at > gate_remind_hours」的卡落一条 human-gate 事件（key=gate-<task_id>）。
-# 幂等由账本 key 承担（同 key 原位更新、不重复成行，复发重推由既有静默窗 CLUSTER_REPUSH_SECS
-# 管）；节流复用既有 min_interval / max_alert_pushes_per_day；外发走既有叙事批 → digest 卡路。
-# config 取不到 gate_remind_hours ⇒ 0 = 关闭（缺配置不静默上线）。读板失败只记日志、不中断 flush。
-_gate_remind() {
-  local hours; hours="$(cfg '.gate_remind_hours' '0')"
-  case "$hours" in ''|*[!0-9]*) hours=0 ;; esac
-  (( hours > 0 )) || return 0
-  [[ -f "$GATE_DB" ]] || { log "gate-remind: 板库不存在（${GATE_DB}），本轮跳过"; return 0; }
-  local cutoff rc=0 recs
-  cutoff=$(( $(now_epoch) - hours * 3600 ))
-  recs="$(sqlite3 -separator $'\t' "file:${GATE_DB}?immutable=1" \
-    "select id, replace(title, char(9), ' ') from tasks
-      where status='blocked' and (title like '%[draft]%' or title like '%[fix]%')
-        and created_at > 0 and created_at < ${cutoff};" 2>>"$LOG")" || rc=$?
-  if (( rc != 0 )); then
-    log "gate-remind: 板读取失败 rc=${rc}（${GATE_DB}），本轮跳过（下轮自愈）"
-    return 0
-  fi
-  local id title n=0
-  while IFS=$'\t' read -r id title; do
-    [[ -n "$id" ]] || continue
-    n=$((n+1))
-    "$SELF_BIN" event human-gate --key "gate-${id}" --channel contrib \
-      --summary "人门卡 ${id} 停在 blocked 超 ${hours}h，微信与简报均未送达：${title:0:70}（等你裁决或放行）" \
-      >>"$LOG" 2>&1 || log "gate-remind: ${id} 事件落账失败"
-  done <<<"$recs"
-  (( n > 0 )) && log "gate-remind: ${n} 张人门卡超 ${hours}h 未送达，已落账（key=gate-<task_id>）"
-  return 0
-}
-
 # cmd_flush — 分渠聚合推送：min_interval/限额全局把守 → 逐渠道独立成批（各至多一条消息）。
 # 单渠无待推事件 → 该渠零发送零标头零标记；非 {contrib,flashcards} 渠道永不进批。
 cmd_flush() {
@@ -1098,10 +1053,6 @@ cmd_flush() {
     log "距上次 flush 不足 ${min_interval}min（防 08 窗口双发），跳过"
     return 0
   fi
-
-  # 人门检测（未决 [draft]/[fix] 卡无送达面）：必须排在渠道集计算**之前**——否则本轮新落的
-  # human-gate 事件要等下一轮 flush 才被带走（边界实证：digest 消费轮不带走同轮新事件）。
-  _gate_remind
 
   # 本轮渠道集 = 账本中未推事件实际出现的渠道 ∩ 合法闭集 {contrib,flashcards}
   # （其他渠道照旧只入账不进批；空集=零输出零标记零推进）
