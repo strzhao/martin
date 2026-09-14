@@ -220,6 +220,8 @@ gh 只读（零写）· 对外必经 L2（agent 起草链落笔）· own-PR 永�
 - 2026-09-13 判例：**`[watch]` 第二次自保不要沿用同一个 `kind`**——`block_recurrences` 达 `BLOCK_RECURRENCE_LIMIT = 2` 即 `block_loop_detected` 路由到 `triage`（`kanban_db.py:3196-3201`，公式 `recurrences = prev+1 if prev_kind == kind else 1`），而 triage 不在钳夹读取域内 ⇒ watch 从唤醒链上被摘掉。被反复非到期派发的 watch 卡第二次自保用 `kind=needs_input`（recurrence 归 1、稳停 `blocked`、留在 `status in ('scheduled','blocked')` 域内），并在理由栏如实写明换 kind 的原因。证据：t_03bc12f0（19:29 第二次停放）。
 - 2026-09-13 判例：**非到期唤醒的排查顺序（别默认是钳夹）**——① 部署版钳夹 SQL 在 live 库实跑是否返回该 id；② naive/历史版（`git show <fix>^:scripts/contrib/heartbeat.sh`）是否返回；③ 该秒还有哪个进程在跑（`task_events` 按秒对齐 + 在跑卡的 heartbeat）。实测 `t_03bc12f0` + `t_19c1f214` 于 19:28:45 **同秒**被 unblock，而两卡窗口形状合法且未到期、心跳 cron 当时不在点 ⇒ 唤醒源 = 红队/验证进程的 `unblock` 打到 live 库（沙箱 `$HB` stub 未生效）；结论：**沙箱验证范式必须把「对 live 板零副作用」当独立复核项**。
 
+- 2026-09-14 判例：**判 rebase 成本必须真跑「试 rebase」，不得用 merge-tree / 整支 merge 的冲突区行数**——整支 merge 以旧 main 为共同祖先，会把两支各自的重写都并进同一个冲突区（同批实测 #65112 的 `yuanbao.py` 量到 1122 行、#65794 的 `gateway/run.py` 量到 9055 行 ⇒ 会误判「大」），而 rebase 只重放本 PR 的 hunk；6 辆 CONFLICTING 老车试 rebase 后 **4 辆零冲突通过**、余 2 辆各只卡 1 块 15/23 行。复现法：`git clone --shared --no-checkout <主检出> <临时>` → 临时克隆内 `git worktree add --detach <head_sha>` → `git rebase origin/main`（主检出零 git 写，试完删临时克隆）。证据：卡 t_c6b494e8 / `contrib-data/pr-conflict-audit-20260914.md`。
+
 ## 9. 修复判断四问（`[fix]` 卡模板 + 红队复核）
 
 > **授权来源（用户已拍板，非本 skill 自撰）**：2026-09-13 晚用户**全量拍板 11 项**（设计稿 `~/workspace/martin/docs/operator-autonomy-design-v3.1.md` §13 清单；落地卡 = 看板 `t_3f667a32`）。三条授权变更：① **「调度链」红线收窄**（只认「何时唤起系统」；钳夹逻辑归 AI）② 落点在 git 之外的**部署面算域内可逆**（附两条硬条件，见 §10）③ **首次进修复流不需人批**（四问 + 红队就是门槛）。
