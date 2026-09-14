@@ -36,9 +36,10 @@ description: contrib 域 operator——hermes 上游共建的运营判断体。�
 |---|---|---|
 | 研判/分诊/watch/看板写/journal | 本地可逆 | 自主 |
 | **域内机制改动**（自家管道代码 / 文档 / 数据面 / 部署面） | **可逆性**：能一行退回？错了多久能被看见？ | 自主（当班修；判据 + 六条红线 + 部署面条件见 §10） |
-| 对外（gh 写/push/评论/PR/发版） | 不可逆 | L2 提案：起草 → 链落笔 |
+| 对外-可逆写动作（评论/review/own-PR push 与开 PR/force-with-lease 等已批类） | 可逆+有先例 | **自决**（§12：判断优先，落「自决: 理由」台账） |
+| 对外-release-gate（ALWAYS_L2） | 物理不可逆 | L2 提案：起草 → 链落笔（§12 机械层①，无例外） |
 | 花钱（深检/forge 立项等 token 大户） | 消耗 | 预算钳夹（`rq.sh budget` reserve/refund；深检周配额见 config） |
-| 全新动作类型 | 无先例 | 提案卡（[draft]）升格，人批一次成原则 |
+| 全新动作类型 | 无先例=缺判断依据 | 提案卡（[draft]）升格，人批一次成原则 |
 
 **L2 三路**（现状钳夹，等效）：**L2-auto**（确定性闸 `scripts/approval/auto-gate.sh`：可逆评论类 + decision=auto + confidence high/low + score≥12 + 非 own-PR → 跳微信直接执行链，台账标 L2-auto）；**L2-A 微信批准**（闸门不过 → 审批卡置顶「我定不了的点」→ 用户批）；**L2-B 会话内明示**。三路执行前都查 approved.log 去重。
 
@@ -81,6 +82,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 - **none**：仅限真不可造（需维护者拍板方向/schema 级/域外/纯观察），note 写硬理由（「没有现成的」不算理由）。连续 ≥3 次 none = 造货能力报警回炉
 
 **forge 台账实查口径（09-13 实证，判 goods 前必做）**：`forge.sh check` 的 `in-flight` ≠ 有货——立项即建分支（含 worktree），未开工或未提交都长期停在 in-flight。实查一条命令：`git -C ~/workspace/hermes-agent rev-list --count origin/main..refs/heads/forge/<b>` = 0 且该 worktree `status --porcelain` 为空 = **空壳**（head 往往就是它立项时的上游提交），不可当 offered/forge-lane 依据。09-13 实测 12 条 forge 分支：5 条真有提交（weixin 系 4 + kanban-retry-notify），7 条零提交空壳、立项 2.2–3.5 天 ⇒ 归「立项欠账」（重启造货 or 结项），不是库存；出手判定引用库存前逐条实查，勿照抄 forge.sh 状态列
+- **库存/案卷的 gap 会随 main 移动而过期（09-14 实证，判 goods 与「等槽位」前必做）**：与我方腿同面的缺口可能已被维护者**自己**同刻修掉（他本人就是最大产能，§3.4），而我方腿仍停在本地零 push、watch 仍挂在 scheduled ⇒ 对照物必须是**当前 `origin/main`**，不是我方分支的 diff。一条命令足够：`gh api -X GET repos/<r>/contents/<path>?ref=main --jq .content | base64 -d | grep -c <修复特征>`（>0 即缺口已关 ⇒ 归宿 `already-covered`，件迁 `dead`）。09-14 实例：`forge/109641-macos-holder-scan` 的 case-alias 腿（`c7774ebbf31b`）等槽位期间，维护者 follow-up PR #110872（`274fd56dca`，自陈 `review of #110544`）用更简的无条件 `casefold` 收口同一段代码 ⇒ 案卷 `dead`、watch 归档。**「等槽位」类 watch 的首批判据必须是「main 现版本是否仍缺该 gap」**（09-14 shift-47 前两张 watch 的判据里都缺这一条，导致 gap 已关仍在 scheduled 上占位）。
 - **死件归宿 = `dead` 终态（09-14 起可执行；此前「inventory 缺终态枚举期间的止血口径」已退位）**：判 goods 前对每条候选件 gh 实查载体 PR 的 `state`/`merged_at`——载体被关且未合入 ⇒ 件随载体出局，**当场用 `forge.sh set-status <id> dead` 如实登记**（值域含 `dead`/`idea`，提交 `57d277a`；单测 `scripts/contrib/tests/unit/forge-status-enum.sh` 40 断言；`check` 原样打印 status 列）。语义分列不可混：`spent`=**已被收编**（KPI 正信号，**禁拿来兜底死件**，合并会污染计数）/ `dead`=载体已死、内容出局、不再作 offer 弹药。存量实例：`commit-1d0e71e822`（FTS 四点加固；载体内 #86062 于 09-11T13:47:08Z 被 teknium1 关闭、`merged_at=null`、+453 LOC；该件在 PR 分支内的现形 sha = `17b1bc182c38`，作者仍是 strzhao）——**09-14 已迁 `dead`**（用户 12:29 批量放行，`approved.log:52`；数据面回退 = `cp contrib-data/inventory.json.bak-<ts> contrib-data/inventory.json`，演练 sha 逐字节回 `1fbb1c32…`）。
 
 ### 3.3 竞品吸收 A/B/C（发现占坑/重叠 PR 后 30 分钟内判定）
@@ -174,6 +176,8 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 ### 4.2 L2 提交流（现用钳夹，勿绕行）
 
+**⚠ 适用范围已收窄（09-14 §12 起）**：本流只用于 ①ALWAYS_L2（release-gate）②全新动作类型 ③operator 自判「缺判断依据」的项。**常规可逆写动作（评论/review/own-PR）不再走本流**——按 §12 自决路直接执行+落账。以下流程原文保留，对收窄后的三类照旧生效。
+
 起草成稿（含审批中文摘要段）→ `rq.sh add`（`--premises-json` 必填：逐条 {claim, evidence, verified_at}；`--ammo-json` 弹药）→ `rq.sh set-draft` → `bash scripts/contrib/notify.sh approve <rq-id>`（发审批卡+部署 tunnel 页）→ auto-gate 判 L2-auto 或等微信。**premise 死亡的项绝不推审批卡**（推前逐条实查）。executed 前查 approved.log 去重。
 **⚠ 发卡前「占坑闸」对 own-PR refresh 路会误拦（09-14 shift-40 实证，`[fix] t_fc3f1e9f` 已落地豁免）**：`notify.sh` 发卡前 TTL 轻复验（~1512）与 `execute.sh` 的 `ttl_verify`（~214，**孪生实现**）把「body 里提到该 issue 号的开放 PR」当占坑者（仅排除 `.pr` 自身）⇒ 刷新我方自有 PR 时，**我方 PR 自身的 salvage 收编车就是「占坑者」**（#109758：110023/110544/110073 三辆引用）⇒ rq 被置 `rejected`、审批卡不发、tunnel 不部署。停摆豁免（>21 天全停摆）对活跃 salvage 车恒不触发。⇒ **起草 refresh 类 rq 前先跑** `gh pr list --search "<PR号> in:body" --state open --json number`：非空不再拦——豁免判据（与 execute.sh 的 `MODE=refresh-branch` 判定同源）= `item.pr` 非空 + config `allow_own_pr_refresh=true` + 该 issue 的 `BRANCH.md` 有独立行 `refresh: yes`；三条件缺一 ⇒ 新开车照原样被拦（落点 grep `refresh 路豁免占坑检查`）。另：`rq.sh` 的 `rejected` 是**终态**（transition 表 `expired|rejected|executed` 无出口）且 id = `rq-<date>-<issue>` ⇒ **误拦一次烧掉当天该 issue 的提案槽**，重发起只能**次日新 id**（禁 `set`/`amend` 复活，别在死路上试）。推送达面同理：该类事件按 `premise-dead`（push 路）落账，措辞会读成「竞品占坑」——若确属误拦，用**同 key 重发**修正 summary（`cmd_event` 命中同 key 时原位更新 `.summary`；`.class`/`.route` 不随之改，故仍在 push 路）。
 
@@ -238,6 +242,7 @@ gh 只读（零写）· 对外必经 L2（agent 起草链落笔）· own-PR 永�
 - 2026-09-14 判例：**判 rebase 成本必须真跑「试 rebase」，不得用 merge-tree / 整支 merge 的冲突区行数**——整支 merge 以旧 main 为共同祖先，会把两支各自的重写都并进同一个冲突区（同批实测 #65112 的 `yuanbao.py` 量到 1122 行、#65794 的 `gateway/run.py` 量到 9055 行 ⇒ 会误判「大」），而 rebase 只重放本 PR 的 hunk；6 辆 CONFLICTING 老车试 rebase 后 **4 辆零冲突通过**、余 2 辆各只卡 1 块 15/23 行。复现法：`git clone --shared --no-checkout <主检出> <临时>` → 临时克隆内 `git worktree add --detach <head_sha>` → `git rebase origin/main`（主检出零 git 写，试完删临时克隆）。证据：卡 t_c6b494e8 / `contrib-data/pr-conflict-audit-20260914.md`。
 
 - 2026-09-14 判例：**KPI 落袋须在源头核署名，不采信收编车评论的自报**——PR 评论里的「your authorship preserved」只是对方陈述；核法两步：① `gh api -X GET repos/<r>/commits/<cherry-pick sha>` 读 `author.login` 与 `commit.author.name/email`（须为我方）；② `gh api -X GET "repos/<r>/compare/<sha>...main"` 的 **`behind_by=0`** 证该 commit 在 main 线上（`branches-where-head` 只回「以该 commit 为**头**的分支」，对已埋进历史的 commit 恒返回空 —— 别拿它判「在不在 main」）。证据：#110544（我方 `b211f997c529` → cherry-pick `68b10bbbf9cc`，author `strzhao` / `赵桂雄 <daniel21436@hotmail.com>`，`compare` 给 `ahead_by=21 behind_by=0`）。
+- 2026-09-14 判例：**本地自研腿的缺口会随 main 移动而过期 —— 判 goods / 等槽位前先对当前 `origin/main` 实查该 gap 是否已被上游修掉，别只 diff 自己的分支**。核法 = `gh api -X GET repos/<r>/contents/<path>?ref=main` 取现版本 grep 修复特征，并**逐提交核该特征命中数**（`gh api … contents/<path>?ref=<sha>`）以区分「我方 cherry-pick 带进来的」与「维护者独立修的」。证据：`forge/109641-macos-holder-scan` 的 case-alias 腿（本地 `c7774ebbf31b`、`ls-remote fork` 空 = 零外流）等槽位期间，main 由 `274fd56dca`（#110872，teknium1 自陈 `review of #110544`）用**更简的无条件 `casefold`** 收口同一段 ⇒ 归宿 `already-covered`、件迁 `dead`、watch 归档；逐提交核对显示 `274fd56dca`=2 / `68b10bbbf9`=0 / `beb546b0f2`=0，确认非我方腿带入。附条：**自利也要实查再判**——本机卷大小写敏感性用 `diskutil info /` + 在 `/tmp` 建 `ABC.txt` 后 `test -e abc.txt` 实测（本机 = case-insensitive ⇒ main 的粗实现对**本部署**正确，我方案卷 volume-probe 精细版零自利，不构成出手理由）。
 - 2026-09-14 判例：**维护者自行 cherry-pick 后同时关闭「我方自家 PR + 收编车」⇒ [watch] 卡 on_hit 里预写的「起草让路 L2（关自家 PR）」作废，零对外动作**——让路已在对方侧收工（且带致谢），再补一句「收到/感谢」= 空话客套，触 §1 品牌姿态红线。卡面 closed 分支常预写成「REBUT: 重评」，但**落袋成功时无 REBUT 对象**（REBUT 的语义是「落袋失败需改判」）⇒ 按实况逐条写清三项 on_hit 处置后归档。证据：#109758 / #110023 于 12:30–12:32Z 双关闭 + teknium1 致谢原文；内容在 main 由 `compare` + `git branch -r --contains` 双证。
 
 ## 9. 修复判断四问（`[fix]` 卡模板 + 红队复核）
