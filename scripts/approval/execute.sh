@@ -175,6 +175,39 @@ occ_all_stalled() { # <repo> <foreign_pr_csv> → rc 0=全部停摆放行 | 1=�
   return 0
 }
 
+# 占坑粒度收窄（卡 t_3f9b2a1c）：同伞形 issue 的兄弟腿不构成占坑。
+# 现网缺口：占坑判定按「body 里提到该 issue 号的开放 PR」一刀切 ⇒ 伞形 issue 下的兄弟腿车
+# （各自修**不同文件**、不同根因，如 #110728 的 5 腿）会把新开车误判 premise 死亡；而
+# `rq.sh` 的 rejected 是终态且 id 含日期 ⇒ 误拦一次即烧掉当天该 issue 的提案槽。
+# 判据（与 notify.sh 发卡前占坑闸孪生面同步演进，改一处必改另一处）：引用 PR 的变更文件集
+# ∩ 我方待推分支的变更文件集 非空 ⇒ 真占坑（保留进判定）；空 ⇒ 兄弟腿，剔除。
+# fail-closed：BRANCH.md/worktree 不可用、git 取证失败、或某 PR 的 files 取证失败 ⇒ 该项原样保留。
+occ_overlap_filter() { # <repo> <pr_csv> <worktree> → stdout: 过滤后仍需按占坑判定的 csv
+  local repo="$1" csv="$2" wt="$3" p pfiles out="" old_ifs ours_f pr_f
+  ours_f="$(mktemp -t occ-ours.XXXXXX 2>/dev/null)" || { printf '%s' "$csv"; return 0; }
+  pr_f="$(mktemp -t occ-pr.XXXXXX 2>/dev/null)" || { rm -f "$ours_f"; printf '%s' "$csv"; return 0; }
+  if [[ -z "$wt" || ! -d "$wt" ]] \
+    || ! "${GIT_BIN:-git}" -C "$wt" diff --name-only origin/main >"$ours_f" 2>/dev/null \
+    || [[ ! -s "$ours_f" ]]; then
+    rm -f "$ours_f" "$pr_f"; printf '%s' "$csv"; return 0
+  fi
+  old_ifs="$IFS"; IFS=","
+  for p in $csv; do
+    [[ -z "$p" ]] && continue
+    pfiles="$(GH_REPO="$repo" "$GH_BIN" pr view "$p" --json files --jq '.files[].path' 2>/dev/null)" || pfiles=""
+    if [[ -z "$pfiles" ]]; then
+      out="${out}${out:+,}$p"; continue
+    fi
+    printf '%s\n' "$pfiles" >"$pr_f"
+    if grep -Fxq -f "$ours_f" "$pr_f" 2>/dev/null; then
+      out="${out}${out:+,}$p"
+    fi
+  done
+  IFS="$old_ifs"
+  rm -f "$ours_f" "$pr_f"
+  printf '%s' "$out"
+}
+
 # TTL 复验四项（gh 只读；任一不过 → 不执行；机械筛选口径，语义级复核留给会话路）
 # 形状容错口径（09-06 红队验收）：gh 空响应/非 JSON/缺字段一律归「复验失败」并给明确原因，
 # 绝不误报成「非 OPEN」也绝不放行投递；仓库经 GH_REPO env 传递（argv 不带 repo 名，
@@ -231,6 +264,21 @@ ttl_verify() {
     if [[ -n "$bmd" ]] && grep -qE '^[[:space:]]*-?[[:space:]]*refresh:[[:space:]]*yes[[:space:]]*$' "$bmd" 2>/dev/null; then
       log "TTL 占坑复验：refresh 路豁免占坑检查（own-PR #$own 即动作对象，档案声明 refresh: yes）"
       prs=""
+    fi
+  fi
+  # ── 占坑粒度收窄（卡 t_3f9b2a1c）：同伞形 issue 的兄弟腿（变更文件无交集）不构成占坑 ──
+  # 前提 = 该 issue 有 BRANCH.md 且其 worktree 可用（我方待推分支的文件集可读）；
+  # 不满足 ⇒ $prs 原样保留（fail-closed，与旧行为逐字节等价）。
+  if [[ -n "$prs" ]]; then
+    local bmd_ov wt_ov prs_before
+    bmd_ov="$(ls -t "$CONTRIB"/runs/*-issue"${ISSUE}"/BRANCH.md 2>/dev/null | head -1 || true)"
+    wt_ov=""
+    [[ -n "$bmd_ov" ]] && wt_ov="$(grep -m1 'worktree：`' "$bmd_ov" 2>/dev/null | sed -E 's/.*worktree：`([^`]+)`.*/\1/' || true)"
+    case "$wt_ov" in "~"*) wt_ov="$HOME/${wt_ov#\~/}" ;; esac
+    if [[ -n "$wt_ov" && -d "$wt_ov" ]]; then
+      prs_before="$prs"
+      prs="$(occ_overlap_filter "$REPO" "$prs" "$wt_ov")"
+      [[ "$prs" == "$prs_before" ]] || log "TTL 占坑复验：粒度收窄（兄弟腿剔除）$prs_before → ${prs:-空}"
     fi
   fi
   if [[ -n "$prs" ]]; then
