@@ -13,7 +13,9 @@
 #     flush 按账本中实际出现的渠道分渠成批（contrib / flashcards 各至多一条消息、各取自己的
 #     报头与主题；机械批次=速报头、叙事/AI 摘要=告警头）；非 {contrib,flashcards} 渠道事件只入账，
 #     不进任何 flush 批（归各自域的简报/AI 会话消费）
-#   - flush 由 operator 班次收班契约每小时调用（无内置定时器；run-watch 已于 09-13 退役）：聚合未推送告警为一条微信；防双发三重
+#   - flush 无内置定时器（run-watch 已于 09-13 退役）；调用面两路双保险——① hermes cron job
+#     `3e5c6e23e260` 的 `script` 字段（`~/.hermes/scripts/contrib-flush.sh`，每小时机械调用，
+#     09-14 落地）② operator 班次收班契约。聚合未推送告警为一条微信；防双发三重
 #     （min_interval + 当日计数 + /tmp 锁）
 #   - 审批推送（🟡 卡片）与告警分开计数；回执独立计数不占限额（审批卡=规范化模板，豁免 AI 整理）
 #   - hermes send 失败链：重试 1 次 → 事件保留 → 累计 3 败 osascript 本地通知兜底
@@ -179,8 +181,9 @@ _send() {
   return 0
 }
 
+# _osascript <通知文本> [<标题>] — 标题按渠道（缺省 contrib-watch = 历史字面，contrib 路径逐字不变）
 _osascript() {
-  "$OSASCRIPT_BIN" -e "display notification \"$1\" with title \"contrib-watch\" sound name \"Ping\"" 2>/dev/null || true
+  "$OSASCRIPT_BIN" -e "display notification \"$1\" with title \"${2:-contrib-watch}\" sound name \"Ping\"" 2>/dev/null || true
 }
 
 state_bump() { # state_bump <表名> <键> → 计数+1 并写回
@@ -474,9 +477,11 @@ open(p, "w").write("\n".join(out) + "\n")
 PYEOF
 }
 
-# _flush_attempts_bump <keys_file> — 失败批次 attempts+1 + 3 败 osascript 日幂等兜底
-# （原内联段整段提取，语义零变化）
+# _flush_attempts_bump <keys_file> [<channel>] — 失败批次 attempts+1 + 3 败 osascript 日幂等兜底（按渠道分立）
+# （原内联段整段提取，语义零变化；2026-09-14 修：过滤/日幂等键/文案/标题四处原写死 contrib
+#   ⇒ flashcards 渠道 3 败结构性永不弹本地提示，且两渠道共享单键互吃当日提示）
 _flush_attempts_bump() {
+  local ch="${2:-contrib}"
   python3 - "$EVENTS" "$1" <<'PYEOF' || true
 import json, sys
 p, keys_f = sys.argv[1], sys.argv[2]
@@ -495,13 +500,18 @@ for l in open(p):
         out.append(l)
 open(p, "w").write("\n".join(out) + "\n")
 PYEOF
-  # 连续 3 败 → osascript 本地机械提示（每至多一次/日，非 raw dump）
-  # （缩进保持原 cmd_flush 内联形态，减少无谓 diff）
-  local maxed
-  maxed=$(jq -s '[.[] | select(.pushed == false and (.channel // "contrib") == "contrib" and (.attempts // 0) >= 3)] | length' "$EVENTS" 2>/dev/null || echo 0)
-    if (( maxed > 0 )) && [[ "$(state_get fallback_notice "$(today)")" != "1" ]]; then
-      _osascript "contrib ${maxed} 条告警多次推送未成（AI 摘要/通道失败），已挂账下轮重试——明细 contrib-data/events.jsonl"
-      state_set fallback_notice "$(today)" 1
+  # 连续 3 败 → osascript 本地机械提示（每渠道每至多一次/日，非 raw dump）
+  # 日幂等键按渠道分立；contrib 沿用历史键名 `fallback_notice`（12.P4/E10 冻结契约 +
+  # 生产状态免迁移），其余渠道 = fallback_notice_<ch>
+  local day_key maxed
+  case "$ch" in
+    contrib) day_key="fallback_notice" ;;
+    *)       day_key="fallback_notice_${ch}" ;;
+  esac
+  maxed=$(jq -s --arg ch "$ch" '[.[] | select(.pushed == false and (.channel // "contrib") == $ch and (.attempts // 0) >= 3)] | length' "$EVENTS" 2>/dev/null || echo 0)
+    if (( maxed > 0 )) && [[ "$(state_get "$day_key" "$(today)")" != "1" ]]; then
+      _osascript "${ch} ${maxed} 条告警多次推送未成（AI 摘要/通道失败），已挂账下轮重试——明细 contrib-data/events.jsonl" "${ch}-watch"
+      state_set "$day_key" "$(today)" 1
     fi
 }
 
@@ -530,7 +540,7 @@ fallback_ai() {
     jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
     log "告警已推送（${unpushed} 条事件，rendering=ai-digest-fallback）"
   else
-    _flush_attempts_bump "$keys_file"
+    _flush_attempts_bump "$keys_file" "$ch"
     log "告警推送失败 rc=${rc}（${unpushed} 条事件保留，下轮重试）"
   fi
   rm -f "$body"
@@ -1039,7 +1049,7 @@ _flush_channel() {
     log "告警已推送（${ch} 渠道 ${unpushed} 条事件，rendering=template）"
   else
     # 失败：批次内 attempts+1（事件保留，下轮重试；永不 raw dump 兜底）
-    _flush_attempts_bump "$keys_file"
+    _flush_attempts_bump "$keys_file" "$ch"
     log "告警推送失败 rc=${rc}（${ch} 渠道 ${unpushed} 条事件保留，下轮重试）"
   fi
   rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"
@@ -1110,12 +1120,17 @@ cmd_flush() {
     | grep -E '^(contrib|flashcards)$' | sort -u | tr '\n' ' ' || true)"
   [[ -n "$(printf '%s' "$channels" | tr -d ' ')" ]] || return 0
 
-  # 当日告警限额（两渠道共享总闸；检查置于分渠循环之前 → 全局恰一次兜底）
+  # 当日告警限额（两渠道共享总闸；检查置于分渠循环之前 → 限额判定全局一次，提示按渠各弹一条）
   local used; used="$(state_get alerts "$(today)")"
   if (( used >= max_alerts )); then
-    local pend_n
+    local pend_n ch2 pn
     pend_n="$(jq -s '[.[] | select(.pushed == false) | select((.channel // "contrib") == "contrib" or (.channel // "contrib") == "flashcards")] | length' "$EVENTS" 2>/dev/null || echo 0)"
-    _osascript "contrib 告警 ${pend_n} 条今日未推（限额 ${max_alerts} 已满），明日 09:17 对账补推"
+    # 分渠各弹一条：原先把两渠道合计数写成「contrib」单条文案 ⇒ 两渠道同时挂账时提示失真
+    for ch2 in $channels; do
+      pn="$(jq -s --arg ch "$ch2" '[.[] | select(.pushed == false and (.channel // "contrib") == $ch)] | length' "$EVENTS" 2>/dev/null || echo 0)"
+      (( pn > 0 )) || continue
+      _osascript "${ch2} 告警 ${pn} 条今日未推（限额 ${max_alerts} 已满），明日 09:17 对账补推" "${ch2}-watch"
+    done
     log "告警限额已满（${used}/${max_alerts}），${pend_n} 条留待补推"
     return 0
   fi
