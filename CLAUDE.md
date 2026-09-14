@@ -107,7 +107,7 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 - **安装路径**: `/Users/stringzhao/workspace/hermes-agent/`
 - **CLI 路径**: `/Users/stringzhao/.local/bin/hermes`
 - **用户数据目录**: `~/.hermes/`（config.yaml、sessions、skills、memories、cron、logs 等）
-- **当前模型**: `k3`（Kimi coding plan 端点 `https://api.kimi.com/coding`，key 在 `~/.hermes/.env` 的 `KIMI_CODING_API_KEY`；2026-09-11 用 `gcli hermes kimi` 从 glm-flash 切回——09-07 Kimi 额度用尽曾临时走 deepseek-flash、09-09 起走 glm-flash；config 备份 `~/.hermes/config.yaml.bak-before-kimi-coding-1789088594`；回滚 `gcli hermes rollback`，7 个 cron 已随切换自动重 pin）
+- **当前模型**: `glm-5.3-flash`（bigmodel anthropic 端点 `https://open.bigmodel.cn/api/anthropic`，key 在 `~/.hermes/.env` 的 `BIGMODEL_API_KEY`；2026-09-15 用 `gcli hermes "glm flash lastest"` 切入——09-14 Kimi 额度用尽曾临时走 deepseek-flash；config 备份 `~/.hermes/config.yaml.bak-before-glm-flash-1789409883`；回滚 `gcli hermes rollback`，9 个 cron 已随切换自动重 pin；⚠注意：state.db 里 custom provider 的 `billing_provider` 统一记 `custom`，真锚=`billing_base_url`，切换验证时别把 `custom` 当失败）
 - **终端后端**: local（命令直接在宿主机执行）
 - **当前工具集**: hermes-cli
 
