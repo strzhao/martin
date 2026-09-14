@@ -28,6 +28,9 @@ export DIM=acceptance
 T_FILE="$(basename "${BASH_SOURCE[0]}")"
 source "$TESTS_ROOT/lib/assert.sh"
 source "$TESTS_ROOT/lib/sandbox.sh"
+# 归属引擎（与 s4 4.P1 同口径）：只读生产树；本文件不新增/不删除任何命令位 diff 调用点
+# shellcheck source=/dev/null
+source "$TESTS_ROOT/lib/write-attribution.sh"
 
 t_init "$T_FILE"
 
@@ -40,6 +43,33 @@ snap_contrib() {
 
 # =============================================================================
 t_case "4.1 组级零污染：整组运行 t1-01/02/03 前后，生产 contrib-data 快照逐字节一致"
+WA_REG="$(wa_registry_default "$TESTS_ROOT")" || WA_REG=""
+[ -s "$WA_REG" ] || _fail "4.1 归属清单" "归属清单缺失或为空: ${WA_REG}（fail-closed）"
+WIN_T0="$(date +%s)"
+wa_snapshot "$REPO_ROOT" "$ART/t1-wa.before" 2>/dev/null || _fail "4.1 富快照" "before 富快照失败"
+S4_P1_INJECT="${S4_P1_INJECT:-}"
+INJ_PATH=""
+# 注入证据账（稍后 "$ART/t1-snap.diff" 会被 diff 重定向截断，故先独立累计再并档）
+: > "$ART/.t1-p1-pre.out"
+cleanup_inject(){ [ -n "${INJ_PATH}" ] && rm -f "$REPO_ROOT/${INJ_PATH}"; return 0; }
+trap cleanup_inject EXIT
+case "$S4_P1_INJECT" in
+  canary-create|canary-append|external-append)
+    if INJ_LINE="$(wa_inject "$S4_P1_INJECT" "$REPO_ROOT" "$WA_REG")"; then
+      printf '%s\n' "$INJ_LINE" >> "$ART/.t1-p1-pre.out"
+      # ⚠ 清理面**只限 canary-create 新建的注入物**：append 两模式的 `path=` 是注册日志本体
+      if [ "$S4_P1_INJECT" = "canary-create" ]; then
+        INJ_PATH="$(printf '%s' "$INJ_LINE" | sed -n 's/.* path=\([^ ]*\).*/\1/p')"
+      fi
+      _pass "4.1 注入（${S4_P1_INJECT}）: $(printf '%s' "$INJ_LINE" | sed -n 's/.* path=\([^ ]*\).*/\1/p')"
+    else
+      _fail "4.1 注入（${S4_P1_INJECT}）" "wa_inject 非零退出"
+    fi
+    ;;
+  wait-external|'') : ;;
+  *) _fail "4.1 注入旋钮" "未知 S4_P1_INJECT: ${S4_P1_INJECT}" ;;
+esac
+
 snap_contrib > "$ART/t1-snap.before" 2>&1
 [ -s "$ART/t1-snap.before" ] || _fail "4.1 快照非空" "生产 contrib-data 快照为空（shasum/find 失败？）"
 
@@ -56,9 +86,56 @@ for sib in "$HERE"/t1-01-kanban-card-create.acceptance.test.sh \
 done
 assert_eq "$SIB_FAILED" "0" "4.1 前置：t1-01/02/03 三份验收测试自身全绿"
 
+# wait-external：弹性轮询等**真实生产写手**落笔（与 s4 同名同义；只读轮询，不新增写面）
+if [ "$S4_P1_INJECT" = "wait-external" ]; then
+  WAIT_LINE="$(wa_wait_external "$REPO_ROOT" "$ART/t1-wa.before" "${S4_P1_WAIT_MAX:-150}" 10)"
+  WAIT_RC=$?
+  printf '%s\n' "$WAIT_LINE" >> "$ART/.t1-p1-pre.out"
+  if [ "$WAIT_RC" -gt 1 ]; then
+    _fail "4.1 wait-external" "依赖故障 rc=${WAIT_RC}（0=观察到变更 / 1=超时未变更 / 2=参数或快照非法）"
+  fi
+fi
+
 snap_contrib > "$ART/t1-snap.after" 2>&1
-DIFFN="$(/usr/bin/diff "$ART/t1-snap.before" "$ART/t1-snap.after" | wc -l | tr -d ' ')"
-assert_eq "$DIFFN" "0" "4.1 生产 contrib-data 前后快照 diff 行数=0（CONTRIB_DATA_DIR 沙箱隔离零污染）"
+# 命令位 /usr/bin/diff 调用点仍为 1：由「管道进 wc」改为「重定向落盘再 wc」（口径不变、证据留痕）
+/usr/bin/diff "$ART/t1-snap.before" "$ART/t1-snap.after" > "$ART/t1-snap.diff" 2>&1
+DIFFN="$(wc -l < "$ART/t1-snap.diff" | tr -d ' ')"
+WIN_T1="$(date +%s)"
+
+# 写入归属定性（与 s4 4.P1 同引擎同口径）
+wa_snapshot "$REPO_ROOT" "$ART/t1-wa.after" 2>/dev/null || _fail "4.1 富快照" "after 富快照失败"
+WA_SUM="$(wa_classify "$REPO_ROOT" "$ART/t1-wa.before" "$ART/t1-wa.after" "$WA_REG" "$ART/t1-p1-class.out" "$WIN_T0" "$WIN_T1")"
+WA_RC=$?
+assert_eq "$WA_RC" "0" "4.1 归属判定 rc=0（末行 ${WA_SUM}）"
+wa_key(){ printf '%s' "$WA_SUM" | tr ' ' '\n' | sed -n "s/^$1=\([0-9-]*\)$/\1/p" | head -n 1; }
+WA_TOTAL="$(wa_key total)"
+WA_EXTERNAL="$(wa_key external)"
+WA_SUITE="$(wa_key suite)"
+WA_OUTSIDE="$(wa_key outside)"
+WA_UNCLASSIFIED="$(wa_key unclassified)"
+assert_eq "$WA_UNCLASSIFIED" "0" "4.1 归属完整性：每个变更文件都被归类（unclassified）"
+assert_eq "$((WA_EXTERNAL + WA_SUITE + WA_OUTSIDE))" "$WA_TOTAL" "4.1 归属对账恒等式（external+suite+outside == total）"
+assert_eq "$WA_SUITE" "0" "4.1 套件对生产 contrib-data 零写入（归属判定 suite 计数）"
+if [ "$WA_EXTERNAL" -eq 0 ] && [ "$WA_OUTSIDE" -eq 0 ]; then
+  assert_eq "$DIFFN" "0" "4.1 生产 contrib-data 前后快照 diff 行数=0（CONTRIB_DATA_DIR 沙箱隔离零污染）"
+fi
+{
+  cat "$ART/.t1-p1-pre.out"
+  echo "4.1 snapshot diff_lines=${DIFFN} files_changed=${WA_TOTAL} external=${WA_EXTERNAL} suite=${WA_SUITE} outside=${WA_OUTSIDE} unclassified=${WA_UNCLASSIFIED}（窗口 ${WIN_T0}..${WIN_T1}；清单 ${WA_REG}；注入 ${S4_P1_INJECT:-none}）"
+  cat "$ART/t1-p1-class.out"
+} >> "$ART/t1-snap.diff"
+case "$S4_P1_INJECT" in
+  external-append|wait-external)
+    if [ "$WA_EXTERNAL" -ge 1 ]; then
+      _pass "4.1 注入模式对照（${S4_P1_INJECT}）：生产侧写入归 external"
+    else
+      _fail "4.1 注入模式对照（${S4_P1_INJECT}）" "external=${WA_EXTERNAL} < 1"
+    fi
+    ;;
+  canary-create|canary-append)
+    assert_ne "$WA_SUITE" "0" "4.1 注入模式对照（${S4_P1_INJECT}）：套件写入必须被判红（suite 计数）"
+    ;;
+esac
 
 # =============================================================================
 t_case "4.2 沙箱结构性无逃逸：shim 白名单不含外部服务命令、bin/ 只含影子 stub"

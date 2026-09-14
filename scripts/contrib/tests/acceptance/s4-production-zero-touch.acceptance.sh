@@ -37,31 +37,114 @@ command -v shasum >/dev/null 2>&1 || die "env" "shasum 不可用"
 [ -x /usr/bin/diff ] || die "env" "缺 /usr/bin/diff（pin 绝对路径依赖前提；禁裸 diff——PATH 上第三方 diff 遮蔽系统 diff 会静默假绿）"
 [ -d "$REPO_ROOT/contrib-data" ] || die "env" "生产 contrib-data/ 不存在: $REPO_ROOT/contrib-data"
 [ -f "$SUITE/run.sh" ] || die "env" "套件入口缺失: $SUITE/run.sh"
+[ -f "$SUITE/lib/write-attribution.sh" ] || die "env" "归属引擎缺失: $SUITE/lib/write-attribution.sh"
+# 归属引擎（写入归属定性）：只读生产树；本文件不新增/不删除任何命令位 diff 调用点
+# shellcheck source=/dev/null
+source "$SUITE/lib/write-attribution.sh"
 
 # 4.P4 前置：进入本文件前先抓 porcelain 基线（任何套件运行之前）
 ( cd "$REPO_ROOT" && git status --porcelain scripts/contrib </dev/null ) > "$ART/.s4-porcelain.before" 2>&1
 
 # -----------------------------------------------------------------------------
 # 4.P1 [det-machine] driver: find contrib-data -type f -exec shasum 前后对比
-# assert: diff 行数==0（套件对生产数据零写入）
+#   **冻结口径**（父卡 t_23b17603 钉死）：snap_contrib 定义与 `/usr/bin/diff` 调用点逐字保留
+#   ——**追加**写入归属定性（卡 t_cbf34542）：富快照 + wa_classify，把「窗口内变更」机械拆成
+#   套件写的（suite ⇒ 判红）/ 生产写手写的（external ⇒ 证据行 + PASS）/ 判据面外的（outside-surface ⇒ 证据行）。
+# assert: ① 归属完整性（unclassified==0）② 归属对账恒等式（external+suite+outside==total）
+#         ③ **核心**：suite==0（套件对生产 contrib-data 零写入）
+#         ④ 条件保留：无外部/面外变更时仍断言 diff 行数==0（与改造前逐字节等价）
+#         ⑤ 注入模式对照：canary-* ⇒ suite>0 必红；external-append/wait-external ⇒ external>=1
+# 注入/等待旋钮（env，默认空 = 纯生产态）：
+#   S4_P1_INJECT=canary-create|canary-append|external-append|wait-external（S4_P1_WAIT_MAX 默认 150s）
 # -----------------------------------------------------------------------------
 P="4.P1"
+WA_REG="$(wa_registry_default "$SUITE")" || die "$P" "归属清单不可解析（wa_registry_default 非零退出）"
+[ -s "$WA_REG" ] || die "$P" "归属清单缺失或为空: ${WA_REG}（fail-closed，禁空集静默绿）"
+
 snap_contrib(){
   ( cd "$REPO_ROOT" && find contrib-data -type f -print0 | sort -z | xargs -0 shasum -a 256 )
 }
 snap_contrib > "$ART/.s4-snap.before" 2>&1
 [ -s "$ART/.s4-snap.before" ] || die "$P" "快照为空（contrib-data 无文件或 shasum 失败）"
 
+# 富快照（内容 + 元数据一次承载）+ 窗口时钟；注入为显式 opt-in（每次注入必落 WA-INJECT 证据行）
+WIN_T0="$(date +%s)"
+wa_snapshot "$REPO_ROOT" "$ART/.s4-wa.before" || die "$P" "富快照失败（contrib-data 缺失 / stat·find 失败）"
+S4_P1_INJECT="${S4_P1_INJECT:-}"
+INJ_PATH=""
+# 注入/等待证据账（`$ART/s4-p1.out` 稍后会被冻结口径的 diff 重定向截断，故先独立累计再并档）
+: > "$ART/.s4-p1-pre.out"
+cleanup_inject(){ [ -n "${INJ_PATH}" ] && rm -f "$REPO_ROOT/${INJ_PATH}"; return 0; }
+trap cleanup_inject EXIT
+case "$S4_P1_INJECT" in
+  canary-create|canary-append|external-append)
+    INJ_LINE="$(wa_inject "$S4_P1_INJECT" "$REPO_ROOT" "$WA_REG")" || die "$P" "注入失败（mode=${S4_P1_INJECT}）"
+    printf '%s\n' "$INJ_LINE" >> "$ART/.s4-p1-pre.out"
+    # ⚠ 清理面**只限 canary-create 新建的注入物**：append 两模式的 `path=` 是注册日志本体，
+    #   若一并 rm 会删掉整份生产日志（QA 抓出的 Critical，见 state.md 变更日志）。
+    if [ "$S4_P1_INJECT" = "canary-create" ]; then
+      INJ_PATH="$(printf '%s' "$INJ_LINE" | sed -n 's/.* path=\([^ ]*\).*/\1/p')"
+    fi
+    ;;
+  wait-external|'') : ;;
+  *) die "$P" "未知 S4_P1_INJECT：${S4_P1_INJECT}（闭集 canary-create|canary-append|external-append|wait-external）" ;;
+esac
+
 ( cd "$REPO_ROOT" && bash scripts/contrib/tests/run.sh </dev/null ) >"$ART/.s4-run1.out" 2>&1
 RC_RUN=$?
+
+# wait-external：run.sh 后弹性轮询等**真实生产写手**落笔（只读轮询，不新增任何写面）
+if [ "$S4_P1_INJECT" = "wait-external" ]; then
+  WAIT_LINE="$(wa_wait_external "$REPO_ROOT" "$ART/.s4-wa.before" "${S4_P1_WAIT_MAX:-150}" 10)"
+  WAIT_RC=$?
+  printf '%s\n' "$WAIT_LINE" >> "$ART/.s4-p1-pre.out"
+  if [ "$WAIT_RC" -gt 1 ]; then
+    die "$P" "wait-external 依赖故障 rc=${WAIT_RC}（0=观察到变更 / 1=超时未变更 / 2=参数或快照非法）"
+  fi
+fi
+WIN_T1="$(date +%s)"
 
 snap_contrib > "$ART/.s4-snap.after" 2>&1
 /usr/bin/diff "$ART/.s4-snap.before" "$ART/.s4-snap.after" > "$ART/s4-p1.out" 2>&1
 DIFFN="$(wc -l < "$ART/s4-p1.out" | tr -d ' ')"
-eq "$DIFFN" 0 "$P 生产 contrib-data 快照逐字节一致（diff 行数）——套件运行 rc=$RC_RUN"
-# artifact 证据行：diff=0 时文件非空仍可判（快照文件数 + 判定结论）
-echo "4.P1 snapshot diff_lines=0 PASS（前后快照各 $(wc -l < "$ART/.s4-snap.before" | tr -d ' ') 文件逐字节一致；套件 rc=${RC_RUN}）" >> "$ART/s4-p1.out"
-echo "PASS ${P}（diff 行数=0；套件 rc=${RC_RUN}）"
+wa_snapshot "$REPO_ROOT" "$ART/.s4-wa.after" || die "$P" "富快照失败（after）"
+WA_SUM="$(wa_classify "$REPO_ROOT" "$ART/.s4-wa.before" "$ART/.s4-wa.after" "$WA_REG" "$ART/s4-p1-class.out" "$WIN_T0" "$WIN_T1")"
+WA_RC=$?
+[ "$WA_RC" -eq 0 ] || die "$P" "归属判定失败 rc=${WA_RC}（末行：${WA_SUM}）"
+wa_key(){ printf '%s' "$WA_SUM" | tr ' ' '\n' | sed -n "s/^$1=\([0-9-]*\)$/\1/p" | head -n 1; }
+WA_TOTAL="$(wa_key total)"
+WA_EXTERNAL="$(wa_key external)"
+WA_SUITE="$(wa_key suite)"
+WA_OUTSIDE="$(wa_key outside)"
+WA_UNCLASSIFIED="$(wa_key unclassified)"
+
+# artifact 证据段（先落盘：canary 跑次会在下方判红提前退出，证据必须已在盘上）
+# 冻结口径的原始 diff 已在 "$ART/s4-p1.out"（上方重定向），此处并档注入/等待行 + 归属段 + 计数
+{
+  cat "$ART/.s4-p1-pre.out"
+  echo "4.P1 snapshot diff_lines=${DIFFN} files_changed=${WA_TOTAL} external=${WA_EXTERNAL} suite=${WA_SUITE} outside=${WA_OUTSIDE} unclassified=${WA_UNCLASSIFIED}（套件 rc=${RC_RUN}；窗口 ${WIN_T0}..${WIN_T1}；清单 ${WA_REG}；注入 ${S4_P1_INJECT:-none}）"
+  cat "$ART/s4-p1-class.out"
+  echo "4.P1 引擎末行：${WA_SUM}"
+} >> "$ART/s4-p1.out"
+
+# 注入模式对照（先于核心断言：canary 跑次按设计判红，语义在此显式化）
+case "$S4_P1_INJECT" in
+  canary-create|canary-append)
+    ne "$WA_SUITE" 0 "$P 注入模式对照（${S4_P1_INJECT}）：套件写入必须被判红（suite 计数）"
+    die "$P" "金丝雀自证：套件写入已被归属引擎捕获（suite=${WA_SUITE}；注入 ${INJ_PATH}）——canary 跑次按设计判红，ACCEPTANCE-FAIL 属预期结论"
+    ;;
+  external-append|wait-external)
+    ge "$WA_EXTERNAL" 1 "$P 注入模式对照（${S4_P1_INJECT}）：生产侧写入必须归 external"
+    ;;
+esac
+
+eq "$WA_UNCLASSIFIED" 0 "$P 归属完整性：每个变更文件都被归类（unclassified）"
+eq "$((WA_EXTERNAL + WA_SUITE + WA_OUTSIDE))" "$WA_TOTAL" "$P 归属对账恒等式（external+suite+outside == total）"
+eq "$WA_SUITE" 0 "$P 套件对生产 contrib-data 零写入（归属判定 suite 计数）——套件 rc=$RC_RUN"
+if [ "$WA_EXTERNAL" -eq 0 ] && [ "$WA_OUTSIDE" -eq 0 ]; then
+  eq "$DIFFN" 0 "$P 生产 contrib-data 快照逐字节一致（冻结口径原样：无外部/面外变更时 diff 行数）——套件运行 rc=$RC_RUN"
+fi
+echo "PASS ${P}（归属判定 suite=0；变更 ${WA_TOTAL} 项（external=${WA_EXTERNAL} outside=${WA_OUTSIDE}）；diff 行数=${DIFFN}；套件 rc=${RC_RUN}）"
 
 # -----------------------------------------------------------------------------
 # 4.P2 [det-machine] driver: tripwire 影子（hermes/gh/claude/tunnel/osascript 一律

@@ -97,6 +97,10 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 
 操作/排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）前，**先读 [`hermes-observability-guide.md`](hermes-observability-guide.md)** —— 30 秒入口 `hermes forensics summary --hours 24`、症状→命令决策树、events.db 数据字典、日志路由表（含 cron→agent.log 上游单写坑：gateway.log 查不到 cron 日志 ≠ 没发生）。栈为本地补丁不入上游（`observability-stack` 分支锚定）；升级只走 fetch+rebase。
 
+## 生产零写入判据的写入归属（s4 4.P1 / t1-04 4.1）
+
+改「套件对生产 contrib-data 零写入」判据，或看到 s4 4.P1 / t1-04 4.1 因生产写手（approval-collect / notify 等）在窗口内落笔而红时，**先读 [`scripts/contrib/tests/README.md`](scripts/contrib/tests/README.md) 的「写入归属引擎」节** —— 引擎 `scripts/contrib/tests/lib/write-attribution.sh` + 清单 `scripts/contrib/tests/lib/production-writers.tsv`（三值类别 suite/external/outside-surface、字母表与佐证近邻规则、四个注入旋钮 `S4_P1_INJECT`、覆盖守卫与残余风险）；生产侧复跑配方见该节末指针。
+
 ## Hermes Agent 环境
 
 - **版本**: v0.20.5（2026-08-23 rebase 到 origin/main@f293e7206b + 本地补丁栈，见记忆 [[hermes-upgrade-mechanism]]）
