@@ -360,6 +360,7 @@ new_parts: <净零件数>   （红队核对项）
 | 上游改动（kernel 语义等本域无解的） | 恒走轴一 **issue-first → L2**；**不本地改上游仓** | kernel 停放语义 |
 
 **部署面自证（修复流固定最后一步）**：`diff <仓内真源> <部署副本>` 必须无差异——否则就是「改了但没生效」；这是钳夹类改动最容易漏的一步。
+**回退演练必须离现场跑 + 提交前防夹带（2026-09-14 自伤事故沉淀，两条硬纪律）**：① 演练的还原步 `git checkout HEAD -- <path>` 会把**并存会话对该路径的未提交编辑**覆盖掉，且因未 staged 而不可恢复（`git fsck --unreachable` 找不到对应 blob）；同刻演练的 `git revert --no-commit HEAD` 还会因工作区脏而**拒跑**（演练本身静默失败）。⇒ 回退演练一律在**隔离克隆 / 临时 worktree** 里跑：`git clone --shared . /tmp/<x>` → 克隆内 `git revert --no-commit <sha>` → 比对该文件 md5 是否回到父版本逐字节，**零触碰现场工作区**。② 提交前先 `git status --porcelain <path>` + `git diff -- <path>` 确认该路径**干净**——并存会话（同机交互式 agent 会话）会在同一文件上并行编辑，直接 `git add <path>` 会把它的改动**夹带**进我的提交，提交主题与内容不符 = 归属失真（严重时使人无法判断哪部分改动该不该回退）。③ 并存会话存在与否的判据 = `ps` 见交互式 `claude` 进程 + 目标文件 md5 与部署双点不一致 + 该路径 `git status` 非空；一旦发现，本班**不碰该文件**，把该做的改动 defer 到下一班（判据 = `git status --porcelain <path>` 为空 + 真源与双点 md5 一致）。证据 = 09-14 shift-47（`notify.sh event operator-incident --key incident-skill-clobber-20260914`；修复后于 shift-48 按判据补做 defer 项）。
 **风险登记册（唯一保留的机械层话题，不落地任何代码）**：对外红线仍是 prompt 级（gh 凭据 write-capable）；触发条件 = **首次出现注入痕迹**（worker 环境出现非我方指令的写企图，或 403 之外的可疑成功）；触发后动作 = 用户签发只读 PAT 注入 worker 环境，写 token 只留 `execute.sh` env seam；当前成本 0；监控项 = 周报「越权企图」行。
 
 ## 11. 已知缺陷清单（常驻卡契约）
