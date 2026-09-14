@@ -177,5 +177,76 @@ assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | .route' "$EVENTS_FILE")" "bri
 assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | .pushed' "$EVENTS_FILE")" "true" "覆盖表内的类降级即标记派发"
 assert_eq "$(jq -r 'select(.key == "e1-cfg-info") | .route' "$EVENTS_FILE")" "push" "缺省表内的类不再降级（replace 语义）"
 
+t_case "E1j: 散文以反引号引用同 key ≠ 查重命中——机械落账仍成行（红队 F1）"
+# 09-14 红队 F1：_brief_append_record 的查重曾是「全文件 grep -qF `key`」。当日简报上半是班次
+# 手写散文，而散文引用账本 key 取证是惯例（falsify 纠偏明文要求）⇒ 散文里的同 key 把机械落账
+# 静默吞掉：账本照标 pushed=true/route=brief，机械小节零落账 = 「事件进账本却无人读」复现形态。
+# 本用例锁边界：散文行 + 记录行 = 同 key 计 2，且重推轮零重复追加。
+sb_cleanup
+sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
+STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
+BRIEF_FILE="$SB_ROOT/contrib-data/briefs/$(date +%F).md"
+TICK='`'
+mkdir -p "$SB_ROOT/contrib-data/briefs"
+{
+  printf '# contrib 简报 %s\n\n' "$(date +%F)"
+  printf '## shift-手写\n'
+  printf -- '- 散文提到 %se1j-key%s 一次（shift 手写取证惯例）。\n' "$TICK" "$TICK"
+} >"$BRIEF_FILE"
+PROSE_SHA="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
+sb_notify event own-pr-info --key e1j-key --summary "散文同 key 边界" >/dev/null
+assert_exit 0 $?
+sb_state_set '.last_flush_epoch = 0'
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+assert_exit 0 $?
+assert_eq "$(jq -r 'select(.key == "e1j-key") | .pushed' "$EVENTS_FILE")" "true" "账本仍正常降级标记（pushed=true）"
+assert_eq "$(jq -r 'select(.key == "e1j-key") | .route' "$EVENTS_FILE")" "brief" "账本仍标 route=brief"
+assert_eq "$(grep -cF -- 'e1j-key' "$BRIEF_FILE")" "2" "散文行 + 记录行 = 2（未被散文假查重吞掉）"
+assert_eq "$(grep -cF -- " ｜ ${TICK}e1j-key${TICK} ｜ " "$BRIEF_FILE")" "1" "记录行恰 1 行（字段缝判据）"
+assert_eq "$(grep -c -- '^## 简报队列（机械落账）$' "$BRIEF_FILE")" "1" "机械小节头恰 1 行"
+assert_eq "$(head -n 4 "$BRIEF_FILE" | shasum -a 256 | awk '{print $1}')" "$PROSE_SHA" "散文段逐字节未改写（append-only）"
+# 重推轮（簇重推把 pushed 拨回 false 的同形前置态）：查重命中 ⇒ 零追加
+jq -c 'if .key == "e1j-key" then .pushed = false else . end' "$EVENTS_FILE" >"$EVENTS_FILE.tmp" \
+  && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
+SHA_AFTER_FIRST="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
+sb_state_set '.last_flush_epoch = 0'
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+assert_exit 0 $?
+assert_eq "$(jq -r 'select(.key == "e1j-key") | .pushed' "$EVENTS_FILE")" "true" "重推轮账本重新标已派发"
+assert_eq "$(grep -cF -- 'e1j-key' "$BRIEF_FILE")" "2" "重推轮仍恰 2 行（散文 1 + 记录 1，不重复追加）"
+assert_eq "$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')" "$SHA_AFTER_FIRST" "重推轮简报逐字节未变（查重命中即零写入）"
+
+t_case "E1k: 散文内联提及小节头 ≠ 小节存在——仍补真小节头（否则记录落小节外、查重失锚）"
+# 同族边界：小节头判据若用「全文 grep -F 头部字符串」，散文内联提及即误判小节已存在 ⇒ 记录被追加
+# 到文件尾却无小节头 ⇒ 查重锚（小节作用域）落空 ⇒ 重推轮重复追加。判据取整行精确。
+sb_cleanup
+sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
+STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
+BRIEF_FILE="$SB_ROOT/contrib-data/briefs/$(date +%F).md"
+mkdir -p "$SB_ROOT/contrib-data/briefs"
+{
+  printf '# contrib 简报 %s\n\n' "$(date +%F)"
+  printf '## shift-手写\n'
+  printf -- '- 散文内联提到 ## 简报队列（机械落账） 与 %se1k-key%s 这个词，但不是小节头行。\n' "$TICK" "$TICK"
+} >"$BRIEF_FILE"
+sb_notify event own-pr-info --key e1k-key --summary "内联小节头边界" >/dev/null
+sb_state_set '.last_flush_epoch = 0'
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+assert_exit 0 $?
+assert_eq "$(grep -c -- '^## 简报队列（机械落账）$' "$BRIEF_FILE")" "1" "真小节头仍被补写（整行精确判据）"
+assert_eq "$(grep -cF -- 'e1k-key' "$BRIEF_FILE")" "2" "散文行 + 记录行 = 2"
+assert_eq "$(grep -cF -- " ｜ ${TICK}e1k-key${TICK} ｜ " "$BRIEF_FILE")" "1" "记录行恰 1 行（字段缝判据，散文内联提及不算）"
+# 重推轮：记录已在小节内 ⇒ 查重命中，零追加（散文内联提及不得让查重失锚）
+jq -c 'if .key == "e1k-key" then .pushed = false else . end' "$EVENTS_FILE" >"$EVENTS_FILE.tmp" \
+  && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
+SHA_AFTER_FIRST="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
+sb_state_set '.last_flush_epoch = 0'
+sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+assert_exit 0 $?
+assert_eq "$(grep -cF -- 'e1k-key' "$BRIEF_FILE")" "2" "重推轮仍恰 2 行（不重复追加）"
+assert_eq "$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')" "$SHA_AFTER_FIRST" "重推轮简报逐字节未变"
+
 sb_cleanup
 t_finish

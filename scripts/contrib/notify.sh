@@ -983,13 +983,37 @@ _flush_brief_mark() {
   rm -f "$upd"
 }
 
+# _brief_mech_section <brief_file> — 打印「## 简报队列（机械落账）」小节正文（该行到 EOF）。
+#   查重作用域必须限定在本小节之内：当日简报的上半是班次手写散文，散文里用反引号引用
+#   账本 key 取证是惯例（falsify 纠偏明文要求），**全文查重会让散文里的同 key 把机械落账
+#   静默吞掉**——正是「事件进账本却无人读」的复现形态（09-14 红队 F1 沙箱实证：
+#   散文含 `- 散文提到 \`<key>\`` 时账本照标 pushed=true/route=brief，机械小节却零落账）。
+#   小节头匹配取整行精确（同 _brief_append_record 的补头判据），散文内联提及不算小节。
+_brief_mech_section() {
+  local bf="$1"
+  [[ -f "$bf" ]] || return 0
+  sed -n '/^## 简报队列（机械落账）$/,$p' "$bf" 2>/dev/null || true
+}
+
+# _brief_record_present <brief_file> <key> — rc=0 ⇒ 机械小节内已有该 key 的记录行（查重命中，跳过）。
+#   判据 = 记录行专属字段缝「 ｜ `<key>` ｜ 」（记录形态 `- ts ｜ class ｜ `<key>` ｜ summary ｜ channel`
+#   里 key 字段的定长段），而非裸的「反引号包 key」形态：散文行即便写成列表项、即便带反引号 key，
+#   也不会误判命中。key 用 grep -F 固定串匹配（key 含正则元字符时不失真）。
+_brief_record_present() {
+  local bf="$1" k="$2" tick='`' mech
+  mech="$(_brief_mech_section "$bf")"
+  [[ -n "$mech" ]] || return 1
+  grep -qF -- " ｜ $tick$k$tick ｜ " <<<"$mech" 2>/dev/null
+}
+
 # _brief_append_record <brief_file> <key> <账本行号> — 单条 route=brief 行落当日简报（append-only）。
 #   形态：`- <ts> ｜ <class> ｜ \`<key>\` ｜ <summary> ｜ <channel>`（summary 的换行/制表折叠为空格，
 #   保证恒单行）；文件不存在则建 `# contrib 简报 <date>` 头 + 固定小节头；小节头惰性补写
-#   （既有人写简报不会被重排）。查重按反引号包裹的 key 做定长匹配，命中即跳过。
+#   （既有人写简报不会被重排）。查重按记录行专属字段缝、且只看机械小节（见 _brief_record_present），
+#   命中即跳过。
 _brief_append_record() {
-  local bf="$1" k="$2" ln="$3" hdr='## 简报队列（机械落账）' tick='`' rec=''
-  grep -qF -- "$tick$k$tick" "$bf" 2>/dev/null && return 0
+  local bf="$1" k="$2" ln="$3" hdr='## 简报队列（机械落账）' rec=''
+  _brief_record_present "$bf" "$k" && return 0
   rec="$(sed -n "${ln}p" "$EVENTS" 2>/dev/null | jq -r \
     '[(.ts // ""), (.class // ""), ((.key // "") | "`" + . + "`"), ((.summary // "") | gsub("[\n\r\t]"; " ")), (.channel // "contrib")] | join(" ｜ ")' 2>/dev/null || true)"
   [[ -n "$rec" ]] || { log "brief: 账本行解析失败（key=${k} line=${ln}），本轮不落简报"; return 0; }
@@ -997,7 +1021,7 @@ _brief_append_record() {
   if [[ ! -f "$bf" ]]; then
     printf '# contrib 简报 %s\n' "$(today)" >> "$bf" 2>/dev/null || { log "brief: 建头失败 $bf"; return 0; }
   fi
-  grep -qF -- "$hdr" "$bf" 2>/dev/null || printf '\n%s\n\n' "$hdr" >> "$bf" 2>/dev/null || true
+  grep -qxF -- "$hdr" "$bf" 2>/dev/null || printf '\n%s\n\n' "$hdr" >> "$bf" 2>/dev/null || true
   printf -- '- %s\n' "$rec" >> "$bf" 2>/dev/null || log "brief: 写入失败（key=${k} file=${bf}）"
   return 0
 }
