@@ -53,29 +53,47 @@ source "$SUITE/lib/write-attribution.sh"
 # assert: ① 归属完整性（unclassified==0）② 归属对账恒等式（external+suite+outside==total）
 #         ③ **核心**：suite==0（套件对生产 contrib-data 零写入）
 #         ④ 条件保留：无外部/面外变更时仍断言 diff 行数==0（与改造前逐字节等价）
-#         ⑤ 注入模式对照：canary-* ⇒ suite>0 必红；external-append/wait-external ⇒ external>=1
+#         ⑤ 注入模式对照：canary-* ⇒ suite>0 必红；external-append|external-delete|wait-external ⇒ external>=1
 # 注入/等待旋钮（env，默认空 = 纯生产态）：
-#   S4_P1_INJECT=canary-create|canary-append|external-append|wait-external（S4_P1_WAIT_MAX 默认 150s）
+#   S4_P1_INJECT=canary-create|canary-append|external-append|wait-external|canary-delete|external-delete
+#   （S4_P1_WAIT_MAX 默认 150s）
+#   删除类两值走**两段式**（plant 在快照前 / fire 在 run.sh 后）：窗口内「创建+删除」在前后快照里
+#   双双不可见 ⇒ 单段式注入是空转形态（以为测了其实没测）。
 # -----------------------------------------------------------------------------
 P="4.P1"
 WA_REG="$(wa_registry_default "$SUITE")" || die "$P" "归属清单不可解析（wa_registry_default 非零退出）"
 [ -s "$WA_REG" ] || die "$P" "归属清单缺失或为空: ${WA_REG}（fail-closed，禁空集静默绿）"
 
+# 注入/等待旋钮 + 注入证据账（`$ART/s4-p1.out` 稍后会被冻结口径的 diff 重定向截断，故先独立累计再并档）
+S4_P1_INJECT="${S4_P1_INJECT:-}"
+INJ_PATH=""
+: > "$ART/.s4-p1-pre.out"
+cleanup_inject(){ [ -n "${INJ_PATH}" ] && rm -f "$REPO_ROOT/${INJ_PATH}"; return 0; }
+trap cleanup_inject EXIT
+
 snap_contrib(){
   ( cd "$REPO_ROOT" && find contrib-data -type f -print0 | sort -z | xargs -0 shasum -a 256 )
 }
+
+# 删除类注入 plant（两段式①）：必须在冻结快照与富快照**之前**植入，否则删除在前后快照里不可见
+case "$S4_P1_INJECT" in
+  canary-delete) DEL_VAR="canary" ;;
+  external-delete) DEL_VAR="external" ;;
+  *) DEL_VAR="" ;;
+esac
+if [ -n "$DEL_VAR" ]; then
+  INJ_LINE="$(wa_inject delete-plant "$REPO_ROOT" "$WA_REG" "$DEL_VAR")" || die "$P" "delete-plant 注入失败（variant=${DEL_VAR}）"
+  printf '%s\n' "$INJ_LINE" >> "$ART/.s4-p1-pre.out"
+  INJ_PATH="$(printf '%s' "$INJ_LINE" | sed -n 's/.* path=\([^ ]*\).*/\1/p')"
+  [ -n "$INJ_PATH" ] || die "$P" "delete-plant 证据行未携带可解析 path（注入物无清理面）"
+fi
+
 snap_contrib > "$ART/.s4-snap.before" 2>&1
 [ -s "$ART/.s4-snap.before" ] || die "$P" "快照为空（contrib-data 无文件或 shasum 失败）"
 
 # 富快照（内容 + 元数据一次承载）+ 窗口时钟；注入为显式 opt-in（每次注入必落 WA-INJECT 证据行）
 WIN_T0="$(date +%s)"
 wa_snapshot "$REPO_ROOT" "$ART/.s4-wa.before" || die "$P" "富快照失败（contrib-data 缺失 / stat·find 失败）"
-S4_P1_INJECT="${S4_P1_INJECT:-}"
-INJ_PATH=""
-# 注入/等待证据账（`$ART/s4-p1.out` 稍后会被冻结口径的 diff 重定向截断，故先独立累计再并档）
-: > "$ART/.s4-p1-pre.out"
-cleanup_inject(){ [ -n "${INJ_PATH}" ] && rm -f "$REPO_ROOT/${INJ_PATH}"; return 0; }
-trap cleanup_inject EXIT
 case "$S4_P1_INJECT" in
   canary-create|canary-append|external-append)
     INJ_LINE="$(wa_inject "$S4_P1_INJECT" "$REPO_ROOT" "$WA_REG")" || die "$P" "注入失败（mode=${S4_P1_INJECT}）"
@@ -86,8 +104,8 @@ case "$S4_P1_INJECT" in
       INJ_PATH="$(printf '%s' "$INJ_LINE" | sed -n 's/.* path=\([^ ]*\).*/\1/p')"
     fi
     ;;
-  wait-external|'') : ;;
-  *) die "$P" "未知 S4_P1_INJECT：${S4_P1_INJECT}（闭集 canary-create|canary-append|external-append|wait-external）" ;;
+  wait-external|canary-delete|external-delete|'') : ;;
+  *) die "$P" "未知 S4_P1_INJECT：${S4_P1_INJECT}（闭集 canary-create|canary-append|external-append|wait-external|canary-delete|external-delete）" ;;
 esac
 
 ( cd "$REPO_ROOT" && bash scripts/contrib/tests/run.sh </dev/null ) >"$ART/.s4-run1.out" 2>&1
@@ -101,6 +119,12 @@ if [ "$S4_P1_INJECT" = "wait-external" ]; then
   if [ "$WAIT_RC" -gt 1 ]; then
     die "$P" "wait-external 依赖故障 rc=${WAIT_RC}（0=观察到变更 / 1=超时未变更 / 2=参数或快照非法）"
   fi
+fi
+
+# 删除类注入 fire（两段式②）：窗口**之内**真删，须在 run.sh 之后、窗口止之前
+if [ -n "$DEL_VAR" ]; then
+  FIRE_LINE="$(wa_inject delete-fire "$REPO_ROOT" "$WA_REG" "$INJ_PATH" "$DEL_VAR")" || die "$P" "delete-fire 注入失败（variant=${DEL_VAR}）"
+  printf '%s\n' "$FIRE_LINE" >> "$ART/.s4-p1-pre.out"
 fi
 WIN_T1="$(date +%s)"
 
@@ -129,11 +153,11 @@ WA_UNCLASSIFIED="$(wa_key unclassified)"
 
 # 注入模式对照（先于核心断言：canary 跑次按设计判红，语义在此显式化）
 case "$S4_P1_INJECT" in
-  canary-create|canary-append)
+  canary-create|canary-append|canary-delete)
     ne "$WA_SUITE" 0 "$P 注入模式对照（${S4_P1_INJECT}）：套件写入必须被判红（suite 计数）"
     die "$P" "金丝雀自证：套件写入已被归属引擎捕获（suite=${WA_SUITE}；注入 ${INJ_PATH}）——canary 跑次按设计判红，ACCEPTANCE-FAIL 属预期结论"
     ;;
-  external-append|wait-external)
+  external-append|wait-external|external-delete)
     ge "$WA_EXTERNAL" 1 "$P 注入模式对照（${S4_P1_INJECT}）：生产侧写入必须归 external"
     ;;
 esac

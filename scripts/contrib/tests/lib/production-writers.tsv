@@ -4,10 +4,14 @@
 # 字段（TAB 分隔，非注释行恰 5 列且逐列非空）：
 #   1 路径模式（**shell glob**，bash `case` 语义，非正则；精确路径即字面模式）
 #   2 writer-id（写手标识，落 WA-CLASS 行的 writer= 字段）
-#   3 mode ∈ {append-records, corroborated-rewrite, corroborated-create}
+#   3 mode ∈ {append-records, corroborated-rewrite, corroborated-create, corroborated-delete}
 #   4 输出字母表（ERE，`|` 连接的多形态；append-records 必填，**首捕获组 = 记录时间戳**，
 #     禁嵌套括号；corroborated-* 填 :none）
 #   5 佐证写手日志路径（corroborated-* 必填，`|` 分隔多佐证，任一成立即成立；append-records 填 :none）
+#
+# 删除面与创建面**分离登记**的理由：「能创建」不蕴含「能删除」——删除是不可逆的破坏性写，
+# 面内任何 mode 的删除在旧口径下一律判 suite/deleted；只有显式 opt-in 的
+# `corroborated-delete` 行才把「写手删除自身所辖文件」纳入 external 判定（证据=目录 mtime 锚 + 佐证近邻）。
 #
 # 字母表派生口径 = 「写手自有记录 ∪ 其调用图内子进程可产形态」（不只历史样本），
 # 故每形态都在注释里给出来源（自有 log() / 子命令转写 / 调用图内 CLI 输出）。
@@ -89,3 +93,17 @@ contrib-data/budget.json	rq	corroborated-rewrite	:none	contrib-data/logs/notify.
 #     ⚠ 本条目同时是金丝雀注入面（S4_P1_INJECT=canary-create）：注入物含 `S4-P1-` 前缀行，
 #       引擎 canary-marker 短路无条件判 suite（先于佐证判定）
 contrib-data/pending/*	notify	corroborated-create	:none	contrib-data/logs/notify.log
+
+# [11] pending 派生产物的**消费清理**（同上一条路径面的删除半边）← scripts/contrib/notify.sh:404-409
+#      `_digest_cleanup_files() { rm -f "$snap" "${snap%.json}.digest.md" "${snap%.json}.body.md" "${snap%.json}.card.json"; }`
+#      （消费/失败即删该轮全部派生文件；调用点 notify.sh:606）
+#      生产证据（worker 实测，窗口 2026-09-14 09:59:55–10:04:44）：notify.log 1713 行三件 digest 由
+#        notify 于 09:09:49/50 建（卡 t_680024e5），同窗 10:04:34 走 fallback 后自行 rm；归档快照佐证
+#        `.s4-wa.before`（10:00:06）含三件、`.s4-wa.after`（10:04:55）三件已消失。
+#      ⚠ 删除没有「文件自身 mtime」这个时刻（=创建时刻），故锚改取**父目录 mtime**（富快照 sidecar
+#        `<out>.dirs` 承载，语义=该目录最后一次条目增删的内核时间戳，unlink 即触发）
+#        + 佐证日志在窗合规记录与锚相距 ≤30s（WA_CORR_PROXIMITY）⇒ external/corroborated-delete-ok。
+#      ⚠ 本行**必须与上一条创建行同 writer/佐证字段**（C/M 取首个匹配行 ⇒ 行为等价）；D 分支只认本行，
+#        且**只有本 mode 的匹配行**才放行删除 —— 其余 mode 面内的删除仍判 suite/deleted。
+#      ⚠ 路径模式沿用 `contrib-data/pending/*`（与创建行同面）：宽 glob 会打掉覆盖守卫 C16b/C16c 的鉴别力
+contrib-data/pending/*	notify	corroborated-delete	:none	contrib-data/logs/notify.log
