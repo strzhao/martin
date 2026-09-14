@@ -170,6 +170,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 ### 4.2 L2 提交流（现用钳夹，勿绕行）
 
 起草成稿（含审批中文摘要段）→ `rq.sh add`（`--premises-json` 必填：逐条 {claim, evidence, verified_at}；`--ammo-json` 弹药）→ `rq.sh set-draft` → `bash scripts/contrib/notify.sh approve <rq-id>`（发审批卡+部署 tunnel 页）→ auto-gate 判 L2-auto 或等微信。**premise 死亡的项绝不推审批卡**（推前逐条实查）。executed 前查 approved.log 去重。
+**审批卡推送失败 ≠ 永久卡死（09-14 实证）**：iLink `rate limited`（与 shift-28~33 的 flush rc=1 同族，可能是 `stale_session` 误分类）会连吃 3 次尝试并记账（`approvals[date].fail`）；但 **`~/.hermes/scripts/contrib-sweep.sh:15` 每日 09:17 跑 `notify.sh approve --all`** ⇒ 失败项次日自动重推（实例 `rq-20260914-65100` 累计 6 败后由该 job 兜底）。⇒ 处置 = 记账 + 在 journal 写明「重推 actor = 明晨 09:17」，**不重复立卡、不 resolve、不手工反复重试**（每次重试都会重开 30s 闸）。
 
 ### 4.3 forge（造货）
 
@@ -202,7 +203,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 - `$CONTRIB/ops-journal.md` append-only，每判断一行四栏：`| 时刻 | 决策 | 对象 | 理由 + 置信度(高/中/低) |`。不动手的重大判定也要记一行（「无事可做」是判断不是失职）。
 - **时刻必须实读**：每行时刻取 `date "+%Y-%m-%d %H:%M"` 的实际输出，**禁凭感觉估算**——班次内自记时刻已**四次**比机器钟快（shift-26 / shift-27 各 +33~+38 分钟；shift-33 把 09:35–09:42 写成未来值；**shift-37 把 13:04–13:22 写成未来值**，实际落账时 = 13:08）⇒ 纪律升级为「**先跑 `date` 取时刻 → 再写稿 → 落账前再 `date` 复核一遍**」（顺序反转是重点：稿里先写时刻必然靠体感，体感恒快），偏差行按真实锚点归位（`date` 输出 / 板库 `tasks.created_at` epoch / 日志行自带时刻），而 journal 时刻正是跨班去重与「上一班是否 <60 分钟未收口」判定的索引，偏差会让衔接判断失真。
 - **收班（operator，cron agent）**：ops-journal 四行落账 → `bash scripts/contrib/notify.sh flush` → **60 分钟内结束**；开班先看 journal 尾行——上一班 <60 分钟未收口则先续命，不并行开新线。
-- **告警分域与闭环（notify.sh，09-13 起）**：flush 按账本渠道分渠成批——contrib 与 flashcards 各至多一条消息、各取自己的标头/主题（不再出现 flashcards 产线事件顶「contrib 告警」标头）；同域同根因聚合到一行（`occurrences` 计数），静默窗内复发只记账不重推。无决策点的事件（`own-pr-info` / `visual-run-done`；可用 `config.brief_only_classes` 整体覆盖缺省表）降级进当日简报——账本标记 `route:"brief"`，不进微信即时/摘要两路。
+- **告警分域与闭环（notify.sh，09-13 起）**：flush 按账本渠道分渠成批——contrib 与 flashcards 各至多一条消息、各取自己的标头/主题（不再出现 flashcards 产线事件顶「contrib 告警」标头）；同域同根因聚合到一行（`occurrences` 计数），静默窗内复发只记账不重推。无决策点的事件（`own-pr-info` / `visual-run-done`；可用 `config.brief_only_classes` 整体覆盖缺省表）降级进当日简报——账本标记 `route:"brief"`，不进微信即时/摘要两路。**⚠ 这条「降级进当日简报」在本机尚未机械化（09-14 实证）**：`notify.sh:_flush_brief_mark` 只做账本 line-splice、**不写** `briefs/<date>.md`，而 `contrib-data/briefs/*.md` 的唯一写者是班次手写 append（范式 `contrib-data/append-s27b.py`；`grep -rn "briefs" scripts/` 在 contrib 侧零命中，12 个 cron job 全量无 brief 消费者）⇒ **判「某事件降级进简报 = 用户可知」前先跑 `grep -c <事件 key> contrib-data/briefs/<today>.md`**；为 0 即「事件进了账本却无人读」——当场补写（自决止血，见 shift-38）+ 立 `[fix]`（首件 `t_1aa5fb72`）。同类判据适用 `own-pr-info`。
 - **resolve 收尾契约**：班内巡检发现某告警根因已消除（issue 关闭 / PR merge / 流水线自愈）时跑 `bash scripts/contrib/notify.sh resolve --key <告警 key> --summary "<一句话结论>"`（同簇收尾用 `--cluster <簇键>`）→ 该行标记 `resolved`，已推送过的还会发一条 ✅ 闭环卡。**目标不存在时命令非零退出、账本与推送零副作用**（显式失败优于静默幂等，别当成功收尾）；同根因复发自动重开该行并进下轮推送。
 - specialist 卡收尾仍按 SOUL：`kanban_complete` 双传 summary+result；>15min 调 `kanban_heartbeat`；缺前提 → `kanban_block --reason`。
 
