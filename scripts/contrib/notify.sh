@@ -996,14 +996,27 @@ _brief_mech_section() {
 }
 
 # _brief_record_present <brief_file> <key> — rc=0 ⇒ 机械小节内已有该 key 的记录行（查重命中，跳过）。
-#   判据 = 记录行专属字段缝「 ｜ `<key>` ｜ 」（记录形态 `- ts ｜ class ｜ `<key>` ｜ summary ｜ channel`
-#   里 key 字段的定长段），而非裸的「反引号包 key」形态：散文行即便写成列表项、即便带反引号 key，
-#   也不会误判命中。key 用 grep -F 固定串匹配（key 含正则元字符时不失真）。
+#   判据两段式，缺任一段即假命中（**行形锚 + 字段位**，不再是纯字段缝）：
+#   ① 行形锚：整行须匹配 `^- <ISO 时间戳> ｜ <class> ｜ \`<key>\` ｜`——记录行以 `- ` + 账本 `.ts`
+#      （ISO 形态）开头，且 key 恰为第 3 个「 ｜ 」字段。查重作用域是「小节头到 EOF」，而班次在
+#      小节之下继续手写散文属于常态（append-s27b 范式向 EOF 追加）——散文逐字复述记录格式
+#      （如 `- 班次复述格式：- ts ｜ own-pr-info ｜ \`<key>\` ｜ 手工引用 ｜ contrib`）会命中纯字段缝
+#      判据 ⇒ 真实事件零落账而账本照标 pushed=true/route=brief（09-14 红队 F2 沙箱实证
+#      record_lines=0），即「事件进账本却无人读」的残余形态。散文只复述**格式**时事件内容并不在
+#      简报里，损失是实的。
+#   ② key 固定串：先用 grep -F 圈出含字段缝「 ｜ \`<key>\` ｜ 」的候选行（key 含正则元字符不失真），
+#      只对候选行做①，再按「 ｜ 」切列逐字比第 3 字段（awk 字符串等值，不经正则）。
+#   反向也保住：真记录行恒命中（时间戳前缀恒在 + key 恒第 3 字段）。
 _brief_record_present() {
   local bf="$1" k="$2" tick='`' mech
   mech="$(_brief_mech_section "$bf")"
   [[ -n "$mech" ]] || return 1
-  grep -qF -- " ｜ $tick$k$tick ｜ " <<<"$mech" 2>/dev/null
+  grep -F -- " ｜ $tick$k$tick ｜ " <<<"$mech" 2>/dev/null | awk -v want="$tick$k$tick" '
+    /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]/ {
+      n = split($0, f, " ｜ ")
+      if (n >= 4 && f[3] == want) { found = 1; exit }
+    }
+    END { exit(found ? 0 : 1) }'
 }
 
 # _brief_append_record <brief_file> <key> <账本行号> — 单条 route=brief 行落当日简报（append-only）。
