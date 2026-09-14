@@ -629,6 +629,11 @@ esac
 IS_DRILL=0
 [[ "$ID" == *-drill ]] && IS_DRILL=1
 
+# 相对路径一律锚定工作区根（=dirname(CONTRIB)，生产环境即 martin 根、沙箱即沙箱根）转绝对。
+# 孪生面 notify.sh 同款归一化（该面注释记录了 09-06 事故根因），本面原缺此行 ⇒ launchd 下
+# collect.sh（plist 未设 WorkingDirectory、cwd=/）调起时相对 draft 一律 -f 失败 → rq 落 failed。
+# 实证：rq-20260914-110728（用户 18:33 已批，草稿就在盘上却判「草稿不存在」）。
+[[ -n "$DRAFT" && "$DRAFT" != /* ]] && DRAFT="$(dirname "$CONTRIB")/$DRAFT"
 if [[ -z "$DRAFT" || ! -f "$DRAFT" ]]; then
   fail "草稿不存在（${DRAFT:-未登记}）"
   exit 1
