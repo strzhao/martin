@@ -7,6 +7,7 @@
 #   2. git 状态  — 分支 / dirty 计数 / ahead-behind / worktree 自动识别
 #   3. 订阅限额 — 双 provider 显式识别（按 ANTHROPIC_BASE_URL 主机名白名单）：
 #                  GLM（bigmodel.cn / z.ai）→ quota/limit，双窗口 5h + weekly +
+#                  （TOKENS_LIMIT=coding-plan 订阅 / CREDIT_LIMIT=credit 资源包，同构同渲染）；
 #                  高峰期倍率提示（14-18点 ×3，仅 glm-5.2/5-turbo）；
 #                  Kimi（kimi.com / moonshot.cn|ai）→ /coding/v1/usages（Bearer 认证），
 #                  5h 窗口（limits[].window 300min）+ 周窗口（顶层 usage）；
@@ -253,7 +254,10 @@ _fetch_quota_sync() {
     return
   fi
 
-  # GLM Coding Plan：GET /api/monitor/usage/quota/limit（裸 token 认证）
+  # GLM：GET /api/monitor/usage/quota/limit（裸 token 认证）
+  # limits[].type 按账号计费类型二选一：TOKENS_LIMIT（coding-plan 订阅）/ CREDIT_LIMIT（credit 资源包），
+  # 字段同构（unit=3+number=5 → 5h 窗口、unit=6+number=1 → 周窗口，percentage=已用%，nextResetTime=ms epoch），
+  # 故两类都收，渲染不区分。
   resp="$(curl -s --max-time "$_timeout" \
     "${domain}/api/monitor/usage/quota/limit" \
     -H "Authorization: ${ANTHROPIC_AUTH_TOKEN}" \
@@ -267,7 +271,7 @@ _fetch_quota_sync() {
       ok:   1,
       provider: "glm",
       level: (.data.level // null),
-      tokens: ( [ (.data.limits[]? | select(.type=="TOKENS_LIMIT")
+      tokens: ( [ (.data.limits[]? | select(.type=="TOKENS_LIMIT" or .type=="CREDIT_LIMIT")
                    | { p: (.percentage|floor), r: .nextResetTime }) ]
                 | sort_by(.r) ) }
   ' > "${CACHE_FILE}.tmp" 2>/dev/null && mv -f "${CACHE_FILE}.tmp" "$CACHE_FILE" 2>/dev/null
@@ -290,19 +294,22 @@ _refresh_bg() {
 # 从缓存文件渲染限额区到 _glm_part（无可显示数据时返回非 0）
 _render_glm_cache() {
   # 单次 jq 提取 level / token 数 / 短窗口百分比 / 长窗口百分比 / provider
+  # 逐行输出（勿用 @tsv + IFS=tab read：tab 属 IFS 空白，连续空字段会被塌缩，
+  # 中段字段一空就整体左移错位——曾把 provider "glm" 错位进百分比槽渲染出 "GLM glm%"）
   local _parsed _level _n _short_p _long_p _prov
   _parsed="$(jq -r '
-    [ (.level // ""),
-      ((.tokens // []) | length),
-      ((.tokens // [{}])[0].p // ""),
-      ((.tokens // [{}])[-1].p // ""),
-      (.provider // "glm") ] | @tsv
-  ' "$CACHE_FILE" 2>/dev/null)"
-  [ -z "$_parsed" ] && return 1
-  IFS=$'\t' read -r _level _n _short_p _long_p _prov <<< "$_parsed"
-  [ -z "$_short_p" ] && return 1
+    (.level // ""),
+    ((.tokens // []) | length),
+    ((.tokens // [{}])[0].p // ""),
+    ((.tokens // [{}])[-1].p // ""),
+    (.provider // "glm")
+  ' "$CACHE_FILE" 2>/dev/null)" && [ -n "$_parsed" ] || return 1
+  { read -r _level; read -r _n; read -r _short_p; read -r _long_p; read -r _prov; } <<< "$_parsed"
+  # 防御：百分比必须为纯数字（空 / 含非数字 → 视为无数据，回落占位符）
+  case "$_short_p" in ''|*[!0-9]*) return 1 ;; esac
   local _label="GLM"; [ "$_prov" = "kimi" ] && _label="KIMI"
   if [ "${_n:-0}" -ge 2 ] 2>/dev/null; then
+    case "$_long_p" in ''|*[!0-9]*) return 1 ;; esac
     _glm_part="$(_smoke)${_label}${c_reset} $(_level_color "$_short_p")5h:${_short_p}%${c_reset} $(_level_color "$_long_p")wk:${_long_p}%${c_reset}"
   else
     _glm_part="$(_smoke)${_label}${c_reset} $(_level_color "$_short_p")${_short_p}%${c_reset}"

@@ -137,7 +137,9 @@ Header: Authorization: <ANTHROPIC_AUTH_TOKEN>          # 裸 token
 }
 ```
 
-**窗口判定（启发式）**：把所有 `TOKENS_LIMIT` 按 `nextResetTime` 升序排列 —— reset 最近的为短周期窗口（标 `5h`），reset 最远的为长周期窗口（标 `wk`）。这样不依赖 `unit` 字段的语义猜测，自适应官方调整。
+**limits[].type 按账号计费类型二选一**（2026-09-15 实证）：`TOKENS_LIMIT`（coding-plan 订阅账号）/ `CREDIT_LIMIT`（credit 资源包账号），字段同构（`percentage` = 已用%、`nextResetTime` = ms epoch；CREDIT 另带 `usage/currentValue/remaining`），脚本两类都收、渲染不区分。若 token 换成了另一计费类型的账号而限额区突然异常，先看返回里 `type` 是不是变了。
+
+**窗口判定（启发式）**：把所有 `TOKENS_LIMIT` / `CREDIT_LIMIT` 按 `nextResetTime` 升序排列 —— reset 最近的为短周期窗口（标 `5h`），reset 最远的为长周期窗口（标 `wk`）。这样不依赖 `unit` 字段的语义猜测，自适应官方调整。
 
 **高峰期倍率（写死）**：`quota/limit` 接口**只返回用量百分比，不返回倍率**——倍率属于计费策略。按[官方 FAQ](https://docs.bigmodel.cn/cn/coding-plan/faq)：GLM-5.2 / GLM-5-Turbo（对标 Opus 的高阶模型）在高峰期（每日 **14:00–18:00 UTC+8**）按 **3 倍**消耗额度（非高峰 2 倍；限时福利至 9 月底非高峰降为 1 倍）；GLM-4.x（对标 Sonnet）为 1 倍、无加成。脚本据此：当前小时 ∈ [14,18) 且模型匹配 `PEAK_MODELS` 时，在限额区尾部追加朱红 `×3`。该提示**独立于 quota 数据**——即便接口失败，高峰期 glm-5.2 仍按 3 倍消耗，提示照常显示。Kimi 无高峰倍率概念，`PEAK_MODELS` 正则天然不匹配 kimi 模型名。
 

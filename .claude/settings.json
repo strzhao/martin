@@ -2,5 +2,10 @@
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,
     "writer-skill@autopilot": true
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash /Users/stringzhao/workspace/martin/statusline-sage/statusline-sage.sh",
+    "padding": 0
   }
 }
