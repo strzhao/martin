@@ -228,6 +228,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 - **resolve 收尾契约**：班内巡检发现某告警根因已消除（issue 关闭 / PR merge / 流水线自愈）时跑 `bash scripts/contrib/notify.sh resolve --key <告警 key> --summary "<一句话结论>"`（同簇收尾用 `--cluster <簇键>`）→ 该行标记 `resolved`，已推送过的还会发一条 ✅ 闭环卡。**目标不存在时命令非零退出、账本与推送零副作用**（显式失败优于静默幂等，别当成功收尾）；同根因复发自动重开该行并进下轮推送。
 - specialist 卡收尾仍按 SOUL：`kanban_complete` 双传 summary+result；>15min 调 `kanban_heartbeat`；缺前提 → `kanban_block --reason`。
 - **operator CLI 收尾两则（09-15 实证）**：`hermes kanban complete` 对**非 running/ready 态卡拒绝**（报 `unknown id or terminal state`）——`[watch]` 停在 scheduled 而判据提前触发时，正解 = 跨卡评论落记录 + `archive` 归档（scheduled/blocked 卡上 `complete` 是死路）；`complete` 无 `-F` 文件参（只收 `--result/--summary/--metadata`）。
+- **到期唤醒后的 [watch] 卡是第三种态：已在 `running`**（09-16 实证 t_48f8038b）——巡检器 unblock → dispatcher 秒级 claim/spawn 后，卡已不在 scheduled 域 ⇒ **收官走正常 `complete`**（板库实读 `status=done` + `task_runs.outcome=completed`），**别照搬上一条的 `archive` 路**；`archive` 只对仍停在 scheduled/blocked 的卡是正解。判据仍是先读事件链（`unblocked → claimed → spawned`）。
 
 ## 7. 红线速查
 
@@ -254,6 +255,8 @@ gh 只读（零写）· 对外必经 L2（agent 起草链落笔）· own-PR 永�
 - 2026-09-14 判例：**维护者自行 cherry-pick 后同时关闭「我方自家 PR + 收编车」⇒ [watch] 卡 on_hit 里预写的「起草让路 L2（关自家 PR）」作废，零对外动作**——让路已在对方侧收工（且带致谢），再补一句「收到/感谢」= 空话客套，触 §1 品牌姿态红线。卡面 closed 分支常预写成「REBUT: 重评」，但**落袋成功时无 REBUT 对象**（REBUT 的语义是「落袋失败需改判」）⇒ 按实况逐条写清三项 on_hit 处置后归档。证据：#109758 / #110023 于 12:30–12:32Z 双关闭 + teknium1 致谢原文；内容在 main 由 `compare` + `git branch -r --contains` 双证。
 
 - 2026-09-15 判例：**salvage 载体以 rebase 重放形态 merge（非 cherry-pick）⇒ 落袋核验不能对着 PR 分支原 sha 比**——merge 后原 sha 在 commits 端点 422（PR ref 剪除）、`merge_commit_sha` 只是重放栈尾（常为维护者自己的尾 commit）、`compare/<原sha>...main` 给 diverged/behind_by>0 假阴性。正确顺序 = ① `commits?author=<login>&since=<T>` 找 main 上的重放 sha（title/author/email 三重匹配）② `compare/<重放sha>...main` 必须 behind_by=0 ③ `git branch -r --contains <重放sha>` 第二证。证据：#111453 merged 12:26Z，我方 `30816ba4e891` 在 main 现形为 `60f3763c23f`（behind_by=0）；#110785 让路+关闭。
+
+- 2026-09-16 判例：**判「槽已被上游吸收」必须落到 `main` 的内容实证，PR 标题/关单措辞的自述不算**——三步缺一不可：① 载体 issue 的 `state` + `state_reason=completed` ② 吸收 PR 的 `merged=true` + `merge_commit_sha` ③ **`gh api -X GET repos/<r>/contents/<path>?ref=main` 解 base64 后 grep 机制关键词**（复现：`gateway_migrate.py:889-892` 现含 `maybe_auto_migrate_after_update` + `gateway.auto_multiplex_migration` opt-out 文档串）。**占坑车「closed 无合并」分两义，形态须先分辨再判归宿**：预期收编（关单评论点名 commit + 署名保留 ⇒ 槽已被吸收）vs 真槽位重开（无收编评论 ⇒ 我方空间回来）——共形但归宿相反，判反了要么错过出手位、要么去重开一个已被上游吸收的槽。证据：t_48f8038b 到期复检（#109954 `closed/completed` ← #110205 merge `0abfd1105c76`；占坑车 #109562 closed 23:08:37Z 属**预期收编**，teknium1 关单评论原文「Your commit is on main as `8ed2fec94c84` with authorship preserved」）⇒ 归宿 already-covered，watch 收官、零对外动作。
 
 ## 9. 修复判断四问（`[fix]` 卡模板 + 红队复核）
 
