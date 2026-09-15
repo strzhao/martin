@@ -93,6 +93,10 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 
 运营 strzhao 名下开源项目组合（ai-todo 打样 → 组合铺开 → 内容引擎 → 发布脉冲）时，**先读 [`oss-ops.md`](oss-ops.md)** —— 沉淀了审批分层红线（L1 全自动只读；**一切对外动作 = L2，无 L3**，按场景走两路：**L2-A 异步路** Hermes 发起→微信审批、**L2-B 实时路** Claude Code 会话内用户明示即执行、不走微信不等时间窗；两路共用 approved.log 账本，preflight 与反 slop 不豁免）、渠道规则事实核查（Topics 自设 / dev.to API 可全自动 / awesome-claude-code 14 天门槛已满足）、9 仓组合台账与 ai-todo 打样 playbook。双 COO 分工：Hermes Agent 承担异步日常执行（每日巡检 cron + `~/.hermes/skills/github/oss-ops/` skill），martin 侧 Claude Code 承担实时合作运营 + 上下文工程 + 打样质量件 + pre-flight 审视（`/oss-preflight`）。动态进度见记忆 [[oss-ops-progress]]。
 
+## 温故卡 AGC 运营（flashcards，2026-09-16 立项）
+
+hermes AI 全权接管温故卡（appId `6917615875709812574`，包名 `com.stringzhao.flashcards`）AGC 上架后用户运营，宪法两条：**AI first**（无阈值告警/无审批闸/无 guard，分析-产出-回复全自主）+ **KISS**（形态 = 1 cron + 1 skill + 1 数据目录）。**每日 21:23 cron「温故卡运营日报」**（default store，`--deliver weixin` 直投，`--workdir harmony-space`）按 **hm-ops skill**（真源 `~/workspace/harmony-space/tools/hm/skill-template/hm-ops-SKILL.md`，双点部署 `~/.hermes/skills/harmony/hm-ops/`，改真源后 cp + cmp 自证）执行六步班次：拉数（`hm stats` 四条 + `reviews pull`）→ 分析 → **全自动回复评论**（`hm reviews reply`，六域唯一 write 非 hardStop；实发前 dry-run 自检；质量红线与披露规范在 skill ⑤⑥）→ 三段式日报（披露段是义务，零回复也写「今日回复 0 条」）→ 输出即投递 → 落账。全零冷启动日 `[SILENT]` + silent.jsonl 记账。审计真源 `~/.hm/audit/`（CLI 机制落盘，非 prompt 纪律）；运行时产物 `flashcards-data/`（本仓 gitignore：daily/ 日报存档、voc/insights.md VOC 累积）；口径 SSOT 在 harmony-space `docs/post-launch-data/`。hardStop 五件套与 `opencli agc growth-open` 人确认保留（不在「不设限」授权内）。
+
 ## Hermes 可观测性消费（本地观测栈）
 
 操作/排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）前，**先读 [`hermes-observability-guide.md`](hermes-observability-guide.md)** —— 30 秒入口 `hermes forensics summary --hours 24`、症状→命令决策树、events.db 数据字典、日志路由表（含 cron→agent.log 上游单写坑：gateway.log 查不到 cron 日志 ≠ 没发生）。栈为本地补丁不入上游（`observability-stack` 分支锚定）；升级只走 fetch+rebase。
