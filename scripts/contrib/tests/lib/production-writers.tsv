@@ -69,6 +69,18 @@ contrib-data/logs/l2-ledger.log	l2-ledger	append-records	^\[([0-9]{4}-[0-9]{2}-[
 #      `tr '\n' ' '` 保证恒单行记录（无块级容错下的必要前提）；无 token 命中时零行（无噪音）
 contrib-data/logs/watch-due-patrol.log	watch-due-patrol	append-records	^\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})\] patrol 	:none
 
+# [13] stale-pr 停滞雷达 JSON ← scripts/contrib/stale-pr-scan.sh（卡 t_9396bbf3）
+#      写机制 = `jq ... > "$JSON.tmp" && mv`（原子替换 ⇒ 无追加自证面）⇒ mode=corroborated-rewrite；
+#      佐证 = logs/stale-pr-scan.log（脚本改 json 与其 ok/FAILED 日志行同一次运行尾部连续执行，
+#      与佐证 ts 时间差 ≤30s，引擎时序近邻判「同一次运行」，notify-state 先例）
+contrib-data/stale-pr-scan.json	stale-pr-scan	corroborated-rewrite	:none	contrib-data/logs/stale-pr-scan.log
+
+# [14] stale-pr 巡检日志 ← 同上（scan_log 定义；行形与 [12] 同族，`tr '\n' ' '` 保证恒单行）
+#      形态：`[ts] stale-pr-scan ok|FAILED …`，tags 闭集 {ok, FAILED}；FAILED 行嵌错误首行
+#      （200 字符截断）；tick 未到周级间隔零行（无噪音）；日志路径内联、脚本不设 LOG 变量
+#      （幻影写点坑，watch-due-patrol.sh 同款纪律）
+contrib-data/logs/stale-pr-scan.log	stale-pr-scan	append-records	^\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})\] stale-pr-scan 	:none
+
 # [5] notify 状态账本 ← scripts/contrib/notify.sh:123（首建）/ :178 / :182 / :521 / :1029 / :1491 / :1499
 #     写机制 = `jq ... > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"`（原子替换 ⇒ 无追加自证面）
 #     ⇒ mode=corroborated-rewrite；佐证=logs/notify.log
