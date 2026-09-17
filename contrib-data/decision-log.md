@@ -280,3 +280,20 @@ escalate: 2026-09-15 当日复核 —— `sqlite3 "file:<contrib board>.db?immut
 | 2026-09-17 09:59 | commented |
 | 2026-09-17 20:14 | commented |
 | 2026-09-17 20:21 | commented |
+
+---
+
+## 2026-09-18 · 判例：#113999 的 68 分钟窗口（新政的活标本）
+
+> 来源：operator 班次留痕（09-18 00:40，原卡 t_2d57344d 评论文本），因该卡已归档转入本台账。
+> 记：本条由 coder worker（卡 t_9396bbf3 收尾轮）代录入 —— operator 侧 heredoc 写入被审批闸拦下。
+
+**事实**：用户问「#113999 我们本来有机会提 PR 被直接 cherry-pick 么」→ 实查时间线：我方 review 12:10Z 上线，clempat 修复 commit 13:18Z，**68 分钟窗口**。修复内容（CANTOPEN→disk 桶后置 / locked 保住 / divert 挪 flush 点）是单关注点小改，在 forge ≤20min 基准内 ⇒ 窗口内造货 + offer 完全可行。实际：他手工重写全盘采纳（含独立复证我方证伪的机制声明），我方署名归零。
+
+**归因**：①当晚预算姿态一单一 forge（#114091 占用了造货面）；②「review 发现缺口 → 立即开我方 PR」的新政在事发之后才拍板。
+
+**判例价值（新政的活标本）**：review 塑形价值（拿到）≠ commit 署名价值（丢掉），两者要同时拿。**此后每份 review 出手同步问一句**：这个缺口 20 分钟能否造出货？
+
+**残余窗口**：#113999 CI 等放行未 merge；我方 #114159（`forge/sqlite-sidecar-read-guard`，源于 #114091 的读侧缺口）仍 OPEN = 活 pick 候选。
+
+**关联**：本条所举例的新政（review→发现→造货→立即开 PR）已由卡 t_9396bbf3 落进宪法并与本台账同批入 git：`hermes-contribution.md` §11 目的段 + 三腿分工触发列、`deploy/contrib-operator/SKILL.md` §3.1/§3.2/§3.4 判例式改写 + 新增 §3.7 停滞雷达 AI 判断面。
