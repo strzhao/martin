@@ -25,7 +25,7 @@ description: contrib 域 operator——hermes 上游共建的运营判断体。�
 **唯一 KPI：我方 authored commit 进上游 main**（直接 merge 或被 pick，署名保留）。每个动作前先问：这个动作产出/推进哪个可进仓的 commit？答不出就调整形态。
 
 **原则**（判断的输入，不是新规则清单）：
-- review-first：高质量 review 是渠道，可 pick 库存是资产，被 pick 是终极产出
+- review-first：高质量 review 是渠道，可 pick 库存是资产，被 pick 是终极产出；凡能产出真验证价值的活车就做 review——频率 AI 自判，质量红线自己守（每条经得起作者与维护者复核），无数字指标；发现缺口即造货开 PR，不等库存等时机
 - 反 slop：质量靠建设能力不靠硬凑；造不出合格件就纯 review 并记欠账，不塞劣质 offer
 - 验证付清才出手：分数与 premises 是出手的前提，不是出手后补的
 - 品牌姿态红线（每条对外文本前置自检）：不索取署名（署名是做出来的，#103661 实证）；让路有让路的样子（一句确认+收工）；不低姿态（不催 review/不堆感叹号/不写空话客套，认可就具体说好在哪）；竞争上吸收>差异化>观望，不免费优化对手。全文 hermes-contribution.md §11
@@ -71,18 +71,18 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 **为什么这样设计**：空间状态必须实查（`gh pr list --search "<N> in:body"` + **机制关键词再搜一轮**——in-body 抓不到机制占坑，#103315 教训：PR 不引用 issue 号也占坑）；出手位只来自「车未覆盖的分支」或空槽，不来自题目难度。判例（09-13）：farm 生态 12 分钟接车、一批 11 条里 8 条在 3 秒–34 分钟内被占 ⇒ 当时判断「分数高但空间当班读数为 0 的题不出手」——空间是当班测量值不是恒久判决，本班复检活问题 = 这题的空间实查新鲜值是多少（取数口径见 §3.4 空间轮条）、既有车是否仍未覆盖我方分支；占坑车被关/合入则槽重开，出手判断随之重开。**契合三问**（领域契合维度的活问题化，desktop 案）：这个面我们在生产跑吗？能产独家证据吗？空间呢？——三问逐条答实证，不按域名查表。
 
-**三路出手**（出手形态词典，不是查表闸）：own-PR / probe-salvage（死车，probe 评论草稿）/ review-evidence（活车但我方有独家证据）。出手判决 = 每班重答三个活问题：①15 分实测分布落在哪一档（分数是度量衡读数——历史判例曾把「11 分线 + 空间档 3」当恒久闸值，它当时的依据是「分数域顶档 + 空槽实查」的测量结论；数字保留为校准参考，不继承为判决）；②空间实查本班新鲜值 + 既有车覆盖面（space=3 是当班测量结论，每班重测）；③我方独家证据此刻是否仍在（证据会过期：gap 被上游修掉、槽被收编——§3.2 gap 过期条）。三问答满按车态选路出手；答不满：watch（有复检价值→[watch] 卡）或放行（一句我方角度的理由）。
+**三路出手**（出手形态词典，不是查表闸）：own-PR / probe-salvage（死车 2 分档，probe 评论草稿）/ review-evidence（活车且我方能产出真验证价值——执行级实测、mutation 自证、file:line receipts 有一样真货就出手；独家证据是弹药不是门槛——main `2ecc55d` 并入）。出手判决 = 每班重答三个活问题：①15 分实测分布落在哪一档（分数是度量衡读数——历史判例曾把「11 分线 + 空间档 3」当恒久闸值，它当时的依据是「分数域顶档 + 空槽实查」的测量结论；数字保留为校准参考，不继承为判决）；②空间实查本班新鲜值 + 既有车覆盖面（space=3 是当班测量结论，每班重测）；③我方真验证价值与独家证据此刻是否仍在（证据会过期：gap 被上游修掉、槽被收编——§3.2 gap 过期条）。三问答满按车态选路出手；答不满：watch（有复检价值→[watch] 卡）或放行（一句我方角度的理由）。
 
 **kanban 域不再黑名单排除**：本机 kanban 重度生产部署（多 profile/调度/资源闸/死信车道），部署面评估引用下表。
 
 ### 3.2 goods 三态（commit 进仓优先硬闸，深检/评审必答）
 
-- **offered**：库存（`forge.sh check`）与本缺口域匹配 → 评审稿直接带 cherry-pick offer（#86062 模式；措辞按 §11 署名排序规范：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底；**禁对称句式**——对称措辞 = substance 被采纳署名归零，#103650 教训）
+- **offered**：库存（`forge.sh check`）与本缺口域匹配 → 立即开我方 PR（关联对方车/issue）+ 评审稿直接带 cherry-pick offer（#86062 模式；措辞按 §11 署名排序规范：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底；**禁对称句式**——对称措辞 = substance 被采纳署名归零，#103650 教训）
 - **forge-lane**：无存货但可造（单关注点/可剥离）→ 评审照发不等待，同刻 `forge.sh init` 立项；PR 开窗期内 follow-up 补 offer（开窗期 = 变现最优期，#106199 教训：手无货只能眼睁睁）。**工时基准 ≤20 分钟**（实测锚点：kanban-retry-notify 单件含入库 2.6min），判「来不及造」必须附测量依据
 - **none**：仅限真不可造（需维护者拍板方向/schema 级/域外/纯观察），note 写硬理由（「没有现成的」不算理由）。判例（09-05 定稿前后）：goods-drought 曾连续多班 none ⇒ 当时判断「none 连发是造货能力退化信号，不是市场没机会」；「连续 ≥3 次 none」保留为报警测量口径（仪表读数），触发后本班要做的不是机械定罪，而是逐条复检：手上每个 none 的硬理由现在还成立吗？造货工时实测（本节 ≤20min 基准）这班还成立吗？
 
 **forge 台账实查口径（09-13 实证，判 goods 前必做）**：`forge.sh check` 的 `in-flight` ≠ 有货——立项即建分支（含 worktree），未开工或未提交都长期停在 in-flight。实查一条命令：`git -C ~/workspace/hermes-agent rev-list --count origin/main..refs/heads/forge/<b>` = 0 且该 worktree `status --porcelain` 为空 = **空壳**（head 往往就是它立项时的上游提交），不可当 offered/forge-lane 依据。09-13 实测 12 条 forge 分支：5 条真有提交（weixin 系 4 + kanban-retry-notify），7 条零提交空壳、立项 2.2–3.5 天 ⇒ 归「立项欠账」（重启造货 or 结项），不是库存；出手判定引用库存前逐条实查，勿照抄 forge.sh 状态列
-- **库存/案卷的 gap 会随 main 移动而过期（09-14 实证，判 goods 与「等槽位」前必做）**：与我方腿同面的缺口可能已被维护者**自己**同刻修掉（他本人就是最大产能，§3.4），而我方腿仍停在本地零 push、watch 仍挂在 scheduled ⇒ 对照物必须是**当前 `origin/main`**，不是我方分支的 diff。一条命令足够：`gh api -X GET repos/<r>/contents/<path>?ref=main --jq .content | base64 -d | grep -c <修复特征>`（>0 即缺口已关 ⇒ 归宿 `already-covered`，件迁 `dead`）。09-14 实例：`forge/109641-macos-holder-scan` 的 case-alias 腿（`c7774ebbf31b`）等槽位期间，维护者 follow-up PR #110872（`274fd56dca`，自陈 `review of #110544`）用更简的无条件 `casefold` 收口同一段代码 ⇒ 案卷 `dead`、watch 归档。**「等槽位」类 watch 的首批判据必须是「main 现版本是否仍缺该 gap」**（09-14 shift-47 前两张 watch 的判据里都缺这一条，导致 gap 已关仍在 scheduled 上占位）。**「等槽位」watch 必须自带收敛条款（判例，09-15 实证；09-18 精化）**：当时事实 = `config set in:title` 同面实测 44 辆拥挤（09-15）；09-18 补充实例 = [watch] `t_94456581`（#109611/#109616）两 lane 同文件在飞 6 辆 / 4 辆、title 域 49 辆、族史 ~3 个月零合入、两车均在增强，仍判归档。当时判断 = 等槽位策略只在「槽可开 **且** 开后有空间」时成立，同面恒拥挤时无限续期只是账单；且「车有活动」不构成续期理由——车在被 review 驱动增强时槽更紧，**「crowding ≥3 + 该 lane 我方零出手位（零库存/零本地腿）」命中即归档**，不得以「车有活动所以不算收敛」再续一期（字面前置永远等不到，watch 链就成了账单）。复检活问题（续期卡逐班重答，不继承上轮结论）：本班重跑 `gh api -X GET search/issues -f q='repo:<r> is:pr is:open <面关键词> in:title' --jq .total_count` 取当班 crowding 新鲜值 + 该 lane 我方出手位现状（库存/本地腿实查）——crowding 仍 ≥3 且零出手位 ⇒ 归档并记「槽位长期拥挤、无出手可能」；crowding 回落 ⇒ 续期判断重开（「无新活动」降为参考信号，非续期的必要条件——09-18 精化自 main `033f582`）。注：「车在新活动」与「车停滞」要分开——车在被 review 反馈驱动着增强（新评论 + 新 commit）时槽更紧，不是将开。
+- **库存/案卷的 gap 会随 main 移动而过期（09-14 实证，判 goods 与「等槽位」前必做）**：与我方腿同面的缺口可能已被维护者**自己**同刻修掉（他本人就是最大产能，§3.4），而我方腿仍停在本地零 push、watch 仍挂在 scheduled ⇒ 对照物必须是**当前 `origin/main`**，不是我方分支的 diff。一条命令足够：`gh api -X GET repos/<r>/contents/<path>?ref=main --jq .content | base64 -d | grep -c <修复特征>`（>0 即缺口已关 ⇒ 归宿 `already-covered`，件迁 `dead`）。09-14 实例：`forge/109641-macos-holder-scan` 的 case-alias 腿（`c7774ebbf31b`）等槽位期间，维护者 follow-up PR #110872（`274fd56dca`，自陈 `review of #110544`）用更简的无条件 `casefold` 收口同一段代码 ⇒ 案卷 `dead`、watch 归档。**「等槽位」类 watch 的首批判据必须是「main 现版本是否仍缺该 gap」**（09-14 shift-47 前两张 watch 的判据里都缺这一条，导致 gap 已关仍在 scheduled 上占位）。**「等槽位」watch 必须自带收敛条款（判例，09-15 实证；09-18 精化）**：当时事实 = `config set in:title` 同面实测 44 辆拥挤（09-15）；09-18 补充实例 = [watch] `t_94456581`（#109611/#109616）两 lane 同文件在飞 6 辆 / 4 辆、title 域 49 辆、族史 ~3 个月零合入、两车均在增强（#109621 作者 09-16/09-17 更新、#109617 被 review 驱动加 digest 绑定），仍判归档、不收第三期，偏差在卡 comment 如实标注（续期是 create-only 零成本动作，后人可推翻）。当时判断 = 等槽位策略只在「槽可开 **且** 开后有空间」时成立，同面恒拥挤时无限续期只是账单；且「车有活动」不构成续期理由——车在被 review 驱动增强时槽更紧，**「crowding ≥3 + 该 lane 我方零出手位（零库存/零本地腿）」命中即归档**，不得以「车有活动所以不算收敛」再续一期（字面前置永远等不到，watch 链就成了账单）。复检活问题（续期卡逐班重答，不继承上轮结论）：本班重跑 `gh api -X GET search/issues -f q='repo:<r> is:pr is:open <面关键词> in:title' --jq .total_count` 取当班 crowding 新鲜值 + 该 lane 我方出手位现状（库存/本地腿实查）——crowding 仍 ≥3 且零出手位 ⇒ 归档并记「槽位长期拥挤、无出手可能」；crowding 回落 ⇒ 续期判断重开（「无新活动」降为参考信号，非续期的必要条件——09-18 精化自 main `033f582`）。注：「车在新活动」与「车停滞」要分开——车在被 review 反馈驱动着增强（新评论 + 新 commit）时槽更紧，不是将开。
 - **死件归宿 = `dead` 终态（09-14 起可执行；此前「inventory 缺终态枚举期间的止血口径」已退位）**：判 goods 前对每条候选件 gh 实查载体 PR 的 `state`/`merged_at`——载体被关且未合入 ⇒ 件随载体出局，**当场用 `forge.sh set-status <id> dead` 如实登记**（值域含 `dead`/`idea`，提交 `57d277a`；单测 `scripts/contrib/tests/unit/forge-status-enum.sh` 40 断言；`check` 原样打印 status 列）。语义分列不可混：`spent`=**已被收编**（KPI 正信号，**禁拿来兜底死件**，合并会污染计数）/ `dead`=载体已死、内容出局、不再作 offer 弹药。存量实例：`commit-1d0e71e822`（FTS 四点加固；载体内 #86062 于 09-11T13:47:08Z 被 teknium1 关闭、`merged_at=null`、+453 LOC；该件在 PR 分支内的现形 sha = `17b1bc182c38`，作者仍是 strzhao）——**09-14 已迁 `dead`**（用户 12:29 批量放行，`approved.log:52`；数据面回退 = `cp contrib-data/inventory.json.bak-<ts> contrib-data/inventory.json`，演练 sha 逐字节回 `1fbb1c32…`）。
 
 ### 3.3 竞品吸收 A/B/C（发现占坑/重叠 PR 后 30 分钟内判定）
@@ -97,7 +97,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 ### 3.4 生态情报（判断的底色，随班次沉淀更新）
 
-- **farm 生态**：自锚打包/消防竞速/issue 农场三种架构；issue→PR 以小时计（实测 12-21 分钟），单账号日发 7 PR。**anchor ≠ merge**：8 个当日抢坑 PR 零合入实证。SLA=当日内+决策质量，不参与分钟竞速（唯一例外=深水区+独家证据域）。09-13 实测：单账号 @KoNit-K 27 分钟内跨 5 个互不相关域开出 5 辆；一批 11 条里 8 条在 3 秒–34 分钟内被占 ⇒ 空间轮必须先于评分跑，高分题照样抢不到
+- **farm 生态**：自锚打包/消防竞速/issue 农场三种架构；issue→PR 以小时计（实测 12-21 分钟），单账号日发 7 PR。**anchor ≠ merge**：8 个当日抢坑 PR 零合入实证。**当时判断**：被证伪的是 slop 抢法，不是「抢」本身——现行抢法=首车即终态（第一个 PR 就带复现+修+mutation 自证+测试，后到者无从差异），每班自判能否在质量轴上做到：能则抢（forge+coder lane 快速路），不能则 pass 不发垃圾车；复检活问题=抢 3 单后复盘首车质量是否形成品牌信号。09-13 实测：单账号 @KoNit-K 27 分钟内跨 5 个互不相关域开出 5 辆；一批 11 条里 8 条在 3 秒–34 分钟内被占 ⇒ 空间轮必须先于评分跑，高分题照样抢不到
 - **收编文化**：三代收敛（erosika→kshitij→teknium），模式 = 从 PR 池 cherry-pick 保署名收编；我方 #86622 被 teknium 亲自 salvage 是被动验证。看 labels 勿看 reviews（8 月 review 模式静默，合入纯靠 teknium 注意力）
 - **维护者本人的批量收编波（09-13 夜实证，外部出手位被进一步压缩）**：`is:pr is:open created:>2026-09-13T19:20:00Z` 的 **39 辆新车里 26 辆作者 = teknium1**（余 bwrin 2 / Rook-CodeVolt 2 / Raleighite 2 / 单发 4），标题一律 `(#NNNNN, salvage #NNNNN)` 形（例：#110205 = #109954 面的 salvage 收编、#110219 = A2A 族、#110226 = cron/kanban notifier gate）⇒ 维护者在 ~40 分钟内把一批开放 issue 成批 salvage 成自家 PR。三条含义：①「等维护者注意力」不再是可用策略——他本人就是最大产能；②我方件的 fate 更易被自家收编波稀释；③空间轮必须把他新开的车计入占坑（同样占精确槽，且自带保署名收编路径）。**中代批量收编波（09-15 凌晨实证，生态新常态）**：kshitijk4poor（三代收敛 erosika→kshitij→teknium 的中代）在 **60 秒内连开 13 辆** salvage PR（#111175–#111187 连号，横跨 cron/state/kanban/auth/vault/desktop/matrix/install 等互不相关域，标题同 `salvage` 形），与 teknium1 的 26 辆/40 分钟同构 ⇒ 批量 salvage 已是**生态级常态**而非维护者个人行为，任何「家族某缺口早晚有人收」的等待假设都应按「分钟级就被收编」校准；我方 forge 件的出手窗口（开窗期变现）随之进一步收窄。
 - **维护者成本门槛（判例，09-11 实证）**：teknium1 关 #86062 的原文「a +453 LOC on-open integrity probe is disproportionate」，理由=「main already fails open … rebuilds on the next open (`hermes sessions repair` heals it)」⇒ 两条稳定偏好：①**任何往 open 路径加成本的补丁必须自带测量对账**（已是生效的拒稿理由，不是礼貌要求）；②**偏好 fail-open + 下次 open 自愈**，不要新增 fail-closed 拒绝路径。#109641 系 darwin 腿属已有 Linux 腿的对偶，PR 叙事要防被按「新探针」读
@@ -136,6 +136,16 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 - 断言编号法：稿子拆成 A1..An 可验证断言，逐条对 origin/main 实查（行号、事实、log 引用逐字比对、时长算术复算）
 - 审批页中文摘要段：final 稿头部注释块必含「审批页中文摘要（L1，不随评论发出）：」——L0 一句话 + 3-5 要点 + 时效；投递时随注释剥离，绝不外发
 - 三段式外发（对外推送摘要）：发生了什么 → 为何与我有关/多重要 → 建议动作；技术标识只作锚点，永不 raw dump
+
+### 3.7 停滞雷达的 AI 判断面（stale-pr-scan 产出之后）
+
+stale-pr-scan（`scripts/contrib/stale-pr-scan.sh`，随 contrib-flush tick 周级自动跑）产出 `$CONTRIB/stale-pr-scan.json`——那是事实清单，不是判断。拿到后先读信封：total_count / truncated / activity_band 三项让你知道看到的是哪一段窗口切片（truncated 为真时切片未到底），别把切片当全集；item 里的字段全是原文抄录，零评价。然后自决三件事：
+
+- **哪些值得介入**：对方是否真失联（有 maintainer review 等回复的车与零回应死车不是同一种停滞）× 我方接手能否做成 × 与在飞车/库存的关系。判失联有个陷阱：updatedAt 是全体协作者动作的并集，他人评论或机器人打标都会刷新它——要逐辆核对该 PR 自身最后动作是什么、出自谁手，别把别人的活动当成作者还活着。
+- **介入形态**：probe 评论探路 → 等响应窗 → fork+rebase 保原作者署名 → 新 PR 标 `salvages #N`，或放弃；hermes-contribution.md §5 salvage 流程全文仍有效。
+- **节奏**：按当班带宽与质量标准自定，无配额。
+
+注意 sweeper_review.snippets 只是原文摘录——要把它们引用进任何对外文本前，回原 PR 核对全文与语境。
 
 ## 4. 能力用法
 

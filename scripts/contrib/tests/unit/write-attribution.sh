@@ -43,7 +43,7 @@ WA_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wa-unit.XXXXXX")" || {
 }
 trap 'rm -rf "$WA_TMP"' EXIT
 
-t_case "C0 前置：清单可解析（默认路径 / 12 条 / 四模式齐备）"
+t_case "C0 前置：清单可解析（默认路径 / 14 条 / 四模式齐备）"   # t_9396bbf3 stale-pr-scan 两行入表共变
 WA_REG_RC=0
 WA_DEF_REG="$(wa_registry_default "$TESTS_ROOT")" || WA_REG_RC=$?
 assert_exit "0" "$WA_REG_RC" "C0 wa_registry_default rc=0"
@@ -52,7 +52,7 @@ assert_eq "$(basename "$WA_DEF_REG")" "production-writers.tsv" "C0 清单文件�
 WA_LOAD_RC=0
 wa__registry_load "$WA_DEF_REG" || WA_LOAD_RC=$?
 assert_exit "0" "$WA_LOAD_RC" "C0 清单解析 rc=0"
-assert_eq "$WA_R_N" "12" "C0 清单条目数=12（+pending/* 删除面）"
+assert_eq "$WA_R_N" "14" "C0 清单条目数=14（+pending/* 删除面）"   # t_9396bbf3 stale-pr-scan 两行入表共变
 NW_APPEND=0; NW_RW=0; NW_CR=0; NW_DEL=0
 for ((i = 0; i < WA_R_N; i++)); do
   case "${WA_R_MODE[$i]}" in
@@ -62,11 +62,11 @@ for ((i = 0; i < WA_R_N; i++)); do
     corroborated-delete) NW_DEL=$((NW_DEL + 1)) ;;
   esac
 done
-assert_eq "$NW_APPEND" "5" "C0 append-records 条目=5（collect/notify/execute/l2-ledger/watch-due-patrol）"
-assert_eq "$NW_RW" "5" "C0 corroborated-rewrite 条目=5"
+assert_eq "$NW_APPEND" "6" "C0 append-records 条目=6（collect/notify/execute/l2-ledger/watch-due-patrol/stale-pr-scan）"   # t_9396bbf3 stale-pr-scan 两行入表共变
+assert_eq "$NW_RW" "6" "C0 corroborated-rewrite 条目=6"   # t_9396bbf3 stale-pr-scan 两行入表共变
 assert_eq "$NW_CR" "1" "C0 corroborated-create 条目=1（pending/*）"
 assert_eq "$NW_DEL" "1" "C0 corroborated-delete 条目=1（pending/* 删除面）"
-assert_eq "$((NW_APPEND + NW_RW + NW_CR + NW_DEL))" "12" "C0 四模式计数之和=12（防未知 mode 静默漏计）"
+assert_eq "$((NW_APPEND + NW_RW + NW_CR + NW_DEL))" "14" "C0 四模式计数之和=14（防未知 mode 静默漏计）"   # t_9396bbf3 stale-pr-scan 两行入表共变
 
 # -----------------------------------------------------------------------------
 # 合成树（全部用例共用；不触碰真实 contrib-data）
@@ -459,7 +459,7 @@ assert_ge "$(grep -c '^E1$' "$WA_G_CNT_FILE")" "1" "C16a E1 瞬时槽位谓词�
 assert_ge "$(grep -c '^E2$' "$WA_G_CNT_FILE")" "1" "C16a E2 运行期产物谓词命中 >=1（runs/deep-check/**）"
 assert_ge "$(grep -c '^E3$' "$WA_G_CNT_FILE")" "1" "C16a E3 面外数据文件谓词命中 >=1（goods-metrics.json / kanban-flight-digest.json）"
 assert_ge "$WA_G_N_LIVE" "5" "C16a 反查到的写手脚本 >=5（清单 writer 列 → 源码命中）"
-assert_file_contains "$WA_TMP/guard.err" "WA-GUARD candidates=14" "C16a 守卫计数行落 stderr（可审计）"
+assert_file_contains "$WA_TMP/guard.err" "WA-GUARD candidates=16" "C16a 守卫计数行落 stderr（可审计）"   # t_9396bbf3 stale-pr-scan 两行入表共变（登记后实跑 guard 实值=16）
 
 t_case "C16b 覆盖守卫 mutation kill：删清单一行 ⇒ 差集非空（必红）"
 grep -v '^contrib-data/logs/approval-collect.log' "$WA_DEF_REG" > "$WA_TMP/reg-minus-one.tsv"
@@ -918,12 +918,21 @@ assert_eq "$(cls_of_path contrib-data/logs/collect.log)" "external" "C35 追加 
 # 活跃度 = 同一日志有 ts ∈ [t0−120s, t1+120s] 的合规记录。两者同时成立才放行（否则 suite，fail-closed）。
 # 本组用例的夹具：具名记录取 now−5400（远窗口带外，只作所有权）；活跃记录取 now+90（在窗带内、
 # 但与真 rm 产生的锚相距 90s > 30s ⇒ D-β 恒不成立 ⇒ 真正考验 D-α）。
+# 「D-β 恒不成立」由 wa_da_pin 钉锚机械保证（锚恒为 WA_NOW−90，与 act 记录恒距 180s），
+# 不再依赖执行速度（09-18 竞速红因见 wa_da_pin 注释；C38B 自带的 touch -t 是本款先例）。
 # =============================================================================
 WA_DA_OWN_TS="$(date -r $((WA_NOW - 5400)) +'%Y-%m-%d %H:%M:%S')"
 WA_DA_ACT_TS="$(date -r $((WA_NOW + 90)) +'%Y-%m-%d %H:%M:%S')"
 wa_da_log() { printf '%s' "$WT/repo/contrib-data/logs/notify.log"; }
 wa_da_off_of() { # <子串> → 该子串所在合规行的起始字节偏移（grep -b；机械核对「窗口前字节区」）
   LC_ALL=C grep -bE "$WA_ALPHA_N" "$(wa_da_log)" 2>/dev/null | LC_ALL=C grep -F -m1 "$1" | sed -n 's/^\([0-9]*\):.*/\1/p'
+}
+wa_da_pin() { # D-α 夹具：rm 后、snap_after 前把 pending/ 父目录 mtime 钉到 WA_NOW−90（C38B 先例同款）。
+  # 2026-09-18 收口修复（instrument repair，执行速度竞速）：D-β 锚=父目录 mtime 随真实执行漂移，
+  # 而夹具记录串冻结于 WA_NOW+90——漂移进入 [60,120]s 带时 |90−drift|≤30 ⇒ D-β 误成立，整组被
+  # 误判 corroborated-delete-ok（09-18 实证：全量跑 52 红 / 独跑 6 红，红因全部为此）。
+  # 钉锚后与 act 记录恒距 180s>30 ⇒「D-β 不成立」这一夹具前提在任何执行速度下成立；断言本体零改动。
+  touch -t "$(date -r $((WA_NOW - 90)) +%Y%m%d%H%M.%S)" "$WT/repo/contrib-data/pending"
 }
 
 t_case "C36 跨窗所有权链正例（R4 生产形态：同 stem 四件 · 两个 <TS> 两轮）⇒ external/ownership-delete-ok"
@@ -942,6 +951,7 @@ for WA_DA_TAG in 20260914-090949 20260914-100442; do
   done
   # 窗口内写手活跃：落一条在窗记录（不具名）⇒ 该追加自身是 external/registered-append-ok
   printf '[%s] notify: digest 卡已建 t_new（snapshot=…/pending/digest-20260914-110839.json，idem=…）\n' "$WA_DA_ACT_TS" >> "$(wa_da_log)"
+  wa_da_pin
   snap_after
   run_classify
   assert_exit "0" "$?" "C36 [$WA_DA_TAG] wa_classify rc=0"
@@ -998,6 +1008,7 @@ printf '{"digest":"forged-a"}\n' > "$WT/repo/contrib-data/pending/$WA_DA_STEM.js
 snap_before
 printf '[%s] notify: digest 卡已建 t_da（snapshot=…/pending/%s.json，回填旧时间戳）\n' "$WA_DA_OWN_TS" "$WA_DA_STEM" >> "$(wa_da_log)"
 rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.json"
+wa_da_pin
 snap_after
 run_classify
 WA_DA_P="contrib-data/pending/$WA_DA_STEM.json"
@@ -1041,6 +1052,7 @@ printf '[%s] notify: 本窗活跃记录（不具名）\n' "$WA_DA_ACT_TS" >> "$(
 printf '{"stem":8}\n' > "$WT/repo/contrib-data/pending/$WA_DA_S8.json"
 snap_before
 rm -f "$WT/repo/contrib-data/pending/$WA_DA_S8.json"
+wa_da_pin
 snap_after
 run_classify
 assert_eq "$(cls_of_path "contrib-data/pending/$WA_DA_S8.json")" "external" "C39 恰 8 字符 stem ⇒ 所有权适用"
@@ -1048,6 +1060,7 @@ assert_eq "$(reason_of_path "contrib-data/pending/$WA_DA_S8.json")" "ownership-d
 printf '{"stem":7}\n' > "$WT/repo/contrib-data/pending/$WA_DA_S7.json"
 snap_before
 rm -f "$WT/repo/contrib-data/pending/$WA_DA_S7.json"
+wa_da_pin
 snap_after
 run_classify
 assert_eq "$(cls_of_path "contrib-data/pending/$WA_DA_S7.json")" "suite" "C39 短一位（7 字符）stem ⇒ 所有权不适用"
@@ -1068,6 +1081,7 @@ rm -f "$WT/repo/contrib-data/pending/$WA_DA_STEM.json" "$WT/repo/contrib-data/pe
 printf '[%s] notify: 本窗活跃记录（不具名）\n' "$WA_DA_ACT_TS" >> "$(wa_da_log)"
 printf '%smode=mix-suite2\n' "$WA_MARKER_PREFIX" > "$WT/repo/contrib-data/pending/mix-suite2.json"
 printf 'outside change\n' > "$WT/repo/contrib-data/scratch/mix-out2.md"
+wa_da_pin
 snap_after
 run_classify
 WA_DA_MIX_N="$(awk -F'\t' 'NR == FNR { b[$5] = $0; next } { a[$5] = $0 }
