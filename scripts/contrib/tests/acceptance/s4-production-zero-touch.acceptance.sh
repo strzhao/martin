@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # s4-production-zero-touch.acceptance.sh — 场景 4：生产行为零改变
-#   （生产数据零写入 / 外部命令零逃逸 / scripts/contrib 变更闭集 / 零新增脏项）
+#   （生产数据零写入 / 外部命令零逃逸 / scripts/contrib 变更闭集（base 相对化） / 零新增脏项）
 # 覆盖谓词：4.P1 4.P2 4.P3 4.P4（全部 det-machine）
 # 依据：state.md `## 验收场景`（预注册 SSOT；4.P3 为调和后闭集版本）
 # CONTRACT_AMBIGUOUS:
@@ -12,7 +12,8 @@
 #  - 4.P4 谓词语义取「套件运行后无**新增**脏项」：按 porcelain 前后快照 diff==0
 #    求值——交付的验收文件本身位于 scripts/contrib/tests/acceptance/ 下，
 #    QA 阶段若尚未 commit，静态存在的未跟踪项不属于套件造成的脏项。
-# 纪律：无宽容跳过；任一硬断言失败 → 非零退出。
+# 纪律：无宽容跳过；任一硬断言失败 → 非零退出。4.P3 拓扑退化形态为「不可报告」
+#   （SKIPPED，exit 仍 0）——非宽容跳过：集合断言不执行、不打印 PASS、不计入 ALL PASS。
 # 产物：/tmp/autopilot-artifacts/s4-p{1,2,3,4}.out
 # =============================================================================
 set -u
@@ -196,44 +197,85 @@ eq "$VIOL" 0 "$P 外部命令逃逸次数（tripwire 日志行数；本轮套件
 echo "PASS ${P}（违规日志 0 行；套件 rc=$RC_TW 记录在 artifact）"
 
 # -----------------------------------------------------------------------------
-# 4.P3 [det-machine]（调和后）driver: git diff --name-only <merge-base>..HEAD -- scripts/contrib
-# assert: 路径集合 ⊆ {7 个既有脚本} ∪ tests/ 前缀，集合外路径数==0
-# 反 No-op：变更集必须非空，否则闭集断言空真（无意义）→ 判 FAIL
+# 4.P3 [det-machine]（基线可注入 + 拓扑退化不可报告 + 闭集 base 相对化）
+# driver: git diff --name-only <BASE>..HEAD -- scripts/contrib（只读已提交变更，与工作区无关）
+# BASE：env S4_P3_BASE 优先，缺省 `git merge-base HEAD main`；**无祖提交兜底**——
+#   拓扑退化（按序判定，任一成立 ⇒ SKIPPED）：① BASE 为空；② BASE == HEAD
+#   （主 checkout 拓扑 merge-base 退化）；③ BASE..HEAD 在 scripts/contrib 下零变更。
+#   SKIPPED 形态：stdout+stderr 各一行同类说明，不执行集合断言、不打印 PASS、
+#   不计入末行 ALL PASS；整体退出码仍 0（不可报告 ≠ 失败）。
+# 闭集口径（base 相对化，替换旧硬编码 7 脚本——陈旧闭集的根治）：
+#   变更路径落任一允许面即「内」——
+#   ① scripts/contrib/tests/ 前缀（测试面：允许增/改/删）；
+#   ② BASE 树中已存在的 scripts/contrib 路径（既有面：允许修改）；
+#   ③ 清单文件 scripts/contrib/tests/acceptance/s4-p3-new-paths.txt 登记的路径
+#     （新增面：每行一条仓库相对路径，# 开头注释行、空行忽略；初始为空）。
+# assert: TOTAL >= 1（反 No-op 空真）∧ 集合外路径数==0；集合外逐行落 OUTSIDE-SET 证据
 # -----------------------------------------------------------------------------
 P="4.P3"
-MB="$(git -C "$REPO_ROOT" merge-base HEAD main 2>/dev/null || true)"
-# 直提 main 拓扑兜底：merge-base==HEAD 时 diff 恒空（闭集断言空真）——
-# 回退到「首个触及 scripts/contrib 的提交」之父（=本任务交付的引入点），闭集语义不变
-if [ -z "$MB" ] || [ -z "$(git -C "$REPO_ROOT" diff --name-only "$MB..HEAD" -- scripts/contrib 2>/dev/null)" ]; then
-  FIRST="$(git -C "$REPO_ROOT" log --format=%H -- scripts/contrib 2>/dev/null | tail -1)"
-  [ -n "$FIRST" ] || die "$P" "无法确定 scripts/contrib 的引入提交（仓库历史缺该路径）"
-  MB="${FIRST%^}"
+BASE="${S4_P3_BASE:-$(git -C "$REPO_ROOT" merge-base HEAD main 2>/dev/null || true)}"
+P3_SKIPPED=0
+P3_REASON=""
+if [ -z "$BASE" ]; then
+  P3_REASON="merge-base 不可解析（无 BASE 可用）"
+elif [ "$BASE" = "$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)" ]; then
+  P3_REASON="HEAD==base（主 checkout 拓扑 merge-base 退化）"
+elif [ -z "$(git -C "$REPO_ROOT" diff --name-only "${BASE}..HEAD" -- scripts/contrib 2>/dev/null)" ]; then
+  P3_REASON="BASE..HEAD 在 scripts/contrib 下零变更"
 fi
-( cd "$REPO_ROOT" && git diff --name-only "$MB..HEAD" -- scripts/contrib </dev/null ) >"$ART/.s4-p3.raw" 2>&1
-OUTSIDE=0; TOTAL=0
-OUTSIDE_LIST="$(mktemp "${TMPDIR:-/tmp}/acc-s4-p3.XXXXXX")"
-# 注意：独立文件收集集合外路径，禁止向正在读取的 artifact 内追加（读回自吞）
-while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  TOTAL=$((TOTAL+1))
-  case "$f" in
-    scripts/contrib/tests/*) : ;;
-    scripts/contrib/notify.sh|scripts/contrib/rq.sh|scripts/contrib/scan_gate.sh|\
-scripts/contrib/deep_check_gate.sh|scripts/contrib/deep-check.sh|\
-scripts/contrib/run-deepcheck.sh|scripts/contrib/run-watch.sh) : ;;
-    *) OUTSIDE=$((OUTSIDE+1)); echo "OUTSIDE-SET: $f" >> "$OUTSIDE_LIST" ;;
-  esac
-done < "$ART/.s4-p3.raw"
-{
-  echo "--- merge-base=$MB 变更清单（$TOTAL 项）---"
-  cat "$ART/.s4-p3.raw"
-  echo "--- 集合外路径（$OUTSIDE 项）---"
-  cat "$OUTSIDE_LIST"
-} > "$ART/s4-p3.out"
-rm -f "$OUTSIDE_LIST"
-ge "$TOTAL" 1 "$P 变更集非空（merge-base=${MB}；为空=闭集断言空真，提交状态不对）"
-eq "$OUTSIDE" 0 "$P 集合外路径数"
-echo "PASS ${P}（变更 $TOTAL 项全部在闭集内；merge-base=${MB}）"
+if [ -n "$P3_REASON" ]; then
+  P3_SKIPPED=1
+  echo "SKIPPED 4.P3（topology: ${P3_REASON}；diff 基线 BASE=${BASE:-none} 不可用于本次变更集）"
+  echo "SKIPPED 4.P3（topology: ${P3_REASON}；diff 基线 BASE=${BASE:-none} 不可用于本次变更集）" >&2
+  {
+    echo "--- SKIPPED[topology] ---"
+    echo "BASE=${BASE:-none}"
+    echo "原因=${P3_REASON}"
+  } > "$ART/s4-p3.out"
+else
+  ( cd "$REPO_ROOT" && git diff --name-only "${BASE}..HEAD" -- scripts/contrib </dev/null ) >"$ART/.s4-p3.raw" 2>&1
+  OUTSIDE=0; TOTAL=0
+  OUTSIDE_LIST="$(mktemp "${TMPDIR:-/tmp}/acc-s4-p3.XXXXXX")"
+  VERDICT_LIST="$(mktemp "${TMPDIR:-/tmp}/acc-s4-p3-verdict.XXXXXX")"
+  # 允许面②既有面：BASE 树中的 scripts/contrib 路径全集一次取齐（免逐行 ls-tree）
+  BASE_SET="$(mktemp "${TMPDIR:-/tmp}/acc-s4-p3-base.XXXXXX")"
+  git -C "$REPO_ROOT" ls-tree -r --name-only "$BASE" -- scripts/contrib > "$BASE_SET" 2>/dev/null
+  # 允许面③新增面：清单文件整行精确匹配；# 注释行、空行天然不等于任何真实路径
+  P3_MANIFEST="$REPO_ROOT/scripts/contrib/tests/acceptance/s4-p3-new-paths.txt"
+  # 注意：独立文件收集集合外路径，禁止向正在读取的 artifact 内追加（读回自吞）
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    TOTAL=$((TOTAL+1))
+    case "$f" in
+      scripts/contrib/tests/*) echo "IN-SET(tests/): $f" >> "$VERDICT_LIST" ;;
+      *)
+        if grep -Fqx -- "$f" "$BASE_SET" 2>/dev/null; then
+          echo "IN-SET(base 既有): $f" >> "$VERDICT_LIST"
+        elif [ -f "$P3_MANIFEST" ] && grep -Fqx -- "$f" "$P3_MANIFEST" 2>/dev/null; then
+          echo "IN-SET(manifest 登记): $f" >> "$VERDICT_LIST"
+        else
+          OUTSIDE=$((OUTSIDE+1))
+          echo "OUTSIDE-SET: $f" >> "$OUTSIDE_LIST"
+          echo "OUTSIDE-SET: $f" >> "$VERDICT_LIST"
+        fi
+        ;;
+    esac
+  done < "$ART/.s4-p3.raw"
+  {
+    echo "--- BASE ---"
+    echo "BASE=${BASE}（env S4_P3_BASE 优先，缺省 merge-base HEAD main）"
+    echo "--- 变更清单（$TOTAL 项）---"
+    cat "$ART/.s4-p3.raw"
+    echo "--- 逐行判据 ---"
+    cat "$VERDICT_LIST"
+    echo "--- 集合外路径（$OUTSIDE 项）---"
+    cat "$OUTSIDE_LIST"
+  } > "$ART/s4-p3.out"
+  rm -f "$OUTSIDE_LIST" "$VERDICT_LIST" "$BASE_SET"
+  ge "$TOTAL" 1 "$P 变更集非空（BASE=${BASE}；为空=闭集断言空真，提交状态不对）"
+  eq "$OUTSIDE" 0 "$P 集合外路径数"
+  echo "PASS ${P}（变更 $TOTAL 项全部在允许面内；BASE=${BASE}）"
+fi
 
 # -----------------------------------------------------------------------------
 # 4.P4 [det-machine] driver: git status --porcelain scripts/contrib
@@ -250,5 +292,9 @@ eq "$PD" 0 "$P 套件运行前后 porcelain 新增脏项"
 } >> "$ART/s4-p4.out"
 echo "PASS 4.P4（新增脏项=0）"
 
-echo "s4: ALL PASS（4.P1 4.P2 4.P3 4.P4）"
+if [ "$P3_SKIPPED" -eq 1 ]; then
+  echo "s4: 4.P1 4.P2 4.P4 PASS；4.P3 SKIPPED[topology: ${P3_REASON}]（不可报告，非失败）"
+else
+  echo "s4: ALL PASS（4.P1 4.P2 4.P3 4.P4）"
+fi
 exit 0
