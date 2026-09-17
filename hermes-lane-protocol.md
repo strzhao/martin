@@ -157,24 +157,22 @@ contrib 域的特殊性：确定性部分**已经全自动化**（launchd :07 sc
 | profile 管理 | `hermes_cli/profiles.py` |
 | 用户文档 | `website/docs/user-guide/features/kanban.md` |
 
-## §10 coder lane（CC 内嵌 worker）（2026-09-08 立项；09-10 v1.2.0 --headless + 限额兜底化；**09-13 v1.4.0 摘除 zcode 引擎，唯一 = claude**）
+## §10 coder lane（真 profile worker）（2026-09-08 立项；**09-17 v2.0 剃刀收敛**——SOUL 15 行 + 卡面配方，执行手册退役；09-13 v1.4.0 摘除 zcode 引擎，唯一 = claude）
 
 四域之外的第五 profile：**coder** = 复杂编码执行 worker。与其他 lane 的区别——它不是 CC 会话 claim 的 control-plane lane，而是真 profile：dispatcher spawn 后由 hermes worker 陪跑一次无头自动驾驶。
 
-**链路一行图**：微信 → default（AI 自判，coder-delegate skill）建 coder 卡 → dispatcher spawn coder worker → worker 按 claude-run SKILL ⓪ 发车（**引擎唯一 = claude，无降级链**；09-13 摘除 zcode：周末免费包 300M 三日烧空、实测比 claude 引擎慢 ~10× 贵 10-20×、失败降级双倍付费）→ 用 terminal 工具在 kanban 物化的 git worktree 里**多轮接力**跑 `claude -p "/autopilot --headless <目标>"`（⚠️ Phase 0 spike 实证 09-08：单条 -p 进程退出后循环即停、不自续到 done，worker 必须循环重调直到 state.md `phase: done`；09-10 起 autopilot `--headless` 档位上线——交互点确定性化、正交于 fast/standard 档位（档位不传，AI 探针自适应），单轮可一口气推进多 phase）→ 每轮 `process(action=wait)` 分片等待 + heartbeat → done 后验收（commit/测试/diff）→ `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
+**链路一行图**：微信/会话 → 建卡 AI 建 coder 卡（卡面自带目标/约束/验收/链路事实/交付配方）→ dispatcher spawn coder worker → worker 按 SOUL.md 发车（引擎唯一 = claude）→ 在 kanban 物化的 git worktree 里跑 `claude -p "/autopilot --headless <目标>"` → 循环陪跑直到 state.md `phase=done` → 如实验收 → `kanban_complete`（三段式 summary + metadata）→ notifier 推回微信。
 
-**限额只做极限兜底（2026-09-10 按 16 张真实卡数据审视，原则=不做过强干预）**：轮级 alarm 废除（统一由内层 `TIMEOUT_BUDGET` 硬顶，实测 standard 设计轮 ~25min、headless 单轮可跑完整链）；卡死判据 = >90min **state.md mtime** 无增长（活性信号换源，claude stdout 本就稀疏不可判活）；编码卡 `max_runtime` 默认 210m→270m（对齐 timeout_budget 域上界 14400s+1800s 余量谓词）；`claude_attempts ≤2` 与 autopilot `max_iterations` 不动（数据零耗尽）。**孤儿收养为发车前置步骤**：worker 死而 executor 存活的 protocol_violation 已两卡实证，spawn 前先探遗留进程——活跃→监护收养（省 1-2h 重跑），死亡→清场防双跑。
+**收敛宪法（2026-09-17，AI First + KISS）**：lane 层只留「身份 + 目标 + 环境事实」（真源 = `~/.hermes/profiles/coder/SOUL.md`，15 行）；卡型配方归卡面（own-PR = `scripts/approval/execute.sh` 卡模板；forge = contrib-operator SKILL §4.3；鸿蒙 = 卡面交付配方）；机器闸已撤（PATH 包装器/disallowedTools 烟测全废），对外动作约束 = 卡面配方 + 远端分支保护；判断标准 = 强 AI 能推出的删、只能踩坑知道的留。卡粒度姿态（kanban-orchestrator SKILL）：默认一张卡跑完整个目标，拆卡唯一理由 = 并行能缩短墙钟。
 
-**worktree 归属决策**：worktree 由 kanban 物化（`hermes_cli/kanban_db.py:10237`），**不交给 autopilot 再建一层**——autopilot 的 SessionStart hook 在 worktree 内会自动进 worktree-session 模式（锚 `worktree-bootstrap.sh` 行为），worker 只需把 claude 的工作目录指向 `$HERMES_KANBAN_WORKSPACE`，两层机制天然兼容。
+**worktree 归属决策**：worktree 由 kanban 物化（`hermes_cli/kanban_db.py:10237`），不交给 autopilot 再建一层——autopilot 的 SessionStart hook 在 worktree 内自动进 worktree-session 模式，worker 只需把 claude 工作目录指向 `$HERMES_KANBAN_WORKSPACE`。
 
-**L2 红线互引（本文件 §5.3）**：coder 只 commit 不 push（`--disallowedTools` 硬禁 `git push`/`gh pr`/`gh api`/`gh release`，白名单 + 红线双闸；鸿蒙卡另有 env 级 `.lane-bin`/hooksPath 第二道机械闸，引擎无关，见 SKILL §⑧.8）；一切 push/PR/release 需求走 L2 审批环，coder 卡的产出物是本地 worktree 分支 + 本地 commit，合并与发布是卡外的人工/审批动作。**唯一例外（09-08 lane 改造）：own-PR 执行卡**（body 带 `类型: own-PR 执行`，approval 流水线 L2 批准后由 execute.sh 建卡）——按卡 body 配方放开 `git push fork` + `gh pr create`（仍禁 `gh pr merge`/`gh release`/`gh api` 写/`git push origin`/force），执行手册见 claude-run SKILL §⑦。
+**L2 红线互引（本文件 §5.3）**：对外动作（push/PR/merge）按卡面配方执行，卡面没写的默认只 commit；一切超卡面的对外发布走 L2 审批环，coder 卡产出物 = 本地 worktree 分支 + 本地 commit。
 
-**执行手册**：`~/.hermes/profiles/coder/skills/claude-run/SKILL.md` v1.4.0（⓪ 引擎唯一 = claude（09-13 摘除 zcode，摘除依据与历史配方见该节注记）、CLI 探测、模型 pin、双层超时、`--headless` 启动配方、auto_approve 兜底、孤儿收养、失败矩阵、own-PR 执行卡 §⑦、鸿蒙编码卡 §⑧、forge-lane 入库卡 §⑨）。
+### 10.1 卡型（交付配方均在卡面）
 
-**验收**：走本文件 §7 新 profile 创建 SOP 的 smoke 卡步骤（设计文档写 §9，实为 §7——§9 是源码锚点表）。
+- **own-PR 执行卡**：body 带 `类型: own-PR 执行（coder lane）`，approval 流水线 L2 批准后由 `execute.sh` 建卡，卡模板内联执行与收尾配方。
+- **鸿蒙编码卡**：目标仓 = harmony-space；卡面声明交付物（如「已并 PR：门绿后 `gh pr merge --merge --delete-branch` 自并；force/main 直推禁」），worker 按卡面组合 flags；仓环境配方见 harmony-space `CLAUDE.md`。
+- **forge 入库卡 / martin 流水线卡**：配方见 contrib-operator SKILL §4.3 与卡面。
 
-### 10.1 鸿蒙编码卡（2026-09-08 新增卡型）
-
-- **卡型标记**：卡 body 带 `类型: 鸿蒙编码卡`，目标仓 = harmony-space。执行手册 = coder claude-run SKILL §⑧；**规范唯一真源 = harmony-space 仓 `docs/harmony-coding-brief.md`**（必填节闭集 / 机器门配方 / 远端动作边界 / 错误标记枚举），本侧只放薄壳配方，不复制全文。
-- **边界（SOUL 红线 1 第二例外）**：允许 `git push -u origin <功能分支>` + `gh pr create`（证据标记 `[contract:PASS]`/`[test:PASS]` 贴 PR body）；`gh pr merge` / main 直推 / force 仍全禁，merge 留人。双闸：SKILL §⑧ 细化 disallowedTools（工具级）+ push 前 refspec 机械自检（配方级）。
-- **建卡预检**：body 缺 `## 目标`/`## 约束`/`## 验收标准`/`## 机器门` 任一 → `kanban_block`（`harmony_card_blocked`），不烧配额。
+**验收**：走本文件 §7 新 profile 创建 SOP 的 smoke 卡步骤。

@@ -64,7 +64,7 @@
 contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **default profile 的 agent cron**（`3e5c6e23e260`，每小时 :02，`--skill contrib-operator`，kanban 原生外部 actor 全权看板操作），宪法真源 = `deploy/contrib-operator/SKILL.md`（部署双点：`~/.hermes/skills/github/` + contrib profile；改真源后 cp 双点 + diff 自证）。班卡/心跳脚本/收口与唤醒钳夹均已退役——operator 以 cron agent 身份原生执行全部编排动作。六节点 感知→分诊→造→过闸→守候→学习 全 AI 主导；代码只做钳夹（L2 闸/预算/心跳/watch-due 唤醒）+ 三账本（看板/approved.log/ops-journal）。
 
 - **排查入口**：operator 行为 → `contrib-data/ops-journal.md` + contrib board 班卡；架构宪法与迁移史 → [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)
-- **能力面**：新命中→[sig] 卡分诊三路（出手/[watch]/放行）；造货走 forge+coder lane（claude-run §⑨）；深检走 kanban swarm+`--resources deepcheck:global`；对外动作一律 L2 提案（agent 起草链落笔）
+- **能力面**：新命中→[sig] 卡分诊三路（出手/[watch]/放行）；造货走 forge+coder lane（配方见 contrib-operator SKILL §4.3）；深检走 kanban swarm+`--resources deepcheck:global`；对外动作一律 L2 提案（agent 起草链落笔）
 - **旧的五段骨架（run-watch/scan_gate/mail_gate/deepcheck 快车道等）09-13 退役删除**，git 历史可溯；本日最高实证：#109641 感知→深研→forge→L2-A→PR #109758 单日全链闭环
 
 ### 快车道与 L2-A 微信审批环（09-04 上线）
@@ -111,7 +111,7 @@ hermes AI 全权接管温故卡（appId `6917615875709812574`，包名 `com.stri
 - **安装路径**: `/Users/stringzhao/workspace/hermes-agent/`
 - **CLI 路径**: `/Users/stringzhao/.local/bin/hermes`
 - **用户数据目录**: `~/.hermes/`（config.yaml、sessions、skills、memories、cron、logs 等）
-- **当前模型**: `glm-5.3-flash`（bigmodel anthropic 端点 `https://open.bigmodel.cn/api/anthropic`，key 在 `~/.hermes/.env` 的 `GLM_FLASH_ECHO_API_KEY`；2026-09-15 晚用 `gcli hermes "glm flash echo"` 切入 glm-flash-echo 套餐——同日晨曾走 glm-flash/lastest 套餐，09-14 Kimi 额度用尽曾临时走 deepseek-flash；config 备份 `~/.hermes/config.yaml.bak-before-glm-flash-echo-1789483780`；回滚 `gcli hermes rollback`，9 个 cron 已随切换自动重 pin；⚠注意：state.db 里 custom provider 的 `billing_provider` 统一记 `custom`，真锚=`billing_base_url`，切换验证时别把 `custom` 当失败）
+- **当前模型**: `glm-5.3-flash`（bigmodel anthropic 端点 `https://open.bigmodel.cn/api/anthropic`，key 在 `~/.hermes/.env` 的 `BIGMODEL_API_KEY`；2026-09-16 晚用 `gcli hermes "glm flash lastest"` 切回 glm-flash/lastest 套餐——09-15 晚曾走 glm-flash-echo 套餐（`GLM_FLASH_ECHO_API_KEY` 条目仍在，可随时 `gcli hermes "glm flash echo"` 切回），09-14 Kimi 额度用尽曾临时走 deepseek-flash；config 备份 `~/.hermes/config.yaml.bak-before-glm-flash-1789573802`；回滚 `gcli hermes rollback`，9 个 cron 已随切换自动重 pin；⚠注意：state.db 里 custom provider 的 `billing_provider` 统一记 `custom`，真锚=`billing_base_url`，切换验证时别把 `custom` 当失败）
 - **终端后端**: local（命令直接在宿主机执行）
 - **当前工具集**: hermes-cli
 

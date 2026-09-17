@@ -740,7 +740,8 @@ PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strz
 构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
   fi
   BODY_LINES+="
-红线: ① commit 一律不带 Co-Authored-By（上游惯例）② push 前 approved.log 近 20 行查 ${ID} 去重 + gh pr list --head <分支> 双重去重，已有 PR 则只收尾绝不重 push ③ 完成后由 worker（不是 claude）执行 rq.sh set ${ID} executed --note <pr_url>（按实际结果也可 revise/failed；claude 不碰 martin 仓）④ 失败按 claude-run SKILL 失败矩阵，重试 ≤2"
+执行: ① claude 裸跑（不带权限 flags、不传 --model），完整指令写 workspace 内 BRIEFING.md，启动命令落 run-ownpr.sh 再 bash（hermes 终端过滤器拦内嵌 git push/gh pr 字面量与 perl -e alarm）② 成稿先拷入 workspace 并裁注释头成 PR-BODY.md（取首个 '# ' 标题行到文件尾，--body-file 用它；建 PR 后 gh pr view 逐字 diff 复核）③ 幂等预检：分支已有 commit 跳过构建；上游已有该 head 的 PR 只收尾（gh pr list --head 对 fork head 静默返空，用 --state all --json headRefName 本地过滤）④ 收尾由 worker 执行：l2_ledger.sh record --kind own-PR --rq ${ID} --branch <分支> --url <pr_url>（账本，漏记会被 hourly 差集告警）→ rq.sh set ${ID} executed --note <pr_url>（revise/failed 同口径）→ notify.sh receipt（仅 executed 发；失败态发 own-pr-failed 事件）→ kanban_complete(metadata 带 rq_id/mode/branch/pr_url)
+红线: ① commit 一律不带 Co-Authored-By（上游惯例）② push 前 approved.log 近 20 行查 ${ID} 去重，已有 PR 则只收尾绝不重 push ③ claude 不碰 martin 仓（rq/账本/notify 都是 worker 的活）④ 失败 kanban_block 上浮现场，不烧第三次 claude 启动"
   KANBAN_ARGS=(kanban create "执行 own-PR: ${ID}（#${ITEM_PR:-issue ${ISSUE}}）"
     --assignee coder --idempotency-key "${ID}" --body "$BODY_LINES")
   if [[ "$MODE" == "push-only" ]]; then

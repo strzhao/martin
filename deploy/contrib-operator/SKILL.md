@@ -193,7 +193,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 ### 4.3 forge（造货）
 
-`bash scripts/contrib/forge.sh init/check/set-status`（本地为止，绝不 push）。造货本体走 coder lane 卡（claude-run SKILL §⑨ forge-lane 配方：单关注点 + mutation 自证 + 基于 origin/main + 无 Co-Authored-By）。库存按 §3.2 三态供深检 offer。
+`bash scripts/contrib/forge.sh init/check/set-status`（本地为止，绝不 push）。造货本体走 coder lane 卡，卡面自带 forge 配方：单关注点 + 基于 origin/main + 无 Co-Authored-By；入库三步 init → apply+commit → register（`--sha` 取 worktree 内 `git rev-parse HEAD`，`--proof` 非空且留 exit code）；保署名 `git commit --author="<原作者> <id+login@users.noreply.github.com>"`；mutation 自证**先跑 RED 再 commit**（树干净时 stash 静默失效=假 RED；已 commit 用 `checkout HEAD~1 -- <file>` 复现、`checkout HEAD -- <file>` 还原）；全程零外发（未 push 用 `ls-remote` 为空自证）；闸门确认≠投递（worker 绝不自己发评论）；salvage 评估只读，占坑判定按「引用目标文件的全部在飞车逐辆扫 diff 内容」，不信关键词检索。库存按 §3.2 三态供深检 offer。
 
 ### 4.4 邮件（himalaya）
 
@@ -210,7 +210,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 |---|---|
 | 策略主轴 2.0 全文 / 三腿分工 / salvage §5 流程 / sweeper 红线 §7 / 存量台账 §11 | `~/workspace/martin/hermes-contribution.md` |
 | 对外草稿形态选择/锚定铁律/验证纪律 | `~/workspace/martin/.claude/agents/hermes-contrib-strategist.md` |
-| own-PR coder 卡/forge 卡执行配方 | `~/.hermes/profiles/coder/skills/claude-run/SKILL.md` §⑦/§⑨ |
+| own-PR coder 卡/forge 卡执行配方 | 卡面自带（own-PR = `execute.sh` 卡模板；forge = 本文件 §4.3）；coder worker 宪法 = `~/.hermes/profiles/coder/SOUL.md` |
 | 卡/lane 纪律、profile 边界 | `~/workspace/martin/hermes-lane-protocol.md` |
 | 架构宪法/节点钳夹判据 | `~/workspace/martin/contrib-ops-ai-native-design.md` |
 | **修复判断四问全文 / 红队审法 / 周审 / 周报口径 / 授权边界（可逆性判据、六条红线、纯自律条款清单）** | `~/workspace/martin/docs/operator-autonomy-design-v3.1.md`（§4 / §6 / §7 / §8 / §10 / §13）——**判「该不该修、修多小」前必读** |

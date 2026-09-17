@@ -31,7 +31,7 @@
 | M2 | **L2 自动批准硬条件**（任一不过 → 升级人工） | `scripts/approval/auto-gate.sh:35-102`：总开关 `auto_approve`（:35-40）→ **own-PR 永不自动**（:48-52）→ disposition 白名单 review-evidence/probe-salvage（:54-58）→ score≥`auto_approve_min_score`（:60-66）→ `verdict.json` 必须 decision=auto ∧ high ∧ low（:68-91）→ goods 三态 fail-closed（:93-99） | 模型意见只是输入；硬条件由代码裁决 |
 | M3 | **预算钳夹** | `scripts/contrib/rq.sh budget` reserve/refund + `contrib-data/config.json`（`deep_check_per_week:30`、`probe_per_day:1`、`max_alert_pushes_per_day:30`、`notify_min_interval_min:20`） | 超配额 = 硬拒（09-13 实证：W37 30/30 → 一律 `DENY week-limit`） |
 | M4 | **心跳调度** | hermes cron `:02` → `~/.hermes/scripts/contrib-heartbeat.sh`（真源 `scripts/contrib/heartbeat.sh`）；幂等键 `shift-YYYYMMDD-HH` + `--resources shift:contrib` 单飞（:21-32） | 每小时必有一班；重跑同小时返回已有卡；上一班未收工则排队 |
-| M5 | **coder lane 工具级 deny** | `--disallowedTools "Bash(git push*)" "Bash(gh pr *)" "Bash(gh api *)" "Bash(gh release *)"`（`hermes-lane-protocol.md:170`；claude-run SKILL §④） | 引擎物理上没有 push/PR 能力（不是「不应该用」而是「用不了」） |
+| M5 | ~~coder lane 工具级 deny~~ **已撤除（09-17 剃刀收敛）** | 原 `--disallowedTools`/PATH 包装器双闸随 claude-run 手册退役；对外动作约束 = 卡面配方 + 远端分支保护（`hermes-lane-protocol.md` §10 v2.0） | 爆炸半径控制上移到远端；卡面没写的对外动作默认不发生（只 commit） |
 | M6 | **kanban 写围栏（两个）** | ①CLI 写动词在 worker 上下文被硬拒（`kanban.py:214-226` denied 集；原文 `delegate_task child contexts cannot mutate Kanban tasks via the CLI`）②kernel worker 作用域拒跨卡终态（`worker is scoped to task <本卡>`） | 派单 worker 改不了别人和自己的终态（09-13 两班实证） |
 | M7 | **台账单写方** | `inventory.json` 唯一写入口 = `scripts/contrib/forge.sh`；`approved.log` 只读；`budget.json` 唯一写入口 = `rq.sh` | 并发写不会互相覆盖 |
 | M8 | **枚举强制（同时是缺口来源）** | `forge.sh:144` 只收 `ready\|stale\|in-flight\|spent\|needs-decision` | 状态机闭合，但漂移时无法如实登记（见 §1.4#3） |
@@ -167,7 +167,7 @@ hermes 的对应件（已实查，见 §1.3 证据）：`tools/approval_floors.p
 
 ### 3.4 A3 代码修复（受控车道；本次赋权的主体）
 
-**核心裁定：A3 不让 operator 直接改文件，而是让它「立项 + 走车道」。** 理由：本域已有成熟的质量机件（coder lane 的 autopilot 红蓝队 / plan-reviewer / QA 波次 / mutation 自证），绕过它们直接改 = 废掉质量根（claude-run SKILL 红线 7 的同款逻辑）。所以：
+**核心裁定：A3 不让 operator 直接改文件，而是让它「立项 + 走车道」。** 理由：本域的质量根是 coder lane 的 autopilot 状态机（红蓝队 / plan-reviewer / QA 波次），绕过它直接改 = 废掉质量机件。所以：
 
 ```
 operator 发现机制缺口
@@ -364,7 +364,7 @@ S1（gh 只读）是 prompt 级：contrib worker 物理上能 `gh pr comment`。
 | 预算钳夹与配额 | `scripts/contrib/rq.sh budget`；`contrib-data/config.json` |
 | 心跳与单飞 | `scripts/contrib/heartbeat.sh:21-32` |
 | 到期钳夹的两处脆弱（读取 + 解析） | `scripts/contrib/heartbeat.sh:37-51`（SQL 在 41-44） |
-| coder lane 工具级 deny | `hermes-lane-protocol.md:170`；claude-run SKILL §④ |
+| coder lane 工具级 deny | **已撤除**（09-17 收敛，见 M5 行）；约束 = 卡面配方 + 远端分支保护 |
 | kanban 写围栏 | 09-13 journal 行（源码 `kanban.py:214-226`、`kanban_db.py:121-136`） |
 | `approvals.deny` 是硬地板（yolo 之下也拦） | `tools/approval_floors.py:23-55`；`website/docs/user-guide/security.md:33-39` |
 | 「prompt 改不了权限」原则 | Claude Code permissions 文档；`harness-engineering-principles.md:27-30`、反模式 #1/#2 |

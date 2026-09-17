@@ -44,7 +44,6 @@ fi
 assert_file "$CODER_CONFIG" "profiles/coder/config.yaml 存在"
 assert_file "$PROFILE_DIR/SOUL.md" "profiles/coder/SOUL.md 存在"
 assert_file "$PROFILE_DIR/profile.yaml" "profiles/coder/profile.yaml 存在"
-assert_file "$PROFILE_DIR/skills/claude-run/SKILL.md" "profiles/coder/skills/claude-run/SKILL.md 存在"
 
 # --- C2: coder-delegate SKILL 存在 + frontmatter name ---
 assert_file "$DELEGATE_SKILL" "skills/coder-delegate/SKILL.md 存在"
@@ -97,14 +96,14 @@ model_default="$(printf '%s\n' "$cfg" | awk '
 [[ -n "$model_default" ]] || fail "model.default 为空或缺失（要求非空）"
 ok "model.default 非空: $model_default"
 
-# --- C6: 全局 config kanban.max_in_progress == 3 ---
+# --- C6: 全局 config kanban.max_in_progress == 10（09-16 委托人拍板，与 per-profile 对齐） ---
 [[ -f "$GLOBAL_CONFIG" ]] || fail "全局配置缺失: $GLOBAL_CONFIG"
 kanban_sec="$(awk '/^kanban:/{f = 1; next} f && /^[^[:space:]#]/{exit} f {print}' "$GLOBAL_CONFIG")"
 [[ -n "$kanban_sec" ]] || fail "全局 config.yaml 缺 kanban: 段"
 mip="$(printf '%s\n' "$kanban_sec" | grep -E '^[[:space:]]*max_in_progress:' | head -n 1 | grep -oE '[0-9]+')"
 [[ -n "$mip" ]] || fail "kanban 段缺 max_in_progress"
-[[ "$mip" -eq 3 ]] || fail "kanban.max_in_progress=${mip}，要求 == 3"
-ok "kanban.max_in_progress == 3"
+[[ "$mip" -eq 10 ]] || fail "kanban.max_in_progress=${mip}，要求 == 10"
+ok "kanban.max_in_progress == 10"
 
 # --- C7: kanban.max_in_progress_per_profile == 10（单个 int，全局每-profile 上限）---
 # ⚠️ 运行时实证（09-08）：gateway/kanban_watchers.py:1391 对此键做 int() 校验，
@@ -139,9 +138,9 @@ if command -v hermes >/dev/null 2>&1; then
   if [[ "$rc" -ne 0 ]]; then
     skip "hermes config get kanban 失败(rc=$rc) — 生效验证跳过"
   else
-    printf '%s\n' "$out" | grep -Eq 'max_in_progress:[[:space:]]*3([^0-9]|$)' ||
-      fail "hermes config get kanban 未体现 max_in_progress: 3"
-    ok "hermes config get kanban 体现 max_in_progress: 3"
+    printf '%s\n' "$out" | grep -Eq 'max_in_progress:[[:space:]]*10([^0-9]|$)' ||
+      fail "hermes config get kanban 未体现 max_in_progress: 10"
+    ok "hermes config get kanban 体现 max_in_progress: 10"
     printf '%s\n' "$out" | grep -Eq 'max_in_progress_per_profile:[[:space:]]*10([^0-9]|$)' ||
       fail "hermes config get kanban 未体现 max_in_progress_per_profile: 10"
     ok "hermes config get kanban 体现 max_in_progress_per_profile: 10"
