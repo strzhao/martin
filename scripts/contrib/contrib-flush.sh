@@ -15,8 +15,10 @@
 #   3. 内层 `timeout 120` 兜住卡死；无 timeout 可执行文件时降级为无护栏并如实报告；
 #   4. 幂等安全网不在本脚本内（notify.sh 自带 /tmp 锁 + min_interval + 当日限额，
 #      多调用者无害、双发已被吸收）——勿在此重复实现；
-#   5. 巡检器自身亦永远 exit 0、stdout ≤1 行、细节落 `contrib-data/logs/watch-due-patrol.log`。
-# 回退：删本文件末尾两行巡检调用（#2 行 + `[ -f ]` 行）即回到纯 flush 面；
+#   5. 巡检器自身亦永远 exit 0、stdout ≤1 行、细节落 `contrib-data/logs/watch-due-patrol.log`；
+#   6. stale-pr 停滞雷达（卡 t_9396bbf3 起同面挂载，周级 stamp 门槛）：--tick 恒 stdout 0 行、
+#      恒 exit 0、细节落 `contrib-data/logs/stale-pr-scan.log`。
+# 回退：删本文件末尾四行巡检调用（patrol 与 stale-pr-scan 各两行：赋值行 + `[ -f ]` 行）即回到纯 flush 面；
 #      再回退 flush 面 = cron job `3e5c6e23e260` 的 `script` 字段清回空串 + 删本文件。
 # 部署：真源 = scripts/contrib/contrib-flush.sh；部署副本 = ~/.hermes/scripts/contrib-flush.sh
 #      （cp + diff 双向逐字节一致；部署面回退命令见上）。
@@ -69,5 +71,9 @@ fi
 # ── watch-due 到期巡检（同一确定性 tick 面：cron tick 即巡检；stdout 携带本 tick 唤醒的卡）──
 PATROL="$MARTIN/scripts/contrib/watch-due-patrol.sh"
 [ -f "$PATROL" ] && bash "$PATROL"
+
+# ── stale-pr 停滞雷达（周级 stamp 门槛，同一确定性 tick 面：--tick 恒静默、恒 exit 0）──
+STALE_SCAN="$MARTIN/scripts/contrib/stale-pr-scan.sh"
+[ -f "$STALE_SCAN" ] && bash "$STALE_SCAN" --tick
 
 exit 0

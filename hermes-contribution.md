@@ -175,10 +175,12 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 > 取代 §4 的路径推荐（§5 salvage 流程仍有效，成为第三腿）。用户拍板：专注高质量 review，review 中搭车我方 commit，让收敛者 pick。
 
+> **目的（链2，2026-09-17 用户拍板）**：在上游，高质量 review（执行级实测+mutation 自证+file:line receipts）是稀缺品，这是 strzhao 品牌的差异化根基；每班感知到的活车里，凡能产出真验证价值的就做 review——频率由 AI 判断，质量红线由 AI 自己守（发出的每条都要经得起作者和维护者复核），无数字指标。
+
 ### 证据链（09-02 侦察 + 我方历史四实证）
 
 - **上游已是 AI farm 生态，三种架构并存**：① 自锚打包（@leomcamilo：#101093 issue 08:22 发 → #101095 PR 08:23 开，**1 分钟间隔**，长文 issue+PR 预打包背靠背提交）② 消防 hose 竞速（@fangliquanflq：单日 7 PR、30 分钟 turnaround 认领他人 issue；#101064 被 @rainbowgore/@JoaoMarcos44 30/36 分钟双抢）③ issue 农场（@dionysoslin615：只发 issue + 58 次 DeleteEvent=agent 临时分支清理指纹；@foma-agent 简介自白 "An AI agent with human oversight"）。commit trailer 全部干净（同样遵守上游无 trailer 惯例）
-- **当日 8 个抢坑 PR 零合入**（7 OPEN + 1 CLOSED）→ **anchor ≠ merge**；瓶颈=维护者注意力+质量+证据。分钟级占坑竞速不参与，SLA=当日内+决策质量（唯一例外：深水区+独家证据域，如 weixin 族）
+- **当时事实（09-02 侦察）**：**当日 8 个抢坑 PR 零合入**（7 OPEN + 1 CLOSED）→ **anchor ≠ merge**；瓶颈=维护者注意力+质量+证据。**当时判断**：被生态证伪的是 slop 质量的抢法（分钟级占坑竞速被证伪，不是我们不敢抢）。**现行目的**：我方质量高，抢法=首车即终态——issue 出来后第一个 PR 就带复现+修+mutation 自证+测试，让后到者无从差异；每班感知到新 issue 时自判能否在质量轴上做到首车即终态：能则抢（forge+coder lane 快速路，own-PR 属 §12 已批类，零审批延迟），不能则 pass，不发垃圾车。**复检活问题**：抢 3 单后复盘首车质量是否形成「strzhao 车不可超越」的品牌信号
 - **三代收敛文化**：erosika #83500 → kshitij #85452 → teknium #99375/#100916，皆从 PR 池 cherry-pick 保署名收编
 - **我方四实证**：#86622 被 #100916 salvage（3 commits 署名保留，09-02）/ 1d0e71e822 被 #86062 cherry-pick（"Adopted your idea @strzhao"）/ #96437 review 33 分钟被全盘接受 / #94862 收敛覆盖我方 review 指出的两残余缺口（无 credit 但实际塑形了收敛内容）
 
@@ -186,8 +188,8 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 | 腿 | 动作 | 触发条件 |
 |---|---|---|
-| **evidence authority** | 生产取证型 review/评论 | 域内 PR/issue + 我方独家证据（weixin TTL/取证包、state.db/FTS、cron 投递可观测性）|
-| **cherry-pick invitation** | review 指出缺口 + offer 库存 commit（#86062 模式）| review 真发现缺口 && 库存有货 |
+| **evidence authority** | 生产取证型 review/评论 | 域内 PR/issue + 能产出真验证价值（独家证据如 weixin TTL/取证包、state.db/FTS、cron 投递可观测性是典型弹药，不是门槛）|
+| **cherry-pick invitation** | review 指出缺口 → forge 造货 → 立即开我方 PR（关联对方车/issue）→ review 评论里邀对方 cherry-pick（#86062 模式）| review 真发现缺口（有货直接带，没货立即造——「库存有货才出手」的等待语义废除）|
 | **salvage** | 停滞 PR 雷达 → probe → 接手（§5 流程）| farm 洪水 → 批量停滞的工业化供给 |
 
 ### review 红线（COI 防御）
@@ -227,9 +229,11 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 - **准备**：launchd 09:37 对预算内 top1 自动三轮审（两次独立 `claude -p` 进程 = 结构性 fresh-context；probe 车道单轮 strategist 免红队、不占深检预算）；成稿推微信 🟡 审批卡（tunnel 只读 URL，审后即删）
 - **执行**：用户「批/改/否 #rq-id」→ hermes 侧 `hermes-contrib-l2` skill：TTL 复验 → 逐字投递 → approved.log（L2-A，与会话内 L2-B 等效且互查去重）→ 回执；48h 搁置（09:17 cron 对账）。own-PR 批准后由 execute.sh 建 coder 卡全自动执行 push+PR（09-08 lane 改造；`allow_own_pr_push` 急停总开关，当前 true）
 
-### 可 pick 库存台账（资产；review 是分发渠道）
+### 可 pick 库存台账（资产；分发 = 发现缺口即开我方 PR）
 
 > **机读版（09-09 起）**：`contrib-data/inventory.json`（唯一写入口 `scripts/contrib/forge.sh`；radar 每日巡检新鲜度 + 带货率）。下表为散文快照，**以机读版为准**。
+
+> **件生命周期（2026-09-17 起）= 造→发→盯收敛，无长期 ready 待 offer 滞留态**：review 发现缺口 → forge 造货 → 立即开我方 PR（关联对方车/issue）→ review 评论里邀对方 cherry-pick（§11.3 措辞：lift 保署名显式首选）。下表「搭车场景」列读作「分发面」，描述存量件的典型出手面，不是「等车来才 offer」的滞留依据。
 
 | 资产 | 域 | 搭车场景 |
 |---|---|---|
