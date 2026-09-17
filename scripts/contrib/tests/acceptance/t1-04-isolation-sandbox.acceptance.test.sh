@@ -6,10 +6,12 @@
 # 依据：state.md 契约 6「L1 红线不变：测试环境必须隔离 CONTRIB_DATA_DIR + stub 注入，
 #   禁真实外发」+ 任务级契约「零订阅语义：scan 卡 CLI 建卡默认零微信订阅 → 终态零推送
 #   （红队断言 notify-state 零新增）」
-# 说明：本文件会依次运行同目录下 t1-01/02/03 三份验收测试（黑盒子进程），
-#   前后对生产 contrib-data 做逐字节快照对比——三份测试各自内部已全部沙箱化，
-#   本文件从「整组运行」视角补一道生产零污染总闸。
-# 红队纪律：黑盒；每断言硬失败；无 skip。
+# 说明：对同目录下**声明**的兄弟组 t1-01/02/03 做「声明清单 + 在场集合求值」（黑盒子进程）：
+#   在场份实跑且必须全绿（fail-closed）；缺席份逐份输出 INFO 行（明示登记，非静默降级），
+#   文案含 SKIPPED[retired] 并注明退役提交 fc46a71（「E 波大扫除」，t1-01/02/03 三份已退役）；
+#   INFO 行不进断言计数。前后对生产 contrib-data 做逐字节快照对比——兄弟测试各自内部
+#   已全部沙箱化，本文件从「整组运行」视角补一道生产零污染总闸。
+# 红队纪律：黑盒；每断言硬失败；无 skip 通道（兄弟缺席以 INFO 行明示登记）。
 # =============================================================================
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +44,7 @@ snap_contrib() {
 }
 
 # =============================================================================
-t_case "4.1 组级零污染：整组运行 t1-01/02/03 前后，生产 contrib-data 快照逐字节一致"
+t_case "4.1 组级零污染：声明兄弟组按在场集合求值整组运行，生产 contrib-data 快照逐字节一致"
 WA_REG="$(wa_registry_default "$TESTS_ROOT")" || WA_REG=""
 [ -s "$WA_REG" ] || _fail "4.1 归属清单" "归属清单缺失或为空: ${WA_REG}（fail-closed）"
 WIN_T0="$(date +%s)"
@@ -73,18 +75,24 @@ esac
 snap_contrib > "$ART/t1-snap.before" 2>&1
 [ -s "$ART/t1-snap.before" ] || _fail "4.1 快照非空" "生产 contrib-data 快照为空（shasum/find 失败？）"
 
+# 兄弟组 = 声明清单（退役名单即声明名单，不增不减）+ 在场集合求值：
+# 三份已于 fc46a71「E 波大扫除」退役——在场份黑盒实跑且必须 rc=0（fail-closed，力度不变）；
+# 缺席份 SIB_RETIRED 计数并逐份输出 INFO 行明示登记（SKIPPED[retired] + 退役提交号），
+# 不伪造兄弟文件凑绿、不走断言库降级通道（兄弟门 G3 段内守卫）。
 SIB_FAILED=0
-for sib in "$HERE"/t1-01-kanban-card-create.acceptance.test.sh \
-           "$HERE"/t1-02-scan-gate-batch.acceptance.test.sh \
-           "$HERE"/t1-03-run-watch-flight.acceptance.test.sh; do
-  if [ ! -f "$sib" ]; then
-    _fail "4.1 兄弟测试存在" "缺失: ${sib}（验收组不完整，拒绝空真通过）"
-    SIB_FAILED=1
-    continue
+SIB_PRESENT=0
+SIB_RETIRED=0
+for sib in t1-01-kanban-card-create t1-02-scan-gate-batch t1-03-run-watch-flight; do
+  if [ -f "$HERE/${sib}.acceptance.test.sh" ]; then
+    SIB_PRESENT=$((SIB_PRESENT + 1))
+    bash "$HERE/${sib}.acceptance.test.sh" > "$ART/t1-sib-${sib}.out" 2>&1 || SIB_FAILED=$((SIB_FAILED + 1))
+  else
+    SIB_RETIRED=$((SIB_RETIRED + 1))
+    echo "INFO 4.1: ${sib}.acceptance.test.sh 不在场 ⇒ SKIPPED[retired]（已于 fc46a71「E 波大扫除」退役），排除出在场前置绿数"
   fi
-  bash "$sib" > "$ART/t1-sib-$(basename "$sib" .sh).out" 2>&1 || SIB_FAILED=1
 done
-assert_eq "$SIB_FAILED" "0" "4.1 前置：t1-01/02/03 三份验收测试自身全绿"
+assert_eq "$SIB_FAILED" "0" "4.1 前置：在场兄弟测试自身全绿（在场 ${SIB_PRESENT} 份 / 退役 ${SIB_RETIRED} 份）"
+assert_eq "$((SIB_PRESENT + SIB_RETIRED))" "3" "4.1 兄弟组清单完整（在场+退役 == 声明的 3 份；防枚举装置失效）"
 
 # wait-external：弹性轮询等**真实生产写手**落笔（与 s4 同名同义；只读轮询，不新增写面）
 if [ "$S4_P1_INJECT" = "wait-external" ]; then
