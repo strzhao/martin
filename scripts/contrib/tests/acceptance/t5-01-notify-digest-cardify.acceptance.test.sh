@@ -21,7 +21,7 @@
 #   D10 建卡失败（hermes down）→ fallback _ai_digest 被调 + 发送链走旧语义（attempts+1，rc≠0）
 #   D11 建卡失败+claude 也败 → attempts+1 + 零 send + 零 flight（摘要失败=搁置重试）
 #   D12 fallback 空卡守卫：摘要产物仅报头 → 守卫触发 → 零 send + attempts+1（守卫删除突变靶）
-#   D13 连续 3 败 → osascript 本地机械提示 + fallback_notice 当日置 1（3 败兜底回归）
+#   D13 连续 3 败 → osascript 本地机械提示 + fallback_notice 当日置 1 + 看门狗机械告警唯一 send（C4①）且置败不置键（C4②）（3 败兜底回归；09-18 随改动 4 更新契约）
 #   D14 纯机械批回归：模板卡零 LLM 零建卡（send 恰 1、body 含速报与原始摘要、pushed/alerts 正常链）
 #   D15 notify_digest=false 回归：叙事批不建卡直接挂账（零建卡零 LLM，attempts+1，exit 1 现行为）
 #   D16 混合批次（机械+叙事）→ 整批 digest 卡（零模板 send 零 claude）
@@ -476,14 +476,15 @@ assert_ne "0" "$RC" "D12 守卫触发按失败处理 rc≠0"
 sb_cleanup
 
 # =============================================================================
-t_case "D13 连续 3 败 → osascript 本地机械提示 + fallback_notice 当日置 1"
+t_case "D13 连续 3 败 → osascript 本地机械提示 + fallback_notice 当日置 1 + 看门狗机械告警直推"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
 sb_seed_event "own-pr-activity" "k-n" "三败兜底用例 rq-15" contrib 2   # 预置 attempts=2，本轮 +1=3
 run_flush -e STUB_HERMES_FAIL=1 -e STUB_CLAUDE_FAIL=1 >/dev/null
 assert_eq "$(events_attempts_sum)" "3" "D13 attempts 2→3"
 assert_stub_called "osascript" 1 "D13 3 败 → osascript 本地机械提示"
 assert_eq "$(fallback_notice_today)" "1" "D13 fallback_notice 当日置 1（每至多一次/日）"
-assert_eq "$(send_calls)" "0" "D13 摘要失败零发送"
+assert_eq "$(send_calls)" "1" "D13 看门狗超限告警唯一 send（C4①：attempts>=3 机械直推「判断层故障」，非摘要载荷非 raw dump）"
+assert_eq "$(jq -r '.watchdog_notice // "absent"' "$SB_ROOT/contrib-data/notify-state.json" 2>/dev/null || echo absent)" "absent" "D13 C4②：send 置败不置日幂等键（下轮到超限态重推）"
 sb_cleanup
 
 # =============================================================================
