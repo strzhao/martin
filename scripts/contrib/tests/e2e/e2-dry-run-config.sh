@@ -15,9 +15,11 @@ t_init "e2-dry-run-config.sh"
 sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
 EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
 
-t_case "E2: config notify_dry_run=true → flush 叙事批建卡（零 send/tunnel/osascript；打印移至 send-digest 环节）"
+t_case "E2: config notify_dry_run=true → flush 判断批建卡（零 send/tunnel/osascript；打印移至 send-digest 环节）"
 sb_config_set '.notify_dry_run = true'
-sb_notify event pipeline-failure --key e2-dry --summary "dry-run 全链" >/dev/null
+# 09-17 改动 2：pipeline-failure 现属 ALWAYS_PUSH 机械下限（dry-run 直推打印），判断批载体验证
+# 换 own-pr-activity（语义不变：dry-run 下建卡=编排写、send 零调用）
+sb_notify event own-pr-activity --key e2-dry --summary "dry-run 全链" >/dev/null
 assert_exit 0 $?
 # 关键：env 无 NOTIFY_DRY_RUN（验证 config 路径）
 out="$(sb_run 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"

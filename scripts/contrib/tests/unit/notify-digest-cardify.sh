@@ -212,7 +212,7 @@ rmdir "$NOTIFY_LOCK" 2>/dev/null || true
 
 t_case "flush: 叙事批+无登记 → 建 digest 卡（flight 四键+快照+幂等键格式）+ 挂账 attempts 不增 + 零 claude 零 send"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-1 --summary "叙事事件一" >/dev/null
+sb_notify event own-pr-activity --key fl-1 --summary "叙事事件一" >/dev/null
 sb_notify event mail-needs-user --key fl-2 --summary "叙事事件二" >/dev/null
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
@@ -245,7 +245,7 @@ body_copy="$(stub_last_body hermes)"
 
 t_case "flush: 在飞（非终态）→ 本轮跳过（不建新卡/fallback，attempts 不增，登记保留）"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-infly --summary "在飞用例" >/dev/null
+sb_notify event own-pr-activity --key fl-infly --summary "在飞用例" >/dev/null
 seed_flight_digest "t_old" "running" "$(date +%s)" ""
 before_create="$(count_create)"
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
@@ -257,7 +257,7 @@ assert_eq "$(jq -r 'select(.key == "fl-infly") | .attempts' "$SB_ROOT/contrib-da
 
 t_case "flush: done+sent:true 消费 → 零账本动作（双写禁止）+ 清登记清快照 + 本轮不建新卡（防卡风暴）"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-consume --summary "消费用例" >/dev/null
+sb_notify event own-pr-activity --key fl-consume --summary "消费用例" >/dev/null
 SNAP="$SB_ROOT/contrib-data/pending/digest-consume.json"
 make_batch "$SNAP"
 printf '%s\n' '{"sent":true,"reason":null,"sent_at":"t","send_result":{"success":true}}' >>"$SNAP"
@@ -265,7 +265,7 @@ printf '🟠 摘要内容\n' >"${SNAP%.json}.digest.md"   # 摘要文件前置�
 jq -c 'select(.key == "fl-consume") | .pushed = true' "$SB_ROOT/contrib-data/events.jsonl" >"$SB_ROOT/contrib-data/events.jsonl.tmp" \
   && mv "$SB_ROOT/contrib-data/events.jsonl.tmp" "$SB_ROOT/contrib-data/events.jsonl"   # 模拟 worker 已标记
 seed_flight_digest "t_old" "done" "$(date +%s)" "$SNAP"
-sb_notify event pipeline-failure --key fl-fresh --summary "消费轮新攒事件" >/dev/null   # 本轮新批
+sb_notify event own-pr-activity --key fl-fresh --summary "消费轮新攒事件" >/dev/null   # 本轮新批
 before_pushed="$(pushed_count)"
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
@@ -280,7 +280,7 @@ assert_eq "$(jq -r 'select(.key == "fl-fresh") | .pushed' "$SB_ROOT/contrib-data
 
 t_case "flush: done 但 sent:false（worker 完成未发送）→ 清登记 + fallback_ai 接管 + 快照清理"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-nosent --summary "异常收口用例" >/dev/null
+sb_notify event own-pr-activity --key fl-nosent --summary "异常收口用例" >/dev/null
 SNAP="$SB_ROOT/contrib-data/pending/digest-nosent.json"
 make_batch "$SNAP"
 printf '%s\n' '{"sent":false,"reason":"dry-run","sent_at":"t","send_result":null}' >>"$SNAP"
@@ -295,7 +295,7 @@ assert_eq "$(jq -r 'select(.key == "fl-nosent") | .pushed' "$SB_ROOT/contrib-dat
 
 t_case "flush: blocked 失败终态 → 清登记 + fallback + attempts 递增"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-blocked --summary "失败终态用例" >/dev/null
+sb_notify event own-pr-activity --key fl-blocked --summary "失败终态用例" >/dev/null
 seed_flight_digest "t_old" "blocked" "$(date +%s)" ""
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
@@ -305,7 +305,7 @@ assert_eq "$(jq -r 'select(.key == "fl-blocked") | .pushed' "$SB_ROOT/contrib-da
 
 t_case "flush: stale（DIGEST_STALE_SECS 注入短值）→ 清登记 + fallback + digest-stale 事件"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-stale --summary "stale 用例" >/dev/null
+sb_notify event own-pr-activity --key fl-stale --summary "stale 用例" >/dev/null
 seed_flight_digest "t_old" "running" "$(( $(date +%s) - 30000 ))" ""
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" -e "DIGEST_STALE_SECS=60" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
@@ -316,7 +316,7 @@ assert_eq "$(jq -s '[.[] | select(((.key // "") | endswith("-digest-stale")))] |
 t_case "flush: notify_digest=false → 不建卡直接挂账（旧语义），attempts+1"
 sb_new >/dev/null 2>&1
 sb_config_set '.notify_digest = false'
-sb_notify event pipeline-failure --key fl-nodigest --summary "旧语义用例" >/dev/null
+sb_notify event own-pr-activity --key fl-nodigest --summary "旧语义用例" >/dev/null
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 1 $?
 assert_eq "$(count_create)" "0" "零建卡"
@@ -326,7 +326,7 @@ assert_eq "$(jq -r 'select(.key == "fl-nodigest") | .attempts' "$SB_ROOT/contrib
 
 t_case "flush: 建卡失败 → fallback_ai 旧路接管 + 不写登记 + 快照清理"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-createfail --summary "建卡失败用例" >/dev/null
+sb_notify event own-pr-activity --key fl-createfail --summary "建卡失败用例" >/dev/null
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL=1" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 1 $?
 assert_eq "$(count_claude)" "1" "fallback claude 被调"
@@ -334,32 +334,35 @@ assert_eq "$(count_claude)" "1" "fallback claude 被调"
 assert_eq "$(jq -r 'select(.key == "fl-createfail") | .attempts' "$SB_ROOT/contrib-data/events.jsonl")" "1" "fallback 发送也败 → attempts+1"
 assert_eq "$(ls "$SB_ROOT/contrib-data/pending"/digest-*.json 2>/dev/null | wc -l | tr -d ' ')" "0" "快照清理（无残留 digest-*.json）"
 
-t_case "flush: 纯机械批回归 → 模板卡零 LLM 不变（零建卡零 claude，hermes send 恰一次）"
+t_case "flush: 机械下限批（ALWAYS_PUSH）→ 模板卡直推零 LLM（零建卡零 claude，hermes send 恰一次）"
 sb_new >/dev/null 2>&1
-sb_notify event probe-premise-dead --key fl-mech --summary "radar 2026-09-09 premise 复验：#102413 已被占坑出局" >/dev/null
+sb_notify event pipeline-failure --key fl-mech --summary "产线瘫告警：scan 环节失败" >/dev/null
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
-assert_eq "$(count_create)" "0" "零建卡"
+assert_eq "$(count_create)" "0" "零建卡（下限批不经判断层）"
 assert_eq "$(count_claude)" "0" "零 claude"
 assert_eq "$(count_send)" "1" "hermes send 恰一次（模板卡）"
 assert_eq "$(jq -r 'select(.key == "fl-mech") | .pushed' "$SB_ROOT/contrib-data/events.jsonl")" "true" "机械事件标 pushed"
+assert_eq "$(jq -r 'select(.key == "fl-mech") | .route' "$SB_ROOT/contrib-data/events.jsonl")" "push" "route=push（C3 值域闭集回填）"
 body_copy="$(stub_last_body hermes)"
-[[ -n "$body_copy" ]] && assert_file_contains "$body_copy" "▪ 候选折损" "模板卡实质行（▪ 开头）"
+[[ -n "$body_copy" ]] && assert_file_contains "$body_copy" "▪ pipeline-failure" "模板卡实质行（▪ 开头，未知类标题透传）"
 
-t_case "flush: 混合批（机械+叙事）→ 整批走 digest 卡（快照含机械事件）"
+t_case "flush: 批次二分——ALWAYS_PUSH 直推、判断类进 digest 卡（快照不含下限类）"
 sb_new >/dev/null 2>&1
-sb_notify event own-pr-activity --key fl-mix-m --summary "机械事件" >/dev/null
-sb_notify event pipeline-failure --key fl-mix-n --summary "叙事事件" >/dev/null
+sb_notify event own-pr-activity --key fl-mix-m --summary "判断类事件" >/dev/null
+sb_notify event pipeline-failure --key fl-mix-n --summary "下限类事件" >/dev/null
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
-assert_eq "$(count_create)" "1" "混合批建 digest 卡"
+assert_eq "$(count_create)" "1" "判断批建 digest 卡"
 SNAP="$(jq -r '.batch_file // empty' "$SB_ROOT/contrib-data/kanban-flight-digest.json" 2>/dev/null)"
-[[ -n "$SNAP" ]] && assert_eq "$(jq -s '[.[] | select(.key == "fl-mix-m")] | length' "$SNAP" 2>/dev/null)" "1" "快照含机械事件（整批语义）"
-assert_eq "$(count_claude)" "0" "混合批零 claude（主路）"
+[[ -n "$SNAP" ]] && assert_eq "$(jq -s '[.[] | select(.key == "fl-mix-m")] | length' "$SNAP" 2>/dev/null)" "1" "快照含判断类事件"
+[[ -n "$SNAP" ]] && assert_eq "$(jq -s '[.[] | select(.key == "fl-mix-n")] | length' "$SNAP" 2>/dev/null)" "0" "快照不含 ALWAYS_PUSH 类（二分互斥）"
+assert_eq "$(count_claude)" "0" "判断批主路零 claude（异步建卡）"
+assert_eq "$(jq -r 'select(.key == "fl-mix-n") | .pushed' "$SB_ROOT/contrib-data/events.jsonl")" "true" "下限类同轮已直推标 pushed"
 
 t_case "send-digest: 全链闭环——flush 建卡 → worker send-digest → 卡 done 消费零账本动作（不丢不重）"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key fl-loop --summary "闭环用例" >/dev/null
+sb_notify event own-pr-activity --key fl-loop --summary "闭环用例" >/dev/null
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
 FLIGHT="$SB_ROOT/contrib-data/kanban-flight-digest.json"
 SNAP="$(jq -r '.batch_file // empty' "$FLIGHT" 2>/dev/null)"
@@ -375,7 +378,7 @@ assert_eq "$(pushed_count)" "1" "worker 已标 pushed"
 # 第二轮 flush：卡 done + 批次 sent:true → 消费闭环（回拨时间闸门 + 补一个新叙事事件构造非空批）
 printf '{"id":"%s","status":"done","assignee":"contrib","priority":0}\n' "$CARD_ID" >"$SB_ROOT/stublog/kanban-cards.jsonl"
 sb_state_set '.last_flush_epoch = 0'
-sb_notify event pipeline-failure --key fl-loop2 --summary "消费轮新攒事件" >/dev/null
+sb_notify event own-pr-activity --key fl-loop2 --summary "消费轮新攒事件" >/dev/null
 before_pushed="$(pushed_count)"
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
 assert_exit 0 $?
@@ -390,7 +393,7 @@ sb_cleanup
 
 t_case "B-3 建卡失败即清——digest 建卡失败后 pending/ 零该轮派生残留"
 sb_new >/dev/null 2>&1
-sb_notify event pipeline-failure --key b3-fail --summary "建卡失败清理用例" >/dev/null
+sb_notify event own-pr-activity --key b3-fail --summary "建卡失败清理用例" >/dev/null
 before_bodies="$(ls "$SB_ROOT"/contrib-data/pending/ 2>/dev/null | wc -l | tr -d ' ')"
 sb_run -e "STUB_HERMES_FAIL=1" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
 after_bodies="$(ls "$SB_ROOT"/contrib-data/pending/ 2>/dev/null | wc -l | tr -d ' ')"

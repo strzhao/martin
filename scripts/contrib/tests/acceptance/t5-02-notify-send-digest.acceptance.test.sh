@@ -74,7 +74,7 @@ make_empty_digest_file() { # <path> — 仅报头（空卡守卫应拦）
 make_real_batch() { # <key...> → stdout 快照路径（经 flush 建卡黑盒产出：seed 事件→flush→取 flight.batch_file）
   local k
   for k in "$@"; do
-    sb_seed_event "pipeline-failure" "$k" "叙事事件 $k"
+    sb_seed_event "own-pr-activity" "$k" "叙事事件 $k"
   done
   sb_run 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
   jq -r '.batch_file // empty' "$SB_ROOT/contrib-data/kanban-flight-digest.json" 2>/dev/null
@@ -252,7 +252,7 @@ sb_cleanup
 # =============================================================================
 t_case "S7 dry-run 全链：建卡 → send-digest dry-run → 卡 done 下轮 flush fallback 接管 → 账本收敛不丢不重"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
-sb_seed_event "pipeline-failure" "k-dry" "dry-run 全链叙事事件 rq-8"
+sb_seed_event "own-pr-activity" "k-dry" "dry-run 全链叙事事件 rq-8"
 # 第一轮：dry-run 下 flush → 建 digest 卡（建卡为本地动作不受 dry-run 管）
 sb_run -e NOTIFY_DRY_RUN=true 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 assert_eq "$(hermes_lines | grep -c 'kanban create' || true)" "1" "S7 第一轮建卡"

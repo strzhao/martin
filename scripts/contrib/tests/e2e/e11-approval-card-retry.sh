@@ -64,7 +64,7 @@ cat >"$SB_HOME/.claude/settings.json" <<'EOF'
 { "env": { "ANTHROPIC_MODEL": "glm-5.3-flash[1m]" } }
 EOF
 sb_state_set '.last_flush_epoch = 0'
-sb_notify event pipeline-failure --key e11-digest --summary "模型后缀剥离用例" >/dev/null
+sb_notify event own-pr-activity --key e11-digest --summary "模型后缀剥离用例" >/dev/null
 assert_exit 0 $?
 # T5 卡化：主路（digest 卡）零 claude；STUB_HERMES_FAIL 令建卡失败 → fallback_ai → claude 被调
 # （fallback 发送同样失败 → flush exit 1，本用例只验 claude 参数）
@@ -78,7 +78,7 @@ assert_not_contains "$claude_calls" "kimi-k3" "运行时 env 不越过 settings.
 t_case "E11e: 无 settings env 时回落运行时 env 剥后缀"
 rm -f "$SB_HOME/.claude/settings.json"
 sb_state_set '.last_flush_epoch = 0'
-sb_notify event pipeline-failure --key e11-digest-2 --summary "运行时 env 回落用例" >/dev/null
+sb_notify event own-pr-activity --key e11-digest-2 --summary "运行时 env 回落用例" >/dev/null
 assert_exit 0 $?
 sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL=1" -e "ANTHROPIC_MODEL=glm-5.3-flash[1m]" \
   'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
@@ -89,7 +89,7 @@ assert_not_contains "$claude_calls" "[1m]" "回落路径同样零后缀"
 t_case "E11f: 正常模型名不被误伤（无 ] 后缀原样传递）"
 printf '{ "env": { "ANTHROPIC_MODEL": "kimi-k3" } }' >"$SB_HOME/.claude/settings.json"
 sb_state_set '.last_flush_epoch = 0'
-sb_notify event pipeline-failure --key e11-digest-3 --summary "正常模型名用例" >/dev/null
+sb_notify event own-pr-activity --key e11-digest-3 --summary "正常模型名用例" >/dev/null
 assert_exit 0 $?
 sb_run -e "NOTIFY_DRY_RUN=false" -e "STUB_HERMES_FAIL=1" \
   'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1

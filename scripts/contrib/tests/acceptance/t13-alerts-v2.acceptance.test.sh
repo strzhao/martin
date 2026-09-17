@@ -214,13 +214,15 @@ ev_send() { # notify.sh event 子命令（沙箱副本）
   sb_notify "$@"
 }
 
-narr_round() { # <channel|-> <key> <summary> → stdout=本轮新增载荷文本（叙事批：digest 卡路）
+narr_round() { # <channel|-> <key> <summary> → stdout=本轮新增载荷文本（判断批：digest 卡路）
+  # 09-17 改动 2：类名分流退役——ALWAYS_PUSH 族（含 pipeline-failure）走模板卡直推，判断批
+  # 载体验证换 own-pr-activity（非下限类全量进 digest 卡路）
   local ch="$1" k="$2" s="$3" before
   sb_state_set '.last_flush_epoch = 0'
   if [[ "$ch" == "-" ]]; then
-    ev_send event pipeline-failure --key "$k" --summary "$s" >/dev/null
+    ev_send event own-pr-activity --key "$k" --summary "$s" >/dev/null
   else
-    ev_send event pipeline-failure --key "$k" --summary "$s" --channel "$ch" >/dev/null
+    ev_send event own-pr-activity --key "$k" --summary "$s" --channel "$ch" >/dev/null
   fi
   before="$(payload_count)"
   do_flush >/dev/null
@@ -254,6 +256,12 @@ send_argv_has() { # <字面量> → hermes send 调用 argv 命中该字面量�
   return 1
 }
 
+send_calls() { # hermes send 调用总数（只计 send，不含 kanban 编排调用；09-17 改动 2 后的
+  # 判断批「零外发」判据用本口径——建卡属编排写非传输发送）
+  awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+    "$SB_STUBLOG/calls.log" 2>/dev/null
+}
+
 # =============================================================================
 # 场景 1：双域事件同账本，按域分标头分批渲染推送（修复①主干）
 #   谓词：s01-p1 [real-process] s01-p2 [det-machine] s01-p3 [det-machine]
@@ -265,8 +273,8 @@ if scene_on 1; then
   if sb_fresh s01; then
     C1_SUM="C1-SUMMARY-contrib域事件正文"
     F1_SUM="F1-SUMMARY-flashcards域事件正文"
-    ev_send event own-pr-activity --key c1 --summary "$C1_SUM" >/dev/null
-    ev_send event own-pr-activity --key f1 --summary "$F1_SUM" --channel flashcards >/dev/null
+    ev_send event pipeline-failure --key c1 --summary "$C1_SUM" >/dev/null
+    ev_send event pipeline-failure --key f1 --summary "$F1_SUM" --channel flashcards >/dev/null
     B1="$(payload_count)"
     do_flush >/dev/null
     R1_NEW="$(payloads_new "$B1")"
@@ -345,8 +353,8 @@ if scene_on 1; then
   if sb_fresh s01; then
     C2_SUM="C2-SUMMARY-混排对照贡献正文"
     F2_SUM="F2-SUMMARY-混排对照跨域正文"
-    ev_send event own-pr-activity --key c2 --summary "$C2_SUM" >/dev/null
-    ev_send event own-pr-activity --key f2 --summary "$F2_SUM" --channel flashcards >/dev/null
+    ev_send event pipeline-failure --key c2 --summary "$C2_SUM" >/dev/null
+    ev_send event pipeline-failure --key f2 --summary "$F2_SUM" --channel flashcards >/dev/null
     do_flush >/dev/null
     CROSS_SUM="$(payload_cross_count "$C2_SUM" "$F2_SUM")"
     CROSS_HDR="$(payload_cross_count "【contrib 告警】" "【flashcards 告警】")"
@@ -376,7 +384,7 @@ if scene_on 2; then
   if sb_fresh s02; then
     S1_TXT="S1-首次上报正文"
     S2_TXT="S2-第二次上报正文"
-    ev_send event own-pr-activity --key K --summary "$S1_TXT" >/dev/null
+    ev_send event pipeline-failure --key K --summary "$S1_TXT" >/dev/null
     RC_E1=$?
     TS1="$(led_field K '.ts')"
     sleep 2 # ts 秒级可区分（谓词 note：间隔 >= 1s 防同秒假红）
@@ -424,11 +432,11 @@ if scene_on 3; then
   if sb_fresh s03; then
     S_TXT="S-首推正文"
     SP_TXT="SP-复发正文"
-    ev_send event own-pr-activity --key K --summary "$S_TXT" >/dev/null
+    ev_send event pipeline-failure --key K --summary "$S_TXT" >/dev/null
     do_flush >/dev/null
     assert_eq "$(led_field K '.pushed')" "true" "s03 前置：首次 flush 后 K 已推"
     BEFORE="$(payload_count)"
-    ev_send event own-pr-activity --key K --summary "$SP_TXT" >/dev/null
+    ev_send event pipeline-failure --key K --summary "$SP_TXT" >/dev/null
     sb_state_set '.last_flush_epoch = 0'
     do_flush >/dev/null
 
@@ -459,27 +467,47 @@ if scene_on 3; then
 fi
 
 # =============================================================================
-# 场景 4：有决策点事件照常微信即时推送（修复③正向面；决策级=own-pr-unledgered）
+# 场景 4：判断层判决=推微信 → 送达链（09-17 改动 2 后「决策级=类名」概念退役：
+# 推不推由判断层对厚事实判决，本场景锁「判决 push → 微信送达 → 账本 route=push 闭集」）
 #   谓词：s04-p1 [real-process] s04-p2 [det-machine]
 # =============================================================================
 if scene_on 4; then
-  t_case "场景4 决策级即时推送（s04-p1/p2）"
+  t_case "场景4 判断层判决 push 送达链（s04-p1/p2）"
   if sb_fresh s04; then
     SD_TXT="SD-决策级告警正文"
     ev_send event own-pr-unledgered --key D --summary "$SD_TXT" >/dev/null
     BEFORE="$(payload_count)"
+    SB4="$(send_calls)"
     do_flush >/dev/null
     NEW_TXT="$(payloads_new "$BEFORE")"
 
-    # --- s04-p1 [real-process] ---
-    assert_contains "$NEW_TXT" "$SD_TXT" "s04-p1 决策级载荷 contains SD"
-    art s04-p1 "新增载荷数=$(( $(payload_count) - BEFORE ))" "新载荷文本=[${NEW_TXT}]"
+    # --- s04-p0 判断批派发：flight 登记 + 快照收编 D（判断层拿到厚事实） ---
+    DFLIGHT4="$SB_ROOT/contrib-data/kanban-flight-digest.json"
+    SNAP4="$(jq -r '.batch_file // empty' "$DFLIGHT4" 2>/dev/null)"
+    [[ -n "$SNAP4" && -f "$SNAP4" ]] && _pass "s04-p0 判断批快照落盘" || _fail "s04-p0 判断批快照落盘" "SNAP4=$SNAP4"
+    assert_eq "$(jq -s '[.[] | select(.key == "D")] | length' "$SNAP4" 2>/dev/null)" "1" "s04-p0 快照含 D（厚事实交判断层）"
+    assert_eq "$(( $(send_calls) - SB4 ))" "0" "s04-p0 派发轮零微信外发（发送在 worker 判决后）"
+
+    # --- s04-p1 [real-process] worker 判决=push → 微信送达（载荷为摘要非 raw dump） ---
+    DIG4="${SNAP4%.json}.digest.md"
+    printf '🟠【contrib 告警】%s\n\n%s：维护者 attention 风险，需即时处置。\n' "$(date +%m-%d)" "$SD_TXT" >"$DIG4"
+    printf '%s' '[{"key":"D","route":"push","reason":"需即时处置"}]' >"${SNAP4%.json}.verdicts.json"
+    OUT4="$(sb_run -e "NOTIFY_DRY_RUN=false" \
+      "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DIG4' --batch '$SNAP4' --verdicts '${SNAP4%.json}.verdicts.json'")"
+    assert_exit 0 $?
+    assert_eq "$OUT4" "OK" "s04-p1 send-digest stdout 闭集 OK"
+    LAST4="$(payload_files_with "需即时处置" | head -1)"
+    [[ -n "$LAST4" ]] && assert_file_contains "$LAST4" "需即时处置" "s04-p1 载荷为摘要产物（判断层判决 push 送达）" \
+      || _fail "s04-p1 载荷为摘要产物" "无载荷含判决摘要哨兵"
+    [[ -n "$LAST4" ]] && assert_not_contains "$(cat "$LAST4")" '"summary"' "s04-p1 载荷非 raw dump（永不 raw dump）"
+    art s04-p1 "新增载荷数=$(( $(payload_count) - BEFORE ))" "新载荷文本=[$(payloads_new "$BEFORE")]"
 
     # --- s04-p2 [det-machine] ---
     D_PUSHED="$(led_field D '.pushed')"
     D_PUSHED_AT="$(led_field_raw D pushed_at)"
     assert_eq "$D_PUSHED" "true" "s04-p2 D 行 .pushed == true"
     assert_ne "$D_PUSHED_AT" "" "s04-p2 D 行 .pushed_at != null（实际 [${D_PUSHED_AT}]）"
+    assert_eq "$(led_field D '.route')" "push" "s04-p2 D 行 .route == push（C3 值域闭集）"
     art s04-p2 "$(jq -c 'select(.key == "D")' "$EV" 2>/dev/null)"
     sb_cleanup
   fi
@@ -490,24 +518,43 @@ fi
 #   谓词：s05-p1 [real-process] s05-p2 [real-process] s05-p3 [det-machine]
 # =============================================================================
 if scene_on 5; then
-  t_case "场景5 简报级降级（s05-p1/p2/p3）"
+  t_case "场景5 判断判决=进简报（s05-p1/p2/p3）"
+  # 09-17 改动 2：brief 不再由类名预分类驱动——判断层判决 route=brief 后复用
+  # _flush_brief_mark/_brief_append_record 落账（账本标记 + 当日简报机械小节成行）
   if sb_fresh s05; then
     SG_TXT="SG-简报级内容"
     ev_send event own-pr-info --key G --summary "$SG_TXT" >/dev/null
     SBEFORE="$(payload_count)"
+    SB5="$(send_calls)"
     do_flush >/dev/null
     NEW_TXT="$(payloads_new "$SBEFORE")"
 
-    # --- s05-p1 [real-process] 不产生即时推送 ---
-    assert_eq "$(( $(payload_count) - SBEFORE ))" "0" "s05-p1 简报级 flush 零新增载荷"
+    # --- s05-p1 [real-process] 派发轮不产生微信外发（载荷副本若为建卡体，亦不含 SG 正文） ---
+    assert_eq "$(( $(send_calls) - SB5 ))" "0" "s05-p1 判断批派发轮零微信外发（发送在 worker 判决后）"
     assert_not_contains "$NEW_TXT" "$SG_TXT" "s05-p1 载荷 not-contains SG（negate 谓词）"
     art s05-p1 "新增载荷数=$(( $(payload_count) - SBEFORE ))" "新载荷文本=[${NEW_TXT}]"
 
-    # --- s05-p2 [real-process] 简报消费队列收编（.route=="brief" 且 .pushed==true） ---
+    # --- worker 判决=brief：写摘要（不含该事件正文）+ verdicts → send-digest ---
+    DFLIGHT5="$SB_ROOT/contrib-data/kanban-flight-digest.json"
+    SNAP5="$(jq -r '.batch_file // empty' "$DFLIGHT5" 2>/dev/null)"
+    [[ -n "$SNAP5" && -f "$SNAP5" ]] && _pass "s05 判断批快照落盘" || _fail "s05 判断批快照落盘" "SNAP5=$SNAP5"
+    DIG5="${SNAP5%.json}.digest.md"
+    printf '🟠【contrib 告警】%s\n\n本批 1 条事件经判断均无需即时推送（进简报留痕）。\n' "$(date +%m-%d)" >"$DIG5"
+    printf '%s' '[{"key":"G","route":"brief","reason":"信息性无决策点"}]' >"${SNAP5%.json}.verdicts.json"
+    OUT5="$(sb_run -e "NOTIFY_DRY_RUN=false" \
+      "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DIG5' --batch '$SNAP5' --verdicts '${SNAP5%.json}.verdicts.json'")"
+    assert_exit 0 $?
+    assert_eq "$OUT5" "OK" "s05 worker send-digest stdout 闭集 OK"
+
+    # --- s05-p2 [real-process] 简报消费队列收编（.route=="brief" 且 .pushed==true 且真落简报文件） ---
     G_ROUTE="$(led_field G '.route')"
     G_PUSHED="$(led_field G '.pushed')"
     assert_eq "$G_ROUTE" "brief" "s05-p2 G 行 .route == \"brief\""
     assert_eq "$G_PUSHED" "true" "s05-p2 G 行 .pushed == true"
+    BRIEF5="$SB_ROOT/contrib-data/briefs/$(date +%F).md"
+    [[ -f "$BRIEF5" ]] && _pass "s05-p2 当日简报文件已建" || _fail "s05-p2 当日简报文件已建" "缺失 $BRIEF5"
+    assert_file_contains "$BRIEF5" "## 简报队列（机械落账）" "s05-p2 固定小节头"
+    assert_file_contains "$BRIEF5" '`G`' "s05-p2 记录行含 key"
     art s05-p2 "$(jq -c 'select(.key == "G")' "$EV" 2>/dev/null)"
 
     # --- s05-p3 [det-machine] 行不丢弃 ---
@@ -526,7 +573,7 @@ if scene_on 6; then
   t_case "场景6 resolve 闭环（s06-p1/p2/p3）"
   if sb_fresh s06; then
     RES_SUM="根因已消除-手工闭环"
-    ev_send event own-pr-activity --key K --summary "K-待闭环告警正文" >/dev/null
+    ev_send event pipeline-failure --key K --summary "K-待闭环告警正文" >/dev/null
     do_flush >/dev/null
     assert_eq "$(led_field K '.pushed')" "true" "s06 前置：K 已推送（收尾卡前提）"
     RBEFORE="$(payload_count)"
@@ -576,7 +623,7 @@ if scene_on 7; then
   t_case "场景7 存量行向后兼容（s07-p1/p2/p3）"
   if sb_fresh s07; then
     SL_TXT="SL-存量行正文"
-    seed_legacy_row own-pr-activity SL "$SL_TXT"
+    seed_legacy_row pipeline-failure SL "$SL_TXT"
     B7="$(payload_count)"
     do_flush >/dev/null
     NEW7="$(payloads_new "$B7")"
@@ -600,7 +647,7 @@ if scene_on 7; then
 
   # --- s07-p1 续（[A2]）：存量叙事行（无 channel）→ digest 卡 contrib 告警标头 ---
   if sb_fresh s07; then
-    seed_legacy_row pipeline-failure SLN "SLN-存量叙事行正文"
+    seed_legacy_row own-pr-activity SLN "SLN-存量叙事行正文"
     sb_state_set '.last_flush_epoch = 0'
     B7B="$(payload_count)"
     do_flush >/dev/null
@@ -617,7 +664,7 @@ if scene_on 7; then
 
   # --- s07-p2 [det-machine] 不错行不损坏账本 ---
   if sb_fresh s07; then
-    seed_legacy_row own-pr-activity SLJ "SLJ-账本完整性正文"
+    seed_legacy_row pipeline-failure SLJ "SLJ-账本完整性正文"
     do_flush >/dev/null
     BADJSON=0
     LINEN=0
@@ -634,7 +681,7 @@ if scene_on 7; then
 
   # --- s07-p3 [real-process] 存量行（无 channel/resolved 字段）可正常闭环 ---
   if sb_fresh s07; then
-    seed_legacy_row own-pr-activity SLR "SLR-存量闭环正文"
+    seed_legacy_row pipeline-failure SLR "SLR-存量闭环正文"
     do_flush >/dev/null
     assert_eq "$(led_field SLR '.pushed')" "true" "s07-p3 前置：存量行已推送"
     R7_OUT="$(sb_notify resolve --key SLR --summary "存量行闭环")"
@@ -654,7 +701,7 @@ if scene_on 8; then
   t_case "场景8 单域 flashcards 不空发（s08-p1）"
   if sb_fresh s08; then
     F2_TXT="F2-flashcards单域待推正文"
-    ev_send event own-pr-activity --key f2 --summary "$F2_TXT" --channel flashcards >/dev/null
+    ev_send event pipeline-failure --key f2 --summary "$F2_TXT" --channel flashcards >/dev/null
     B8="$(payload_count)"
     do_flush >/dev/null
     NEW8="$(payloads_new "$B8")"
@@ -703,12 +750,12 @@ if scene_on 9; then
     S1_TXT="S1-窗口内复发正文"
     SPP_TXT="SPP-窗口外复发正文"
     OLD_ISO="2020-01-01T00:00:00+08:00" # flush 标记路（python isoformat）形态
-    ev_send event own-pr-activity --key K --summary "$S0_TXT" >/dev/null
+    ev_send event pipeline-failure --key K --summary "$S0_TXT" >/dev/null
     do_flush >/dev/null
     assert_eq "$(led_field K '.pushed')" "true" "s09 前置：首推完成"
-    ev_send event own-pr-activity --key K --summary "$S1_TXT" >/dev/null # 窗口内复发（occ=2）
+    ev_send event pipeline-failure --key K --summary "$S1_TXT" >/dev/null # 窗口内复发（occ=2）
     led_set_row K ".pushed_at = \"${OLD_ISO}\""                          # 冻结回拨：窗口过期
-    ev_send event own-pr-activity --key K --summary "$SPP_TXT" >/dev/null # occ=3，须置 pushed=false
+    ev_send event pipeline-failure --key K --summary "$SPP_TXT" >/dev/null # occ=3，须置 pushed=false
     assert_eq "$(led_field K '.pushed')" "false" "s09 前置：窗口外复发置 pushed=false"
     sb_state_set '.last_flush_epoch = 0'
     B9="$(payload_count)"
@@ -737,7 +784,7 @@ if scene_on 9; then
     # --- [A4] pushed_at 第二格式（cmd_event 路 +0800）同样归一化 ---
     OLD_OFF="2020-01-01T00:00:00+0800"
     led_set_row K ".pushed_at = \"${OLD_OFF}\""
-    ev_send event own-pr-activity --key K --summary "SPP2-第二格式窗口外复发" >/dev/null
+    ev_send event pipeline-failure --key K --summary "SPP2-第二格式窗口外复发" >/dev/null
     assert_eq "$(led_field K '.pushed')" "false" "s09-extra [+0800 格式] 窗口外复发置 pushed=false（时钟归一化）"
     sb_cleanup
   fi
@@ -752,11 +799,11 @@ if scene_on 10; then
   if sb_fresh s10; then
     SC_TXT="SC-contrib同key正文"
     SF_TXT="SF-flashcards同key正文"
-    ev_send event own-pr-activity --key K --summary "$SC_TXT" >/dev/null
+    ev_send event pipeline-failure --key K --summary "$SC_TXT" >/dev/null
     do_flush >/dev/null
     assert_eq "$(led_field K '.pushed')" "true" "s10 前置：contrib 侧 K 已推（静默窗内）"
     sb_state_set '.last_flush_epoch = 0'
-    ev_send event own-pr-activity --key K --summary "$SF_TXT" --channel flashcards >/dev/null
+    ev_send event pipeline-failure --key K --summary "$SF_TXT" --channel flashcards >/dev/null
     B10="$(payload_count)"
     do_flush >/dev/null
     NEW10="$(payloads_new "$B10")"
@@ -780,9 +827,9 @@ if scene_on 10; then
 
   # --- s10-p1 续（[A2]）：flashcards 域 告警标头载荷（同 key 语境下的域标头参数化） ---
   if sb_fresh s10; then
-    ev_send event own-pr-activity --key K --summary "SC2-contrib同key正文" >/dev/null
+    ev_send event pipeline-failure --key K --summary "SC2-contrib同key正文" >/dev/null
     do_flush >/dev/null
-    ev_send event own-pr-activity --key K --summary "SF2-flashcards同key正文" --channel flashcards >/dev/null
+    ev_send event pipeline-failure --key K --summary "SF2-flashcards同key正文" --channel flashcards >/dev/null
     do_flush >/dev/null
     KNF_NEW="$(narr_round flashcards knf "KNF-flashcards叙事批正文")"
     assert_contains "$KNF_NEW" "【flashcards 告警】" "s10-p1 flashcards 域 告警标头齐现"
@@ -796,24 +843,42 @@ fi
 #   谓词：s11-p1 [real-process] s11-p2 [real-process]
 # =============================================================================
 if scene_on 11; then
-  t_case "场景11 flashcards 简报级降级（s11-p1/p2）"
+  t_case "场景11 flashcards 判断判决=进简报（s11-p1/p2）"
+  # 09-17 改动 2：flashcards 域事件同样由判断层判决（无类名豁免）；route=brief 落账复用
+  # 既有 _flush_brief_mark 机制
   if sb_fresh s11; then
     SFG_TXT="SFG-flashcards简报级内容"
     ev_send event visual-run-done --key FG --summary "$SFG_TXT" --channel flashcards >/dev/null
     B11="$(payload_count)"
+    SB11="$(send_calls)"
     do_flush >/dev/null
     NEW11="$(payloads_new "$B11")"
 
-    # --- s11-p1 [real-process] 不即时推送 ---
-    assert_eq "$(( $(payload_count) - B11 ))" "0" "s11-p1 flashcards 简报级零新增载荷"
+    # --- s11-p1 [real-process] 派发轮不即时推送 ---
+    assert_eq "$(( $(send_calls) - SB11 ))" "0" "s11-p1 flashcards 判断批派发轮零微信外发"
     assert_not_contains "$NEW11" "$SFG_TXT" "s11-p1 载荷 not-contains SFG（negate 谓词）"
     art s11-p1 "新增载荷数=$(( $(payload_count) - B11 ))" "新载荷文本=[${NEW11}]"
+
+    # --- worker 判决=brief（flashcards 域）→ send-digest（主题按批次渠道取） ---
+    DFLIGHT11="$SB_ROOT/contrib-data/kanban-flight-digest.json"
+    SNAP11="$(jq -r '.batch_file // empty' "$DFLIGHT11" 2>/dev/null)"
+    [[ -n "$SNAP11" && -f "$SNAP11" ]] && _pass "s11 判断批快照落盘" || _fail "s11 判断批快照落盘" "SNAP11=$SNAP11"
+    DIG11="${SNAP11%.json}.digest.md"
+    printf '🟠【flashcards 告警】%s\n\n本批 1 条事件经判断均无需即时推送（进简报留痕）。\n' "$(date +%m-%d)" >"$DIG11"
+    printf '%s' '[{"key":"FG","route":"brief","reason":"运行完成类无决策点"}]' >"${SNAP11%.json}.verdicts.json"
+    OUT11="$(sb_run -e "NOTIFY_DRY_RUN=false" \
+      "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DIG11' --batch '$SNAP11' --verdicts '${SNAP11%.json}.verdicts.json'")"
+    assert_exit 0 $?
+    assert_eq "$OUT11" "OK" "s11 worker send-digest stdout 闭集 OK"
 
     # --- s11-p2 [real-process] 简报消费队列收编 ---
     FG_ROUTE="$(led_field FG '.route')"
     FG_PUSHED="$(led_field FG '.pushed')"
     assert_eq "$FG_ROUTE" "brief" "s11-p2 FG 行 .route == \"brief\""
     assert_eq "$FG_PUSHED" "true" "s11-p2 FG 行 .pushed == true"
+    BRIEF11="$SB_ROOT/contrib-data/briefs/$(date +%F).md"
+    [[ -f "$BRIEF11" ]] && _pass "s11-p2 当日简报文件已建" || _fail "s11-p2 当日简报文件已建" "缺失 $BRIEF11"
+    assert_file_contains "$BRIEF11" '`FG`' "s11-p2 记录行含 key"
     art s11-p2 "$(jq -c 'select(.key == "FG")' "$EV" 2>/dev/null)"
 
     # --- 契约衍生：class→域映射兜底（§event 渠道解析：显式 --channel > class 映射 > contrib） ---
@@ -831,11 +896,11 @@ if scene_on 12; then
   t_case "场景12 resolved 复发重开（s12-p1/p2）"
   if sb_fresh s12; then
     SPPP_TXT="SPPP-resolved后复发正文"
-    ev_send event own-pr-activity --key K --summary "K-首报正文" >/dev/null
+    ev_send event pipeline-failure --key K --summary "K-首报正文" >/dev/null
     do_flush >/dev/null
     sb_notify resolve --key K --summary "第一次闭环" >/dev/null
     assert_eq "$(led_field K '.resolved')" "true" "s12 前置：K 已 resolved"
-    ev_send event own-pr-activity --key K --summary "$SPPP_TXT" >/dev/null
+    ev_send event pipeline-failure --key K --summary "$SPPP_TXT" >/dev/null
 
     # --- s12-p1 [det-machine] 重开为活跃态 ---
     R12="$(led_field K '.resolved')"
@@ -990,12 +1055,12 @@ if scene_on 14; then
   # cap=1 时第一轮正常推送、第二轮（回拨后）被限额拒绝、alerts[today] 封顶于 1
   if sb_fresh s14; then
     sb_config_set '.max_alert_pushes_per_day = 1'
-    ev_send event own-pr-activity --key cap-a --summary "容量闸-第一轮正文" >/dev/null
+    ev_send event pipeline-failure --key cap-a --summary "容量闸-第一轮正文" >/dev/null
     B14="$(payload_count)"
     do_flush >/dev/null
     N14A=$(( $(payload_count) - B14 ))
     sb_state_set '.last_flush_epoch = 0'
-    ev_send event own-pr-activity --key cap-b --summary "容量闸-第二轮正文" >/dev/null
+    ev_send event pipeline-failure --key cap-b --summary "容量闸-第二轮正文" >/dev/null
     B14B="$(payload_count)"
     do_flush >/dev/null
     N14B=$(( $(payload_count) - B14B ))
@@ -1168,30 +1233,28 @@ fi
 if scene_on 18; then
   t_case "场景18 扩展机制（s18-p1/p2）"
   if sb_fresh s18; then
-    # --- s18-p1 config 存在 brief_only_classes → replace 语义 ---
-    sb_config_set '.brief_only_classes = ["pipeline-failure"]'
-    ev_send event pipeline-failure --key CN --summary "CN-replace后降级类正文" >/dev/null
-    ev_send event own-pr-info --key OP --summary "OP-缺省表类不再降级正文" >/dev/null
+    # --- s18-p1 brief_only_classes 死键零消费（09-17 改动 2：route 预写退役 + config 键死值不影响路由） ---
+    # 旧契约「config 覆盖 replace 语义降级」已退役：表内/表外类同判——都进判断批、事件行无 route 预写
+    sb_config_set '.brief_only_classes = ["own-pr-info"]'
+    ev_send event own-pr-info --key CN --summary "CN-死键表内类正文" >/dev/null
+    ev_send event probe-premise-dead --key OP --summary "OP-死键表外类正文" >/dev/null
     B18="$(payload_count)"
     do_flush >/dev/null
-    CN_ROUTE="$(led_field CN '.route')"
-    CN_PUSHED="$(led_field CN '.pushed')"
-    OP_ROUTE="$(led_field_or OP route push)"
-    assert_eq "$CN_ROUTE" "brief" "s18-p1 数组内新类 C_new 行 .route == \"brief\"（降级）"
-    assert_eq "$CN_PUSHED" "true" "s18-p1 C_new 行 .pushed == true（简报队列标记）"
-    assert_ne "$OP_ROUTE" "brief" "s18-p1 数组外缺省表类不再降级（replace 非并集）"
+    assert_eq "$(led_field CN '.pushed')" "false" "s18-p1 表内类不降级（挂账等判断，pushed 保持 false）"
+    assert_eq "$(led_field CN 'has("route")')" "false" "s18-p1 表内类事件行无 route 预写（判决在 flush 判决时发生）"
+    assert_eq "$(led_field OP 'has("route")')" "false" "s18-p1 表外类事件行无 route 预写"
     DFLIGHT18="$SB_ROOT/contrib-data/kanban-flight-digest.json"
     if [[ -f "$DFLIGHT18" ]]; then
-      _pass "s18-p1 push 类行照常进微信批（digest 卡已派发）"
+      _pass "s18-p1 判断批 digest 卡已派发"
       SNAP18="$(digest_flight_field batch_file)"
       N_OP="$(jq -s '[.[] | select(.key == "OP")] | length' "$SNAP18" 2>/dev/null || printf '0')"
       N_CN="$(jq -s '[.[] | select(.key == "CN")] | length' "$SNAP18" 2>/dev/null || printf '0')"
-      assert_eq "$N_OP" "1" "s18-p1 push 类行在批内（快照含 OP）"
-      assert_eq "$N_CN" "0" "s18-p1 brief 类行不进微信批（快照不含 CN）"
+      assert_eq "$N_OP" "1" "s18-p1 表外类在判断批内（快照含 OP）"
+      assert_eq "$N_CN" "1" "s18-p1 表内类同批进判断层（config 死键不影响路由，快照含 CN）"
     else
-      _fail "s18-p1 push 类行照常进微信批" "digest 卡未派发（kanban-flight-digest.json 缺失）"
+      _fail "s18-p1 判断批 digest 卡已派发" "digest 卡未派发（kanban-flight-digest.json 缺失）"
     fi
-    assert_not_contains "$(payloads_new "$B18")" "CN-replace后降级类正文" "s18-p1 载荷 not-contains CN 正文"
+    assert_not_contains "$(payloads_new "$B18")" "CN-死键表内类正文" "s18-p1 载荷 not-contains CN 正文"
     art s18-p1 "$(jq -c 'select(.key == "CN" or .key == "OP")' "$EV" 2>/dev/null)" \
       "flight=[$(jq -c . "$DFLIGHT18" 2>/dev/null)]"
 

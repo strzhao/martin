@@ -16,8 +16,10 @@ sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
 EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
 STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
 
-t_case "E1: 叙事事件→digest 卡（T5 卡化：flight 四键+快照+零 send 零 claude+挂账 attempts 不增）"
-sb_notify event pipeline-failure --key e1-narrative --summary "scan 研判 claude -p 失败 exit=1" >/dev/null
+t_case "E1: 判断类事件→digest 卡（T5 卡化：flight 四键+快照+零 send 零 claude+挂账 attempts 不增）"
+# 09-17 改动 2：类名分流退役——非 ALWAYS_PUSH 类全量进判断批（digest 卡路）；原 fixture
+# pipeline-failure 现属机械下限族，驱动类换 own-pr-activity（语义不变：判断批载体验证）
+sb_notify event own-pr-activity --key e1-narrative --summary "scan 研判 claude -p 失败 exit=1" >/dev/null
 assert_exit 0 $?
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
@@ -56,6 +58,7 @@ assert_not_contains "$(jq -r 'select(.key == "e1-narrative") | .pushed_at' "$EVE
 # ② 配额 bump ③ 批次文件 sent:true（send_result 佐证）
 assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "1" "当日告警配额 bump 1"
 assert_eq "$(jq -rs '[.[] | select(.sent == true)] | length' "$SNAP" 2>/dev/null)" "1" "批次回写 sent:true"
+assert_eq "$(jq -r 'select(.key == "e1-narrative") | .route' "$EVENTS_FILE")" "push" "route=push（C1 向后兼容：--verdicts 缺席=全批 push 兜底）"
 send_body="$(stub_last_body hermes)"
 assert_contains "$(cat "$send_body")" "🟠【contrib 告警】" "外发内容为摘要（报头）"
 assert_not_contains "$(cat "$send_body")" '"summary":"scan 研判' "外发无 raw JSON dump（永不 raw dump）"
@@ -64,7 +67,7 @@ t_case "E1c: 卡 done + 批次 sent:true 消费轮 → 零账本动作（双写�
 printf '{"id":"%s","status":"done","assignee":"contrib","priority":0}\n' "$(jq -r '.card_id' "$DFLIGHT")" \
   >"$SB_ROOT/stublog/kanban-cards.jsonl"
 sb_state_set '.last_flush_epoch = 0'
-sb_notify event pipeline-failure --key e1-next --summary "消费轮新攒叙事" >/dev/null
+sb_notify event own-pr-activity --key e1-next --summary "消费轮新攒叙事" >/dev/null
 before_pushed="$(jq -s '[.[] | select(.pushed == true)] | length' "$EVENTS_FILE")"
 before_alerts="$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")"
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null 2>&1
@@ -78,27 +81,28 @@ send_calls="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%
 assert_eq "$send_calls" "1" "消费轮零发送（唯一 send 来自 worker 环节）"
 assert_eq "$(jq -r 'select(.key == "e1-next") | .pushed' "$EVENTS_FILE")" "false" "新攒事件留待下小时轮（不丢）"
 
-t_case "E1b: 纯机械批次→模板卡（零 LLM）+ ▪ 实质行"
+t_case "E1b: 机械下限批（ALWAYS_PUSH）→模板卡直推（零 LLM）+ ▪ 实质行"
 # 前置态收口：消费轮新攒的 e1-next 留待下小时轮（卡路），此处拨账模拟其已被消费，
-# 使本批为纯机械批（E1b 回归锚点）
+# 使本批只剩下限类（09-17 改动 2：驱动类换 ALWAYS_PUSH 族 fixture，锁「机械下限直推不经判断层」）
 jq 'if .key == "e1-next" then .pushed = true else . end' "$EVENTS_FILE" >"$EVENTS_FILE.tmp" \
   && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
 rm -f "$SB_ROOT/contrib-data/kanban-flight-digest.json"   # E1b 建的卡在本用例语境外，清登记
-sb_notify event probe-premise-dead --key e1-mech --summary "radar 2026-09-05 premise 复验：#102413 已被占坑出局" >/dev/null
+sb_notify event pipeline-failure --key e1-mech --summary "radar 2026-09-05 premise 复验：#102413 已被占坑出局" >/dev/null
 assert_exit 0 $?
 sb_state_set '.last_flush_epoch = 0'
 before_claude="$(stub_count claude)"
 before_hermes="$(stub_count hermes)"
 out="$(sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush')"
 assert_exit 0 $?
-assert_eq "$(( $(stub_count claude) - before_claude ))" "0" "纯机械批次零 claude 调用"
+assert_eq "$(( $(stub_count claude) - before_claude ))" "0" "机械下限批零 claude 调用（不经判断层）"
 assert_eq "$(( $(stub_count hermes) - before_hermes ))" "1" "hermes 再发一次"
 body_file="$(stub_last_body hermes)"
-assert_contains "$(cat "$body_file")" "▪ 候选折损" "模板卡实质行（▪ 开头）"
+assert_contains "$(cat "$body_file")" "▪ pipeline-failure" "模板卡实质行（▪ 开头，未知类标题透传）"
 assert_contains "$(cat "$body_file")" "↳ " "模板卡动作行"
 assert_eq "$(jq -r 'select(.key == "e1-mech") | .pushed' "$EVENTS_FILE")" "true" "机械事件标 pushed"
+assert_eq "$(jq -r 'select(.key == "e1-mech") | .route' "$EVENTS_FILE")" "push" "route=push（C3 值域闭集回填）"
 
-t_case "E1f: 失败链（建卡失败 → fallback claude+send 也败）→ 事件保留 + attempts 递增"
+t_case "E1f: 失败链（机械下限批发送失败 → 挂账）→ 事件保留 + attempts 递增"
 sb_notify event pipeline-failure --key e1-fail --summary "会失败的事件" >/dev/null
 sb_state_set '.last_flush_epoch = 0'
 before_hermes="$(stub_count hermes)"
@@ -109,7 +113,9 @@ assert_eq "$(jq -r 'select(.key == "e1-fail") | .attempts' "$EVENTS_FILE")" "1" 
 [[ ! -f "$SB_ROOT/contrib-data/kanban-flight-digest.json" ]] && _pass "建卡失败不写登记" \
   || _fail "建卡失败不写登记" "残留"
 
-t_case "E1g: 简报级事件（own-pr-info）不进微信批——账本 route=brief 标记且不占限额/不推进闸门"
+t_case "E1g: 判断批判决=进简报（verdicts route=brief）——账本标记 + 当日简报成行 + 派发轮零外发"
+# 09-17 改动 2：brief 路由不再由类名预分类驱动，改由判断层判决（send-digest --verdicts）
+# 驱动：flush 判断批建卡（零外发零 LLM）→ 测试扮演 worker 写摘要+verdicts（brief）→ send-digest
 sb_cleanup
 sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
 EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
@@ -117,16 +123,29 @@ STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
 sb_notify event own-pr-info --key e1-brief --summary "mergeable 翻转（无决策点）" >/dev/null
 assert_exit 0 $?
 sb_state_set '.last_flush_epoch = 0'
-before_hermes="$(stub_count hermes)"
+before_send="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+  "$SB_ROOT/stublog/calls.log" 2>/dev/null)"
 before_claude="$(stub_count claude)"
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 assert_exit 0 $?
-assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "降级轮零外发（即时推送不出）"
-assert_eq "$(( $(stub_count claude) - before_claude ))" "0" "降级轮零 LLM（摘要路同样不出）"
-assert_eq "$(jq -r 'select(.key == "e1-brief") | .route' "$EVENTS_FILE")" "brief" "账本 route=brief（当日简报消费队列）"
-assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "true" "降级即标记已派发（不积压 unpushed）"
-assert_eq "$(jq -r 'select(.key == "e1-brief") | .attempts' "$EVENTS_FILE")" "0" "降级不占 attempts"
-assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "0" "降级不占当日告警限额"
+send_calls="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+  "$SB_ROOT/stublog/calls.log" 2>/dev/null)"
+assert_eq "$(( send_calls - before_send ))" "0" "判断批派发轮零外发（hermes send 口径；发送在 worker 侧）"
+assert_eq "$(( $(stub_count claude) - before_claude ))" "0" "判断批派发轮零 LLM（异步建卡）"
+assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "0" "派发轮不占当日告警限额"
+DFLIGHT1="$SB_ROOT/contrib-data/kanban-flight-digest.json"
+SNAP1="$(jq -r '.batch_file // empty' "$DFLIGHT1" 2>/dev/null)"
+[[ -n "$SNAP1" && -f "$SNAP1" ]] && _pass "判断批快照落盘（卡路载入）" || _fail "判断批快照落盘" "SNAP1=$SNAP1"
+DIGEST1="${SNAP1%.json}.digest.md"
+printf '🟠【contrib 告警】%s\n\n本批 1 条事件经判断均无需即时推送（进简报留痕）。\n' "$(date +%m-%d)" >"$DIGEST1"
+jq -n '[{key: "e1-brief", route: "brief", reason: "无决策点，宁进简报不进微信"}]' >"${SNAP1%.json}.verdicts.json"
+out="$(sb_run -e "NOTIFY_DRY_RUN=false" \
+  "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DIGEST1' --batch '$SNAP1' --verdicts '${SNAP1%.json}.verdicts.json'")"
+assert_exit 0 $?
+assert_eq "$out" "OK" "send-digest stdout 闭集 OK"
+assert_eq "$(jq -r 'select(.key == "e1-brief") | .route' "$EVENTS_FILE")" "brief" "账本 route=brief（判决落账）"
+assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "true" "brief 即标记已派发（不积压 unpushed）"
+assert_eq "$(jq -r 'select(.key == "e1-brief") | .attempts' "$EVENTS_FILE")" "0" "brief 落账不占 attempts"
 assert_eq "$(jq -r '.last_flush_epoch' "$STATE_FILE")" "0" "标记动作不推进 last_flush_epoch"
 # 09-14 修：降级不止是账本标记——同一条行必须落进当日简报文件（此前的黑洞：账本标 route=brief，
 # briefs/<date>.md 里 grep 该 key = 0，全机无消费者）
@@ -141,6 +160,15 @@ assert_eq "$(grep -cF -- 'e1-brief' "$BRIEF_FILE")" "1" "该 key 恰一行（不
 assert_eq "$(grep -c '^- ' "$BRIEF_FILE")" "1" "记录形态=单行列表项（恒单行）"
 assert_not_contains "$(cat "$BRIEF_FILE")" '"summary"' "简报不落 raw JSON（人读面）"
 
+# drive_brief_mark <key> — 判决路驱动（09-17 改动 2 后 brief 落账统一入口的等价直调）：
+# _flush_brief_mark 即 send-digest --verdicts route=brief 与 _apply_verdicts 共同复用的落账层，
+# E1i/J/K/L/M 聚焦落账/查重/散文边界机制本身，故直调载体驱动（设计 D8 允许的等价驱动）。
+drive_brief_mark() {
+  printf '%s\n' "[\"$1\"]" >"$SB_ROOT/contrib-data/e1-keys.json"
+  sb_run -e "NOTIFY_SOURCE_ONLY=1" 'source "$MARTIN_DIR/scripts/contrib/notify.sh" >/dev/null 2>&1
+_flush_brief_mark "$CONTRIB_DATA_DIR/e1-keys.json" contrib'
+}
+
 t_case "E1i: 幂等——同 key 二次入批（簇重推把 pushed 拨回 false 的同形前置态）不得重复成行"
 # 生产 repush 路径会把已推行的 pushed 拨回 false 重新入批；简报落账必须按 key 查重。
 # ⚠ 账本是逐行 JSONL（`_event_line_of` 按行 grep + line-splice）⇒ 改行必须 `jq -c`：
@@ -150,22 +178,30 @@ jq -c 'if .key == "e1-brief" then .pushed = false else . end' "$EVENTS_FILE" >"$
 assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "false" "前置态：该行确已拨回未推"
 BRIEF_SHA_BEFORE="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_state_set '.last_flush_epoch = 0'
-before_hermes="$(stub_count hermes)"
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+before_alerts="$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")"
+before_send="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+  "$SB_ROOT/stublog/calls.log" 2>/dev/null)"
+# 判决路驱动（09-17 改动 2）：直调 _flush_brief_mark 载体（同 send-digest verdicts=brief 的落账层）
+printf '%s\n' '["e1-brief"]' >"$SB_ROOT/contrib-data/e1-brief-keys.json"
+sb_run -e "NOTIFY_SOURCE_ONLY=1" 'source "$MARTIN_DIR/scripts/contrib/notify.sh" >/dev/null 2>&1
+_flush_brief_mark "$CONTRIB_DATA_DIR/e1-brief-keys.json" contrib'
 assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "e1-brief") | .pushed' "$EVENTS_FILE")" "true" "重推轮账本重新标已派发（证明该 key 真被再处理）"
 assert_eq "$(jq -r 'select(.key == "e1-brief") | .route' "$EVENTS_FILE")" "brief" "重推轮账本仍标 route=brief"
 assert_eq "$(grep -cF -- 'e1-brief' "$BRIEF_FILE")" "1" "简报文件仍恰一行（幂等，不重复追加）"
 assert_eq "$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')" "$BRIEF_SHA_BEFORE" "简报文件逐字节未变（查重命中即零写入）"
-assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "0" "幂等轮仍不占当日限额"
-assert_eq "$(( $(stub_count hermes) - before_hermes ))" "0" "幂等轮零外发"
+assert_eq "$(jq -r --arg d "$(date +%F)" '.alerts[$d] // 0' "$STATE_FILE")" "$before_alerts" "幂等轮不占当日限额（增量 0）"
+send_calls="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
+  "$SB_ROOT/stublog/calls.log" 2>/dev/null)"
+assert_eq "$(( send_calls - before_send ))" "0" "幂等轮零外发（hermes send 口径）"
 
-t_case "E1h: brief_only_classes 覆盖 = replace 语义（表内类降级、缺省表类不再降级）"
+t_case "E1h: config brief_only_classes 死键零消费——表内/表外类均进判断批（route 预写退役）"
+# 09-17 改动 2：类名豁免消费点退役。死键注入（键存在且非空）不得影响路由——mutation② 的
+# config 表复活形态在此被击落：两事件都必须出现在判断批快照里，且事件行无 route 预写。
 sb_cleanup
 sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
 EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
 STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
-# 沙箱 config 注入 brief_only_classes=[own-pr-unledgered] —— 整体替代缺省表（非并集）
 sb_config_set '.brief_only_classes = ["own-pr-unledgered"]'
 sb_notify event own-pr-info --key e1-cfg-info --summary "缺省表内的类" >/dev/null
 sb_notify event own-pr-unledgered --key e1-cfg-unl --summary "覆盖表内的类" >/dev/null
@@ -173,9 +209,14 @@ assert_exit 0 $?
 sb_state_set '.last_flush_epoch = 0'
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 assert_exit 0 $?
-assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | .route' "$EVENTS_FILE")" "brief" "覆盖表内的类降级 route=brief"
-assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | .pushed' "$EVENTS_FILE")" "true" "覆盖表内的类降级即标记派发"
-assert_eq "$(jq -r 'select(.key == "e1-cfg-info") | .route' "$EVENTS_FILE")" "push" "缺省表内的类不再降级（replace 语义）"
+DFLIGHT_H="$SB_ROOT/contrib-data/kanban-flight-digest.json"
+SNAP_H="$(jq -r '.batch_file // empty' "$DFLIGHT_H" 2>/dev/null)"
+[[ -n "$SNAP_H" && -f "$SNAP_H" ]] && _pass "判断批快照落盘" || _fail "判断批快照落盘" "SNAP_H=$SNAP_H"
+assert_eq "$(jq -s '[.[] | select(.key == "e1-cfg-info")] | length' "$SNAP_H" 2>/dev/null)" "1" "表内类照常进判断批（config 死值不影响路由）"
+assert_eq "$(jq -s '[.[] | select(.key == "e1-cfg-unl")] | length' "$SNAP_H" 2>/dev/null)" "1" "表外类照常进判断批（二批同载，无类名豁免差异）"
+assert_eq "$(jq -r 'select(.key == "e1-cfg-info") | has("route")' "$EVENTS_FILE")" "false" "表内类事件行无 route 预写（判决在 flush 判决时发生）"
+assert_eq "$(jq -r 'select(.key == "e1-cfg-unl") | has("route")' "$EVENTS_FILE")" "false" "表外类事件行无 route 预写"
+assert_eq "$(jq -r 'select(.key == "e1-cfg-info") | .pushed' "$EVENTS_FILE")" "false" "判断批挂账语义：pushed 保持 false（等卡闭环）"
 
 t_case "E1j: 散文以反引号引用同 key ≠ 查重命中——机械落账仍成行（红队 F1）"
 # 09-14 红队 F1：_brief_append_record 的查重曾是「全文件 grep -qF `key`」。当日简报上半是班次
@@ -198,7 +239,7 @@ PROSE_SHA="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_notify event own-pr-info --key e1j-key --summary "散文同 key 边界" >/dev/null
 assert_exit 0 $?
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1j-key
 assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "e1j-key") | .pushed' "$EVENTS_FILE")" "true" "账本仍正常降级标记（pushed=true）"
 assert_eq "$(jq -r 'select(.key == "e1j-key") | .route' "$EVENTS_FILE")" "brief" "账本仍标 route=brief"
@@ -211,7 +252,7 @@ jq -c 'if .key == "e1j-key" then .pushed = false else . end' "$EVENTS_FILE" >"$E
   && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
 SHA_AFTER_FIRST="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1j-key
 assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "e1j-key") | .pushed' "$EVENTS_FILE")" "true" "重推轮账本重新标已派发"
 assert_eq "$(grep -cF -- 'e1j-key' "$BRIEF_FILE")" "2" "重推轮仍恰 2 行（散文 1 + 记录 1，不重复追加）"
@@ -233,7 +274,7 @@ mkdir -p "$SB_ROOT/contrib-data/briefs"
 } >"$BRIEF_FILE"
 sb_notify event own-pr-info --key e1k-key --summary "内联小节头边界" >/dev/null
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1k-key
 assert_exit 0 $?
 assert_eq "$(grep -c -- '^## 简报队列（机械落账）$' "$BRIEF_FILE")" "1" "真小节头仍被补写（整行精确判据）"
 assert_eq "$(grep -cF -- 'e1k-key' "$BRIEF_FILE")" "2" "散文行 + 记录行 = 2"
@@ -243,7 +284,7 @@ jq -c 'if .key == "e1k-key" then .pushed = false else . end' "$EVENTS_FILE" >"$E
   && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
 SHA_AFTER_FIRST="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1k-key
 assert_exit 0 $?
 assert_eq "$(grep -cF -- 'e1k-key' "$BRIEF_FILE")" "2" "重推轮仍恰 2 行（不重复追加）"
 assert_eq "$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')" "$SHA_AFTER_FIRST" "重推轮简报逐字节未变"
@@ -278,7 +319,7 @@ PRE_SHA="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_notify event own-pr-info --key e1l-key --summary "小节内散文复述记录格式" >/dev/null
 assert_exit 0 $?
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1l-key
 assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "e1l-key") | .pushed' "$EVENTS_FILE")" "true" "账本仍正常降级标记（pushed=true）"
 assert_eq "$(jq -r 'select(.key == "e1l-key") | .route' "$EVENTS_FILE")" "brief" "账本仍标 route=brief"
@@ -291,7 +332,7 @@ jq -c 'if .key == "e1l-key" then .pushed = false else . end' "$EVENTS_FILE" >"$E
   && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
 SHA_AFTER_FIRST="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1l-key
 assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "e1l-key") | .pushed' "$EVENTS_FILE")" "true" "重推轮账本重新标已派发"
 assert_eq "$(rec_lines "$BRIEF_FILE" e1l-key)" "1" "重推轮记录行仍恰 1 行（不重复追加）"
@@ -320,7 +361,7 @@ PRE_SHA="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_notify event own-pr-info --key e1m-key --summary "ISO 行首手写行引用同 key" >/dev/null
 assert_exit 0 $?
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1m-key
 assert_exit 0 $?
 assert_eq "$(jq -r 'select(.key == "e1m-key") | .pushed' "$EVENTS_FILE")" "true" "账本仍正常降级标记（pushed=true）"
 assert_eq "$(grep -cF -- " ｜ ${TICK}e1m-key${TICK} ｜ " "$BRIEF_FILE")" "2" "字段缝计数 = 2（行首 ISO + 字段缝俱在 ⇒ 字段位守卫承重）"
@@ -330,7 +371,7 @@ jq -c 'if .key == "e1m-key" then .pushed = false else . end' "$EVENTS_FILE" >"$E
   && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
 SHA_AFTER_FIRST="$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')"
 sb_state_set '.last_flush_epoch = 0'
-sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
+drive_brief_mark e1m-key
 assert_exit 0 $?
 assert_eq "$(rec_lines "$BRIEF_FILE" e1m-key)" "1" "重推轮记录行仍恰 1 行（不重复追加）"
 assert_eq "$(shasum -a 256 <"$BRIEF_FILE" | awk '{print $1}')" "$SHA_AFTER_FIRST" "重推轮简报逐字节未变"

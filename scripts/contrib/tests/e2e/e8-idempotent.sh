@@ -16,9 +16,11 @@ EVENTS_FILE="$SB_ROOT/contrib-data/events.jsonl"
 STATE_FILE="$SB_ROOT/contrib-data/notify-state.json"
 
 t_case "E8a: 同 key 二次 event 不新增行（账本幂等唯一；更新语义收编旧幂等跳过）"
-sb_notify event own-pr-activity --key e8-k --summary "第一 graffiti" >/dev/null
+# 09-17 改动 2：本组用例锁「flush→同步外发」口径，fixture 换 ALWAYS_PUSH 族
+# （own-pr-activity 现走判断批异步建卡，不同轮外发；E8b/E8c 的零调用判据依赖同步外发）
+sb_notify event pipeline-failure --key e8-k --summary "第一 graffiti" >/dev/null
 assert_exit 0 $?
-sb_notify event own-pr-activity --key e8-k --summary "第二 graffiti" >/dev/null
+sb_notify event pipeline-failure --key e8-k --summary "第二 graffiti" >/dev/null
 assert_exit 0 $?
 assert_eq "$(grep -c '"key":"e8-k"' "$EVENTS_FILE" 2>/dev/null || true)" "1" "仍一行"
 assert_eq "$(jq -r 'select(.key == "e8-k") | .occurrences' "$EVENTS_FILE")" "2" "同 key 第二次 = 原位更新（occurrences 累计 2）"

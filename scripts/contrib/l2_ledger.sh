@@ -208,8 +208,8 @@ append_ledger() {
 # flush 只读 contrib-data/events.jsonl ⇒ 自决路在结构上永远进不了简报（09-15 首单实证：
 # 00:15:46 执行完，01:0x 当日简报文件仍不存在，靠班次手写兜底）。落账是自决路的唯一必经点，
 # 事件在这里 emit 即覆盖全部自决动作（record + publish 两条路共用本函数）。
-# 简报级路由（route=brief，不进微信批）由 notify.sh 的 is_brief_only 决定：class `self-decided`
-# 在 config.brief_only_classes 闭集内（replace 语义见 notify.sh 注释）。
+# 路由判决（推微信/进简报/不推）归 notify.sh 判断层在 flush 判决时给出（09-17 改动 2 后无
+# 类名豁免表）；本函数只 emit 事件（厚事实入账），零路由动作——事件行不预写 route 字段。
 # 边界：emit 失败只记日志、绝不改变台账写入结果（台账是权威，简报是它的可读投影）；
 # --dry-run 与幂等跳过路（already_ledgered 早返回）不 emit。key 带落账时刻 ⇒ 同锚点的一日多次
 # 自决各成一行（同 key 会被 notify.sh 合并成 occurrences+1 而丢掉前一条的可见性）。
