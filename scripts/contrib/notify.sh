@@ -511,6 +511,47 @@ PYEOF
     fi
 }
 
+# _watchdog_scan <ch> — 摘要层故障看门狗（改动 4）：重试超限（同渠道 attempts>=3 未推行 >0）
+#   → 机械直推「判断层故障」告警。三 invariant（C4）：
+#   ①产生与送达结构性不经 AI 摘要/判断层——纯模板渲染 + _send 直推（判断力宕机不能靠判断力自救）；
+#   ②渠道日幂等：contrib 沿用无后缀历史键名惯例 watchdog_notice（同 fallback_notice 先例，
+#     生产状态免迁移），其余渠道 watchdog_notice_<ch>；**发送成功才置键**——失败不置键 =
+#     下轮到超限态自动重试（fail-safe 方向，禁谎报送达）；
+#   ③既有 osascript 本地兜底原样保留（_flush_attempts_bump 内，不为删而删）。
+# 位点修订说明（对设计 D5「_flush_attempts_bump 尾部」的偏离，evidence/change4 同步登记）：
+#   触发点从「bump 内即时」移至 cmd_flush 渠道循环后的分渠扫描——bump 即时触发会把本渠看门狗
+#   _send 与后续渠道的模板卡 _send 交织排序（t14-02 W3 的 FAIL_FIRST 驱动算术假设两模板卡先败、
+#   两看门狗后发）；扫描式触发语义与 D5 等价（触发口径复用同一 jq 判据），且对所有 bump 调用点
+#   （模板卡/fallback_ai/notify_digest=false）统一收口。告警是故障信号：事件本身不标 pushed
+#   （其投递仍走挂账重试）；看门狗自身发送失败不改变 flush rc（rc 语义 = 事件投递结果，
+#   告警 best-effort + 日幂等重试自带恢复）。
+# 与「唯一外发通道 = send-digest」契约的关系：该契约约束判断层 worker（卡内 agent 不得绕过
+#   send-digest 外发）；_send 是产线内部机械原语（ALWAYS_PUSH 模板卡路/本看门狗皆用它），
+#   非契约新破口。
+_watchdog_scan() {
+  local ch="$1"
+  local maxed wd_key wd_body
+  maxed=$(jq -s --arg ch "$ch" '[.[] | select(.pushed == false and (.channel // "contrib") == $ch and (.attempts // 0) >= 3)] | length' "$EVENTS" 2>/dev/null || echo 0)
+  case "$ch" in
+    contrib) wd_key="watchdog_notice" ;;
+    *)       wd_key="watchdog_notice_${ch}" ;;
+  esac
+  if (( maxed > 0 )) && [[ "$(state_get "$wd_key" "$(today)")" != "1" ]]; then
+    wd_body="/tmp/contrib-watchdog-${ch}-$$.txt"
+    {
+      echo "🟠【${ch} 告警】判断层故障（$(date +%m-%d)）"
+      echo ""
+      echo "发生了什么：${ch} 渠道 ${maxed} 条告警的摘要/发送挂账已达 3 次——告警路由依赖的 AI 判断层可能宕机，本条由机械直推兜底发出（不经判断层）。"
+      echo "为什么与你有关：挂账事件不会丢（账本保留、自动重试），但判断层恢复前你收不到它们的可读摘要。"
+      echo "建议动作：无需操作；判断层恢复后下轮自动补送。明细 contrib-data/events.jsonl（attempts>=3 的未推行）。"
+    } > "$wd_body"
+    if _send "$wd_body" "$(channel_subject "$ch")"; then
+      state_set "$wd_key" "$(today)" 1
+    fi
+    rm -f "$wd_body"
+  fi
+}
+
 # fallback_ai <batch_file> <keys_file> <unpushed> <narrative> <ep> <channel> → rc
 # 旧 claude -p 内联摘要路整段保留为兜底（卡建失败/卡失败终态/stale/done-未发送时走此路）：
 # _ai_digest → 空卡守卫 → 判决提取（VERDICTS 行）→ _send → 判决落账 / attempts+1 + osascript。
@@ -1313,6 +1354,11 @@ cmd_flush() {
   local rc_total=0 ch
   for ch in $channels; do
     _flush_channel "$ch" "$ep" || rc_total=$?
+  done
+  # 看门狗分渠扫描（改动 4）：全部渠道 bump 落账后统一判超限态——位次保证看门狗 _send
+  # 不与本轮任何渠道的投递 _send 交织（位点修订论证见 _watchdog_scan 头注释）
+  for ch in $channels; do
+    _watchdog_scan "$ch"
   done
   return "$rc_total"
 }
