@@ -11,8 +11,8 @@
 #            --dry-run 零写调用 / push 失败零台账 / gh pr create 失败零台账 /
 #            台账写失败 rc=9（push 已发生的显式暴露）
 #   自决路可见性（宪法 §12 契约 2）：record/publish --self-decided → 恰 emit 一条 self-decided
-#           事件（channel=contrib / route=brief）；幂等、--dry-run、常规批准路零 emit；
-#           emit 失败不回滚台账（台账是权威，简报是投影）
+#           事件（channel=contrib；事件行无 route 字段——判决在 flush 判决时发生，09-17 改动 2）；
+#           幂等、--dry-run、常规批准路零 emit；emit 失败不回滚台账（台账是权威，简报是投影）
 # 全程沙箱影子 stub（gh/git）+ 沙箱 MARTIN_DIR：零真实 gh、零真实 git push、
 # 零生产 approved.log 写入（断言只读 $SB_ROOT/approved.log）。
 set -uo pipefail
@@ -216,13 +216,13 @@ assert_eq "$(grep -c ' push ' "$CALLS" 2>/dev/null || true)" "1" "push 确实已
 # ---------------- ④ 自决路可见性（宪法 §12 契约 2）：落账即 emit 简报级事件 ----------------
 # 自决动作只写 approved.log / l2-ledger.log，而 flush 只读 events.jsonl ⇒ 落账处必须自己 emit，
 # 否则自决路在结构上永远进不了当日简报（09-15 首单实证）。本组断言锁三件事：
-#   ① 自决 record/publish 各 emit 恰一条 class=self-decided（channel=contrib、route=brief）；
+#   ① 自决 record/publish 各 emit 恰一条 class=self-decided（channel=contrib、事件行无 route 预写）；
 #   ② 幂等跳过 / --dry-run / 常规批准路零 emit（既有分支语义逐字不变）；
 #   ③ emit 是投影：失败不影响台账写入结果。
 EVENTS="$SB_ROOT/contrib-data/events.jsonl"
 
-t_case "record --self-decided：落账 + emit self-decided 事件（class/channel/route/锚）"
-sb_config_set '.brief_only_classes = ["own-pr-info", "visual-run-done", "self-decided"]'
+t_case "record --self-decided：落账 + emit self-decided 事件（class/channel/锚）"
+# 09-17 改动 2：brief_only_classes 消费点退役——不再注入该键（生产 config 的死键由收尾同批删）
 : >"$EVENTS"
 before="$(ledger_lines)"
 sb_l2 record --kind evidence --issue 91653 --channel "operator 自决路（§12）" \
@@ -232,8 +232,8 @@ assert_eq "$(( $(ledger_lines) - before ))" "1" "台账 +1（落账不受影响�
 assert_eq "$(jq -s 'length' "$EVENTS")" "1" "恰 emit 1 条事件"
 assert_eq "$(jq -sr '.[0].class' "$EVENTS")" "self-decided" "class=self-decided"
 assert_eq "$(jq -sr '.[0].channel' "$EVENTS")" "contrib" "channel=contrib（flush 合法闭集）"
-assert_eq "$(jq -sr '.[0].route' "$EVENTS")" "brief" "route=brief（简报级，不进微信批）"
-assert_eq "$(jq -sr '.[0].pushed' "$EVENTS")" "false" "pushed=false（待下轮 flush 入简报）"
+assert_eq "$(jq -sr '.[0] | has("route")' "$EVENTS")" "false" "事件行无 route 字段（判决在 flush 判决时发生，不预写路由）"
+assert_eq "$(jq -sr '.[0].pushed' "$EVENTS")" "false" "pushed=false（待判断层判决，账本不丢事件）"
 assert_contains "$(jq -sr '.[0].summary' "$EVENTS")" "自决: 已批动作类" "summary 带自决理由"
 assert_contains "$(jq -sr '.[0].key' "$EVENTS")" "selfdecided-contrib/selfdecided-a-" "key = 前缀 + 落账锚 + 时刻"
 

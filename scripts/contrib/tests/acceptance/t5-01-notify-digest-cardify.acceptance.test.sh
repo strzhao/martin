@@ -71,7 +71,7 @@ KEY1_HASH=""         # D1 幂等键后缀（D1b 差异断言用，跨沙箱存�
 # ---- 本文件专用装具 ----
 
 seed_narrative_event() { # <key> <summary> — 叙事类事件（非机械三类）
-  sb_seed_event "pipeline-failure" "$1" "$2"
+  sb_seed_event "own-pr-activity" "$1" "$2"
 }
 
 seed_flight_digest() { # <card_id> <batch_file> <created_epoch> — 四键登记（契约字面 schema）
@@ -478,7 +478,7 @@ sb_cleanup
 # =============================================================================
 t_case "D13 连续 3 败 → osascript 本地机械提示 + fallback_notice 当日置 1"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
-sb_seed_event "pipeline-failure" "k-n" "三败兜底用例 rq-15" contrib 2   # 预置 attempts=2，本轮 +1=3
+sb_seed_event "own-pr-activity" "k-n" "三败兜底用例 rq-15" contrib 2   # 预置 attempts=2，本轮 +1=3
 run_flush -e STUB_HERMES_FAIL=1 -e STUB_CLAUDE_FAIL=1 >/dev/null
 assert_eq "$(events_attempts_sum)" "3" "D13 attempts 2→3"
 assert_stub_called "osascript" 1 "D13 3 败 → osascript 本地机械提示"
@@ -489,7 +489,7 @@ sb_cleanup
 # =============================================================================
 t_case "D14 纯机械批回归：模板卡零 LLM 零建卡（send 正常链）"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
-sb_seed_event "probe-premise-dead" "mech-1" "radar 2026-09-09 premise 复验：rq-1 占坑出局"
+sb_seed_event "pipeline-failure" "mech-1" "radar 2026-09-09 premise 复验：rq-1 占坑出局"
 run_flush >/dev/null; RC=$?
 assert_exit 0 $RC "D14 flush exit"
 assert_eq "$(create_digest_calls)" "0" "D14 纯机械批零 digest 建卡"

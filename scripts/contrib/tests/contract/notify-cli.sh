@@ -36,7 +36,7 @@ fi
 
 # ---------------- event：schema + key 幂等 ----------------
 t_case "event：events.jsonl 行 schema 八键齐备"
-sb_notify event own-pr-activity --key c-key-1 --summary "契约测试事件" >/dev/null
+sb_notify event pipeline-failure --key c-key-1 --summary "契约测试事件" >/dev/null
 assert_exit 0 $?
 keys="$(jq -S 'keys | join(",")' "$EVENTS_FILE" 2>/dev/null)"
 for k in attempts channel class key pushed pushed_at summary ts; do
@@ -82,7 +82,7 @@ assert_eq "$alerts" "1" "alerts 只 bump 一次（非 contrib 不占限额）"
 # 干跑只盖发送不盖盖编排——「dry-run 只盖发送不盖账本」同款口径）；dry-run 的消息体打印
 # 移至 worker 侧 send-digest 环节，flush stdout 不再含 [dry-run]。
 t_case "DRY_RUN=true：flush 叙事批建 digest 卡（零 send/tunnel）+ 事件挂账不消费"
-sb_notify event pipeline-failure --key c-dry-1 --summary "dry-run 批次" >/dev/null
+sb_notify event own-pr-activity --key c-dry-1 --summary "dry-run 批次" >/dev/null
 before_tunnel="$(stub_count tunnel)"
 before_send="$(awk -F'|' '$1 == "hermes" && $3 ~ /^send / { c++ } END { printf "%d", c + 0 }' \
   "$CONTRIB_TEST_STUB_LOG/calls.log" 2>/dev/null)"
@@ -107,7 +107,7 @@ t_case "真发 flush 后 notify-state schema（fallback_notice 允许缺失=契�
 jq 'if .key == "c-dry-1" then .pushed = true else . end' "$EVENTS_FILE" >"$EVENTS_FILE.tmp" \
   && mv "$EVENTS_FILE.tmp" "$EVENTS_FILE"
 rm -f "$SB_ROOT/contrib-data/kanban-flight-digest.json"
-sb_notify event own-pr-activity --key c-real-1 --summary "真发机械事件" >/dev/null
+sb_notify event pipeline-failure --key c-real-1 --summary "真发机械事件" >/dev/null
 sb_state_set '.last_flush_epoch = 0'
 sb_run -e "NOTIFY_DRY_RUN=false" 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 rc=$?

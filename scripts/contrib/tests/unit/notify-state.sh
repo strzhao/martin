@@ -1,6 +1,6 @@
 #!/bin/bash
-# notify-state.sh — Tier U：notify.sh 簿记纯函数 + DRY_RUN 解析优先级 + 事件分级
-# 覆盖：state_bump/state_get/state_set、DRY_RUN 优先级（契约规约第 2 条）、is_mechanical 分级（第 7 条）
+# notify-state.sh — Tier U：notify.sh 簿记纯函数 + DRY_RUN 解析优先级 + 机械推送下限
+# 覆盖：state_bump/state_get/state_set、DRY_RUN 优先级（契约规约第 2 条）、is_always_push 下限（09-17 改动 2 后的类名函数收敛形态）
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,20 +54,31 @@ assert_eq "$(sb_run -e "NOTIFY_SOURCE_ONLY=1" 'source "$MARTIN_DIR/scripts/contr
 t_case "DRY_RUN：兜底 true"
 assert_eq "$(sb_run -e "NOTIFY_SOURCE_ONLY=1" 'rm -f "$CONTRIB_DATA_DIR/config.json"; source "$MARTIN_DIR/scripts/contrib/notify.sh" >/dev/null 2>&1; printf %s "$DRY_RUN"')" "true" "无配置 → true（fail-safe）"
 
-# ---------------- 事件分级（双级渲染契约的分类函数）----------------
-t_case "is_mechanical：三类机械事件"
-for cls in probe-premise-dead own-pr-activity deep-budget-exhausted; do
-  nf_fn "is_mechanical $cls"
-  assert_exit 0 $? "$cls 是机械事件"
+# ---------------- 机械推送下限（ALWAYS_PUSH，09-17 改动 2：判断失效兜底非降级上限）----------------
+t_case "is_always_push：五类下限事件（产线瘫/发版门/预算熔断）"
+for cls in pipeline-failure build-failure contract-failure release-blocked deep-budget-exhausted; do
+  nf_fn "is_always_push $cls"
+  assert_exit 0 $? "$cls 属推送下限（fail-safe 兜底）"
 done
 
-t_case "is_mechanical：叙事事件"
-for cls in pipeline-failure scan-hit unknown-class; do
-  nf_fn "is_mechanical $cls"
-  assert_exit 1 $? "$cls 是叙事事件"
+t_case "is_always_push：非下限事件（含旧 brief 表内类——类名豁免零复活）"
+for cls in probe-premise-dead own-pr-activity own-pr-unledgered own-pr-info visual-run-done scan-hit unknown-class; do
+  nf_fn "is_always_push $cls"
+  assert_exit 1 $? "$cls 不属推送下限（判决归判断层）"
 done
 
-t_case "class_title/class_action：未知类兜底"
+t_case "ALWAYS_PUSH_RE 与 is_always_push 孪生一致（jq 侧二分同源）"
+for cls in pipeline-failure release-blocked own-pr-activity unknown-class; do
+  re_hit="$(nf_fn "jq -rn --arg re \"\$ALWAYS_PUSH_RE\" --arg c '$cls' 'if (\$c | test(\$re)) then \"hit\" else \"miss\" end'")"
+  fn_rc="$(nf_fn "is_always_push $cls; printf %s \$?")"
+  if [[ "$fn_rc" == "0" ]]; then
+    assert_eq "$re_hit" "hit" "$cls RE 命中与谓词一致（正例）"
+  else
+    assert_eq "$re_hit" "miss" "$cls RE 未命中与谓词一致（负例）"
+  fi
+done
+
+t_case "class_title/class_action：未知类兜底（纯渲染数据，路由判决零参与）"
 assert_eq "$(nf_fn 'class_title totally-new-class')" "totally-new-class" "未知类标题原样透传"
 assert_eq "$(nf_fn 'class_action totally-new-class')" "" "未知类无动作行"
 

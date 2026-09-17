@@ -185,11 +185,20 @@ state_set() { # state_set <表名> <键> <JSON值> → 置值并写回（--argjs
   jq --arg t "$1" --arg k "$2" --argjson v "$3" '.[$t][$k] = $v' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 
-# ---------------- 事件分级（外发消息规范的机械/叙事两级） ----------------
-# 机械事件 = 高频、语义固定，模板卡即可高效消费（不经 LLM）；其余一律走 AI 摘要
-is_mechanical() {
+# ---------------- 机械推送下限（ALWAYS_PUSH：判断失效兜底，非降级上限） ----------------
+# 语义锚（09-17 改动 2）：ALWAYS_PUSH 是**推送下限**（fail-safe——判断层失效时永不丢关键
+# 告警），与已废除的 brief_only_classes（**降级上限**——用类名替代判断）方向相反。它是本卡
+# 唯一保留的类名短路，唯一合法口径 =「判断力失效兜底」；路由判决本身（推微信/进简报/不推）
+# 统一归判断层。逐类论证：
+#   - pipeline-failure / build-failure / contract-failure = 产线瘫（判断层可能正因它失联）
+#   - release-blocked = 发版门（物理不可逆动作的前置信号）
+#   - deep-budget-exhausted = 预算熔断（消耗失控信号）
+# ALWAYS_PUSH_RE 供 jq 侧批次二分用（jq 调不到 bash 函数）；与 is_always_push 的 case 模式串
+# 同源，改一处必改另一处（孪生纪律同 occ_all_stalled）。
+ALWAYS_PUSH_RE='^(pipeline-failure|build-failure|contract-failure|release-blocked|deep-budget-exhausted)$'
+is_always_push() {
   case "$1" in
-    probe-premise-dead|own-pr-activity|deep-budget-exhausted|own-pr-unledgered) return 0 ;;
+    pipeline-failure|build-failure|contract-failure|release-blocked|deep-budget-exhausted) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -201,23 +210,6 @@ class_title() {
     own-pr-unledgered)      echo "自有 PR 台账缺口（疑未获批就 push）" ;;
     *)                      echo "$1" ;;
   esac
-}
-# is_brief_only <class> → 0=简报级（无决策点：不进微信即时/摘要两路，降级进当日简报消费队列）
-# 缺省闭集 {own-pr-info, visual-run-done}（收窄判决：机械类 fixture 不动=机械模板卡是设计标杆
-# 形态；扩展走 config 覆盖）。语义 = **replace**：config.brief_only_classes 数组存在即整体
-# 替代缺省表（不留隐式并集；空数组 = 无简报级类）。本卡不新增 config 键（生产零改动）。
-is_brief_only() {
-  local cls="$1" is_arr hit
-  is_arr="$(jq -r 'if (.brief_only_classes | type) == "array" then "yes" else "no" end' "$CONFIG" 2>/dev/null || echo no)"
-  if [[ "$is_arr" != "yes" ]]; then
-    case "$cls" in
-      own-pr-info|visual-run-done) return 0 ;;
-      *) return 1 ;;
-    esac
-  fi
-  hit="$(jq -r --arg c "$cls" '[.brief_only_classes[] | select(. == $c)] | length' "$CONFIG" 2>/dev/null || echo 0)"
-  [[ "${hit:-0}" -ge 1 ]] && return 0
-  return 1
 }
 class_action() {
   case "$1" in
@@ -262,12 +254,15 @@ channel_subject() { # <channel> → hermes send 主题
 
 # _render_mechanical_card <batch_file> <channel> → stdout 模板卡（同类归并 + 固定动作行）
 # 直接读 batch_file（已按渠道/未推过滤）——勿再回读 EVENTS 重过滤（jq index()
-# 上下文陷阱与双份过滤都是故障面）
+# 上下文陷阱与双份过滤都是故障面）。
+# class_title/class_action 是**纯渲染数据**（模板卡标题/动作行文案），对路由判决 flow control
+# 零参与（判决已统一归判断层/机械下限常量）——保留它们只为 ALWAYS_PUSH 兜底卡的可读性。
+# 按批内实际类集合迭代（不再枚举硬编码清单），未知类透传兜底（现成 *） 分支）。
 _render_mechanical_card() {
   local batch_file="$1" ch="${2:-contrib}" cls n=0
   echo "$(channel_quick_header "$ch")$(date +%m-%d)"
   echo ""
-  for cls in probe-premise-dead own-pr-activity deep-budget-exhausted own-pr-unledgered; do
+  for cls in $(jq -r 'select(.class != null) | .class' "$batch_file" 2>/dev/null | sort -u); do
     local batch
     batch="$(jq -r --arg cls "$cls" \
       'select(.class == $cls) | .summary | sub("^radar [0-9-]+ premise 复验："; "")' \
@@ -310,6 +305,15 @@ EOF
     echo "4. 首行固定格式：$(channel_header "$ch")MM-DD（用今天日期）"
     cat <<'EOF'
 5. 只输出消息正文本身，不要任何解释、前言或代码块包裹
+
+6. 路由判决（你的核心职责，不是规则执行）：对本批每个事件独立三选一，并在正文最后另起
+   一行输出机器可读判决行（系统会提取它，不会外发给用户）：
+   VERDICTS: {"<key1>": "push", "<key2>": "brief", "<key3>": "suppress"}
+   - push = 推微信：有决策点、需要他知道并可能行动 → 进正文
+   - brief = 进简报：无决策点但需留痕（原则：宁进简报不进微信）→ 不进正文
+   - suppress = 不推：如已自愈 / 上游已知族 / 设计驻停无决策点 → 须想清楚一句理由
+   判决依据 = 下面的事件厚事实 + 本规范的目的说明；没有类名豁免表、没有数字阈值——
+   你自己判断。渲染形态（叙述/模板）也由你按上面规范自定。
 
 黑话对照（用于翻译，不得照抄）：
 - probe-premise-dead：ready-queue 候选机会的 issue 空间被其他贡献者占坑，候选作废（上游 AI farm 生态的正常损耗）
@@ -407,7 +411,7 @@ _digest_batch_sent() {
 _digest_cleanup_files() {
   local snap="$1"
   if [[ -n "$snap" ]]; then
-    rm -f "$snap" "${snap%.json}.digest.md" "${snap%.json}.body.md" "${snap%.json}.card.json"
+    rm -f "$snap" "${snap%.json}.digest.md" "${snap%.json}.body.md" "${snap%.json}.card.json" "${snap%.json}.verdicts.json"
   fi
 }
 
@@ -443,8 +447,9 @@ _digest_write_sent() {
   log "digest 批次回写 sent=$sent reason=${reason:-none}"
 }
 
-# _flush_push_mark <keys_file> — 账本标记该批 pushed（flush 成功路 / send-digest 共享；
-# 原内联 python 段整段提取，语义零变化）
+# _flush_push_mark <keys_file> — 账本标记该批 pushed（ALWAYS_PUSH 机械下限批成功路使用；
+# 判断批成功路的 pushed/route 落账统一走 _apply_verdicts。存量 python 整本重写形态按 C8
+# 口径保持原样，本卡不改其写法）；原内联 python 段整段提取，语义零变化
 _flush_push_mark() {
   python3 - "$EVENTS" "$1" <<'PYEOF'
 import json, sys
@@ -508,10 +513,12 @@ PYEOF
 
 # fallback_ai <batch_file> <keys_file> <unpushed> <narrative> <ep> <channel> → rc
 # 旧 claude -p 内联摘要路整段保留为兜底（卡建失败/卡失败终态/stale/done-未发送时走此路）：
-# _ai_digest → 空卡守卫 → _send → 账本标记 / attempts+1 + osascript。永不 raw dump。
+# _ai_digest → 空卡守卫 → 判决提取（VERDICTS 行）→ _send → 判决落账 / attempts+1 + osascript。
+# 永不 raw dump。narrative 形参仅存日志文案（类名分流退役后改传批大小，见 _flush_channel）。
 fallback_ai() {
   local batch_file="$1" keys_file="$2" unpushed="$3" narrative="$4" ep="$5" ch="${6:-contrib}"
   local body="/tmp/contrib-alerts-fb-$$.txt"
+  local vf=""
   local rc=0
   _ai_digest "$batch_file" "$body" "$ch" || rc=1
   (( rc == 0 )) && log "叙事事件 ${narrative}/${unpushed} 条 → AI 摘要层（fallback 路）"
@@ -523,14 +530,46 @@ fallback_ai() {
     fi
   fi
   if (( rc == 0 )); then
+    # 判决提取（改动 2）：末行 VERDICTS: {key→route} 机器行 → verdicts 文件；正文剥离该行再发送。
+    # 提取失败 = 降级全推——这是**降级缺省，不是判决**（判断层输出残缺时的 fail-safe 方向，
+    # 与已废除的 brief_only「类名替代判断」无关；提交信息与规范两侧均写明此口径）。
+    local vline vjson stripped
+    vline="$(grep -a '^VERDICTS: ' "$body" 2>/dev/null | tail -1 || true)"
+    if [[ -n "$vline" ]]; then
+      vjson="${vline#VERDICTS: }"
+      if jq -e 'type == "object" and all(to_entries[]; .value == "push" or .value == "brief" or .value == "suppress")' <<<"$vjson" >/dev/null 2>&1; then
+        vf="/tmp/contrib-fb-verdicts-$$.json"
+        jq '[to_entries[] | {key: .key, route: .value}]' <<<"$vjson" > "$vf" 2>/dev/null \
+          || { rm -f "$vf"; vf=""; log "fallback：VERDICTS 行转 verdicts 文件失败——降级全推"; }
+      else
+        log "fallback：VERDICTS 行非法（route 词域外）——降级全推"
+      fi
+      if [[ -n "$vf" ]]; then
+        stripped="${body}.strip"
+        grep -av '^VERDICTS: ' "$body" > "$stripped" 2>/dev/null || true
+        if [[ -s "$stripped" ]]; then
+          mv "$stripped" "$body"
+        else
+          rm -f "$stripped" "$vf"; vf=""
+          log "fallback：剥离 VERDICTS 行后正文为空——按失败挂账"
+          rc=1
+        fi
+      fi
+    else
+      log "fallback：无 VERDICTS 行——降级全推（降级缺省，非判决）"
+    fi
+  fi
+  if (( rc == 0 )); then
     _send "$body" "$(channel_subject "$ch")" || rc=$?
   fi
   if (( rc == 0 )); then
-    _flush_push_mark "$keys_file"
+    _apply_verdicts "$vf" "$batch_file" "$ch" "true"
+    [[ -n "$vf" ]] && rm -f "$vf"
     state_bump alerts "$(today)"
     jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
     log "告警已推送（${unpushed} 条事件，rendering=ai-digest-fallback）"
   else
+    [[ -n "$vf" ]] && rm -f "$vf"
     _flush_attempts_bump "$keys_file" "$ch"
     log "告警推送失败 rc=${rc}（${unpushed} 条事件保留，下轮重试）"
   fi
@@ -538,10 +577,13 @@ fallback_ai() {
   return "$rc"
 }
 
-# _digest_card_body <snapshot> <digest_file> <channel> → stdout 卡 body（快照路径+摘要输出路径约定+
-# 三段式规范（照抄 _ai_digest prompt）+ 红线：唯一外发通道=send-digest）
+# _digest_card_body <snapshot> <digest_file> <channel> <verdicts_file> → stdout 卡 body
+# （快照路径+摘要输出/判决输出路径约定+三段式规范+判决规范+红线：唯一外发通道=send-digest）。
+# 判断层输入契约（D2）：厚事实（事件快照全字段）+ 目的说明（三段式规范/宁进简报不进微信/
+# 自决动作可见性）；**禁**给类名清单判决表 / 数字阈值判据 / few-shot 规则判据——黑话对照
+# 属事实材料（帮 AI 读懂事件），不是路由规则。
 _digest_card_body() {
-  local snapshot="$1" digest_file="$2" ch="${3:-contrib}"
+  local snapshot="$1" digest_file="$2" ch="${3:-contrib}" verdicts_file="${4:-}"
   cat <<EOF
 # contrib digest 摘要卡
 
@@ -549,6 +591,7 @@ _digest_card_body() {
 
 - 事件快照（权威数据源）: ${snapshot}
 - 摘要输出文件（写到此路径）: ${digest_file}
+- 判决输出文件（写到此路径）: ${verdicts_file}
 - 接收渠道: contrib（微信，notify_target 取 config）
 - 本批事件域: ${ch}（contrib/flashcards 共用同一微信目标；报头与主题按域取）
 - 摘要规范权威: .claude/skills/contrib-watch/SKILL.md 模式六（digest 摘要卡）
@@ -559,6 +602,29 @@ _digest_card_body() {
 2. 中文人类可读，机制黑话翻译成人话；rq-id / PR# / issue# 只作引用锚点，不当正文
 3. ≤300 字；同类多条事件归并成一行汇总；只使用事件里已有的事实，不编造、不臆测原因，不确定写"待查"
 4. 首行固定格式：$(channel_header "$ch")MM-DD（用今天日期）
+5. 渲染形态（叙述/模板）由你按事件性质自定——决定权在判断层，产出形态两级皆可
+
+## 判决规范（你的核心职责，不是规则执行）
+
+对快照内**每个**事件独立判决三选一，写进判决输出文件（JSON 数组，一个元素一行事件）：
+
+[{"key": "<账本key>", "route": "push|brief|suppress", "reason": "<一句话理由>"}]
+
+- push（推微信）：有决策点、需要他知道并可能行动 → 进摘要正文，随卡外发
+- brief（进简报）：无决策点但需留痕——原则「宁进简报不进微信」→ 不进正文，落当日简报机械小节
+- suppress（不推）：如已自愈 / 上游已知族 / 设计驻停无决策点 → reason 必填一句理由
+
+判决依据 = 快照里的厚事实（事件全字段）+ 本节目的说明；没有类名豁免表、没有数字阈值——
+你自己判断。若整批判为 brief/suppress，摘要正文写一行「本批 N 条事件经判断均无需即时推送」
+（仍须过空卡守卫的实质行要求），并照常调 send-digest 带 --verdicts。
+
+## 目的说明（为什么这样判）
+
+- 外发消息规范：任何经推送渠道发到用户的消息，必须是「发生了什么 → 为何与他有关 → 建议动作」
+  的人话摘要；技术标识只作锚点。机械告警直推黑话 = 待改造存量，不是你可以照抄的先例。
+- 宁进简报不进微信：微信即时面只留有决策点的事；无决策点但需留痕的进当日简报（用户拍板口径）。
+- 可见性契约：当日全部自决动作进当日简报——判为 brief 的事件会由落账层自动写进简报机械小节，
+  你无需也不能用微信推送去补偿可见性。
 
 黑话对照（用于翻译，不得照抄）：
 - probe-premise-dead：ready-queue 候选机会的 issue 空间被其他贡献者占坑，候选作废（上游 AI farm 生态的正常损耗）
@@ -571,14 +637,14 @@ _digest_card_body() {
 
 ## 红线（必须遵守）
 
-- 唯一外发通道 = bash scripts/contrib/notify.sh send-digest --digest <摘要输出文件> --batch <事件快照>（普通命令形态，-q 模式可用）；禁 hermes send 直调、禁其他任何外发
+- 唯一外发通道 = bash scripts/contrib/notify.sh send-digest --digest <摘要输出文件> --batch <事件快照> --verdicts <判决输出文件>（普通命令形态，-q 模式可用）；禁 hermes send 直调、禁其他任何外发
 - 永不 raw dump：外发内容只允许摘要文件，原始事件 JSON 绝不直推
 - -q 模式禁脚本形态：python -c / jq -e / 任何 * -e 一律不可用（用文件读写工具完成）
-- send-digest 输出 FAIL（限额/锁超时/发送失败/空卡）属正常失败收尾，not 异常
+- send-digest 输出 FAIL（限额/锁超时/发送失败/空卡/bad-verdicts）属正常失败收尾，not 异常
 
 ## 收尾要求
 
-- 摘要写完调 send-digest：输出 OK 且批次快照尾部出现 sent:true 控制行 → kanban_complete（必须同时传 summary 与 result）
+- 摘要与判决写完调 send-digest（--digest + --batch + --verdicts 三参齐带）：输出 OK 且批次快照尾部出现 sent:true 控制行 → kanban_complete（必须同时传 summary 与 result）
 - 输出 FAIL → 同样 complete（summary 写明 FAIL 原因）——编排层按失败终态走 fallback 兜底重试
 EOF
 }
@@ -673,7 +739,9 @@ _digest_flush() {
     return $?
   }
   idem="digest-$(date +%Y%m%d)-$(_digest_keys_md5 "$keys_file")"
-  _digest_card_body "$snapshot" "$digest_file" "$ch" > "$body_file"
+  # 判决文件路径由快照路径派生（worker 写，notify.sh 零写面——不引入新的 CONTRIB 派生
+  # 赋值行，production-writers 覆盖守卫 C16 的候选面不变）
+  _digest_card_body "$snapshot" "$digest_file" "$ch" "${snapshot%.json}.verdicts.json" > "$body_file"
   card_json="$(bash "$MARTIN/scripts/contrib/kanban_card.sh" create \
     --kind digest --title "contrib digest 摘要卡 $ts_id" \
     --body-file "$body_file" --idempotency-key "$idem" \
@@ -704,28 +772,43 @@ _digest_flush() {
 }
 
 # _batch_channel <batch_file> → 批次所属渠道（首个带 key 事件行的 channel，缺省 contrib）
-# 批次形态=flush 建卡快照（恒有事件行）；异常形态回落 contrib（主题选择 fail-safe 到现状字面）
+# 批次形态=flush 建卡快照（恒有事件行）；异常形态回落 contrib（主题选择 fail-safe 到现状字面）。
+# -rs 归一化（09-17 改动 2 修）：无 -s 时 .[] 对 JSONL 行对象迭代的是「值」，has("key") 对字符串
+# 报错 rc=5 ⇒ 恒回落 contrib——flashcards 批的主题/判决落账渠道双双失真（verdicts 落账按渠道
+# 查行，渠道错=零落账）。slurp 后首行事件 channel 才是批次真实渠道。
 _batch_channel() {
   local ch
-  ch="$(jq -r '[.[] | select(has("key")) | (.channel // "contrib")][0] // "contrib"' "$1" 2>/dev/null || true)"
+  ch="$(jq -rs '[.[] | select(type == "object" and has("key")) | (.channel // "contrib")][0] // "contrib"' "$1" 2>/dev/null || true)"
   [[ -n "$ch" && "$ch" != "null" ]] || ch="contrib"
   printf '%s' "$ch"
 }
 
 # cmd_send_digest — worker 卡内唯一外发通道。输出闭集：stdout 一行 OK / FAIL <原因>；exit 0/1。
 # 全程持 flush 同款 LOCK（自包带超时锁获取 + 自装 EXIT trap）；空卡守卫/限额/dry-run 与
-# flush 同口径；成功后账本标记 pushed + state_bump alerts + 回写批次 sent:true。
+# flush 同口径；成功后判决落账（pushed + route 值域闭集）+ state_bump alerts + 回写批次 sent:true。
 # 主题按批次渠道取（contrib 字面不变，flashcards 取自己的主题）。
+# --verdicts <file>（可选，改动 2）：schema = [{"key":"<账本key>","route":"push|brief|suppress",
+# "reason":"<一句>"}]；缺席 = 全批 push（向后兼容，降级缺省非判决）；批内未点名 key 亦 push 兜底；
+# schema 非法 → FAIL bad-verdicts（校验置于一切副作用之前——账本零动作）。
 cmd_send_digest() {
-  local digest="" batch="" ch="contrib"
+  local digest="" batch="" verdicts="" ch="contrib"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --digest) digest="${2:-}"; shift 2 ;;
       --batch) batch="${2:-}"; shift 2 ;;
+      --verdicts) verdicts="${2:-}"; shift 2 ;;
       *) shift ;;
     esac
   done
   [[ -n "$digest" && -n "$batch" && -f "$digest" && -f "$batch" ]] || { echo "FAIL bad-usage"; exit 1; }
+  if [[ -n "$verdicts" ]]; then
+    if [[ ! -f "$verdicts" ]] || ! jq -e 'type == "array" and all(.[]; type == "object" and (.key | type == "string") and (.route == "push" or .route == "brief" or .route == "suppress"))' "$verdicts" >/dev/null 2>&1; then
+      echo "FAIL bad-verdicts"
+      exit 1
+    fi
+  else
+    log "send-digest：无 --verdicts——全批按 push 兜底（降级缺省，非判决）"
+  fi
   ch="$(_batch_channel "$batch")"
   ensure_state
   # 幂等快路：批次已标 sent:true → 重复调用零副作用（防 worker 重试双发）
@@ -763,15 +846,13 @@ cmd_send_digest() {
     echo "OK"
     exit 0
   fi
-  local rc=0 keys_file send_started
+  local rc=0 send_started
   send_started="$(now_epoch)"   # B-2（T6）：佐证新鲜度基准——NOTIFY_SEND_LAST 的 mtime 必须
   _send "$digest" "$(channel_subject "$ch")" || rc=$?   # ≥ 本轮调用起点才算本次 send 的回写
   if (( rc == 0 )); then
-    # 账本标记该批 pushed（按批次 keys；attempts 逻辑留给 flush fallback 路——防双重计数）
-    keys_file="$(mktemp "${TMPDIR:-/tmp}/contrib-digest-keys-XXXXXX")"
-    jq -s '[.[] | select(has("key")) | .key]' "$batch" >"$keys_file"
-    _flush_push_mark "$keys_file"
-    rm -f "$keys_file"
+    # 判决落账（改动 2）：verdicts 点名三态 + 未点名 push 兜底；attempts 逻辑留给 flush
+    # fallback 路——防双重计数
+    _apply_verdicts "$verdicts" "$batch" "$ch" "true"
     state_bump alerts "$(today)"
     _digest_write_sent "$batch" true "" "$(_send_result_fresh "$send_started")"
     log "send-digest 摘要已发送并标记账本（批次 $(basename "$batch")）"
@@ -941,9 +1022,11 @@ cmd_event() {
     fi
   fi
   rm -f "$upd"
+  # 新建事件行**无 route 字段**（改动 2 契约：判决在 flush 时发生，事件行只承载厚事实；
+  # 历史行的 route 保留原值，读取方以「缺字段=未判决」语义兼容）
   jq -cn --arg ts "$(ts)" --arg cls "$cls" --arg key "$key" --arg summary "$summary" --arg ch "$channel" \
-    --arg cluster "$cluster" --arg route "$(is_brief_only "$cls" && echo brief || echo push)" \
-    '{ts: $ts, class: $cls, key: $key, channel: $ch, summary: $summary, pushed: false, attempts: 0, pushed_at: null, occurrences: 1, cluster: $cluster, route: $route}' \
+    --arg cluster "$cluster" \
+    '{ts: $ts, class: $cls, key: $key, channel: $ch, summary: $summary, pushed: false, attempts: 0, pushed_at: null, occurrences: 1, cluster: $cluster}' \
     >> "$EVENTS"
   log "event + $cls $key (channel=$channel, cluster=$cluster)"
 }
@@ -1030,86 +1113,164 @@ _brief_append_record() {
   return 0
 }
 
-# _flush_channel <channel> <ep> → rc —— 单渠道批次：选择 →（brief 降级标记）→ 渲染 → 发送 → 标记。
+# _verdicts_expand <verdicts_file|空> <batch_file> → stdout TSV：key<TAB>route<TAB>reason（批内每 key 一行）
+# 批内未被 verdicts 点名的 key = push 兜底（与 --verdicts 缺席同语义，D1）；verdicts 里批外 key
+# 忽略（点名不存在的 key 无落账面）。-rs 归一化：JSONL 与 JSON 数组两种批形态都吃。
+_verdicts_expand() {
+  local vf="$1" batch_file="$2"
+  if [[ -n "$vf" && -f "$vf" && -s "$vf" ]]; then
+    jq -rs --slurpfile v "$vf" '
+      ([.[] | if type == "array" then .[] else . end]
+        | [.[] | select((type == "object") and has("key")) | .key]) as $batchkeys
+      | ($v[0] | map(select((type == "object") and (.key != null) and (.route != null))
+            | {key: .key, value: {route: .route, reason: (.reason // "")}}) | from_entries) as $named
+      | [$batchkeys[]
+         | . as $k
+         | if ($named | has($k))
+           then {k: $k, r: $named[$k].route, reason: $named[$k].reason}
+           else {k: $k, r: "push", reason: ""} end]
+      | .[] | [.k, .r, .reason] | @tsv' "$batch_file" 2>/dev/null || true
+  else
+    jq -rs '[.[] | if type == "array" then .[] else . end]
+            | [.[] | select((type == "object") and has("key")) | ([.key, "push", ""] | @tsv)]
+            | .[]' "$batch_file" 2>/dev/null || true
+  fi
+}
+
+# _apply_verdicts <verdicts_file|空> <batch_file> <ch> <sent_bool> — 判决落账统一入口（改动 2）
+# send-digest 成功路与 fallback 成功路共用；批内未点名 key 按 push 兜底（D1 缺席语义）。
+# route 三形态（C3 值域闭集 push|brief|suppress）：
+#   push     → pushed=true + pushed_at + route="push"（route 补写走 line-splice——C8 收窄口径；
+#              pushed_at 用 $(ts) 的 +0800 形态，_epoch_of_pushed_at 双格式归一化已兼容）
+#   brief    → 复用 _flush_brief_mark（pushed=true + route=brief + 当日简报机械小节成行——复用不重造）
+#   suppress → pushed=true + route="suppress" + route_reason，**无 pushed_at**：未推送的诚实信号，
+#              顺带不触发簇重推窗；后续仅 resolved 行被新事件命中时经 cmd_event 既有 splice 逻辑
+#              重开回判（本卡未改 cmd_event），非 resolved 的 suppress 行复发仅 occurrences+1、
+#              不回判——suppress 是**单次事件**终态，不是 key 永久黑名单。
+# sent_bool 非 true → 零动作（守卫：只有真实送达才落终态）。
+_apply_verdicts() {
+  local vf="$1" batch_file="$2" ch="$3" sent="$4"
+  [[ "$sent" == "true" ]] || return 0
+  local upd="/tmp/contrib-verdicts-upd-$$.tsv"
+  local brief_keys="/tmp/contrib-verdicts-brief-$$.json"
+  : > "$upd"
+  printf '%s' '[]' > "$brief_keys"
+  local k r reason ln args_json
+  while IFS=$'\t' read -r k r reason; do
+    [[ -n "$k" ]] || continue
+    case "$r" in
+      brief)
+        jq -c --arg k "$k" '. + [$k]' "$brief_keys" > "${brief_keys}.tmp" 2>/dev/null \
+          && mv "${brief_keys}.tmp" "$brief_keys"
+        ;;
+      suppress)
+        ln="$(_event_line_of "$k" "$ch")"
+        [[ -n "$ln" ]] || continue
+        args_json="$(jq -cn --arg reason "${reason:-（未附理由）}" '{reason: $reason}')"
+        # del(.pushed_at)：cmd_event 建行预写了 pushed_at:null 字段——has() 语义下字段在即算
+        # 「有 pushed_at」，须显式删除才是 C3 的「无 pushed_at」（未推送的诚实信号，兼防簇
+        # 重推窗把 null 误判成时间戳；若历史行真有旧 pushed_at，一并删除防陈旧窗误触）
+        printf '%s\t%s\t%s\n' "$ln" "$args_json" \
+          'del(.pushed_at) | .pushed = true | .route = "suppress" | .route_reason = $a.reason' >> "$upd"
+        ;;
+      *)  # push（含未点名兜底）
+        ln="$(_event_line_of "$k" "$ch")"
+        [[ -n "$ln" ]] || continue
+        args_json="$(jq -cn --arg ts "$(ts)" '{ts: $ts}')"
+        printf '%s\t%s\t%s\n' "$ln" "$args_json" \
+          '.pushed = true | .pushed_at = $a.ts | .route = "push"' >> "$upd"
+        ;;
+    esac
+  done < <(_verdicts_expand "$vf" "$batch_file")
+  if [[ "$(jq 'length' "$brief_keys" 2>/dev/null || echo 0)" -gt 0 ]]; then
+    _flush_brief_mark "$brief_keys" "$ch"
+  fi
+  rm -f "$brief_keys"
+  [[ -s "$upd" ]] && _events_splice "$upd"
+  rm -f "$upd"
+}
+
+# _flush_channel <channel> <ep> → rc —— 单渠道批次：选择 → 二分（ALWAYS_PUSH 机械下限直推 ｜
+# 其余全量交判断层三向判决）→ 发送 → 判决落账。
 # 限额与 min_interval 由 cmd_flush 在分渠循环前统一把守（全渠道共享总闸，全局恰一次兜底）。
+# 判决权契约（09-17 改动 2）：类名不再参与路由判决——类名豁免函数（简报降级表/机械类短路）
+# 及其消费点已退役，「推微信/进简报/不推」三向判决统一由判断层在 flush 判决时给出（verdicts 落账）。唯一
+# 保留的类名短路 = ALWAYS_PUSH 推送下限（fail-safe 判断失效兜底，非降级上限，论证见常量处）。
 _flush_channel() {
   local ch="$1" ep="$2"
   local all="/tmp/contrib-all-${ch}-$$.jsonl"
-  local brief_file="/tmp/contrib-brief-${ch}-$$.json"
   local batch_file="/tmp/contrib-batch-${ch}-$$.json" keys_file="/tmp/contrib-keys-${ch}-$$.txt"
+  local ap_file="/tmp/contrib-ap-${ch}-$$.json" ap_keys="/tmp/contrib-apkeys-${ch}-$$.txt"
   local body="/tmp/contrib-alerts-${ch}-$$.txt"
   jq -c --arg ch "$ch" 'select(.pushed == false and (.channel // "contrib") == $ch)' "$EVENTS" > "$all" 2>/dev/null
   local unpushed_all; unpushed_all="$(wc -l < "$all" | tr -d ' ')"
-  if (( unpushed_all == 0 )); then rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"; return 0; fi
-  # 修③推送门槛：brief-only 类不进微信批（即时/摘要两路皆出）——分类在 bash 侧完成
-  # （jq 里调不到 bash 函数）；被排除行统一标记 pushed=true + route=brief
-  local brief_keys="[]" k c
-  while IFS=$'\t' read -r k c; do
-    [[ -n "$k" ]] || continue
-    is_brief_only "$c" && brief_keys="$(jq -c --arg k "$k" '. + [$k]' <<<"$brief_keys")"
-  done < <(jq -r '[.key, .class] | @tsv' "$all" 2>/dev/null)
-  printf '%s' "$brief_keys" > "$brief_file"
-  local brief_n; brief_n="$(jq 'length' <<<"$brief_keys" 2>/dev/null || echo 0)"
-  if (( ${brief_n:-0} > 0 )); then
-    _flush_brief_mark "$brief_file" "$ch"
-    log "${ch} 渠道 ${brief_n} 条简报级事件降级（route=brief，不进微信批）"
-  fi
-  # 微信批 = 全部未推行 − brief 降级行
-  jq -c --slurpfile bk "$brief_file" 'select(.key as $k | ($bk[0] | index($k)) == null)' "$all" > "$batch_file" 2>/dev/null
+  if (( unpushed_all == 0 )); then rm -f "$all" "$batch_file" "$keys_file" "$ap_file" "$ap_keys" "$body"; return 0; fi
+
+  # 批次二分：ALWAYS_PUSH 类 → 机械下限批（模板卡直推，不经判断层）；其余 → 判断批
+  # （全量交判断层三向判决——digest 卡主路 / fallback 兜底）。类名豁免零参与。
+  jq -c --arg re "$ALWAYS_PUSH_RE" 'select((.class // "") | test($re))' "$all" > "$ap_file" 2>/dev/null
+  jq -c --arg re "$ALWAYS_PUSH_RE" 'select((.class // "" | test($re)) | not)' "$all" > "$batch_file" 2>/dev/null
+  local ap_n; ap_n="$(wc -l < "$ap_file" | tr -d ' ')"
   local unpushed; unpushed="$(wc -l < "$batch_file" | tr -d ' ')"
-  if (( unpushed == 0 )); then rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"; return 0; fi
-  # keys 存 JSON 数组（裸字符串会被 jq 当非法 JSON——空卡事故教训）
-  jq -s '[.[].key]' "$batch_file" > "$keys_file"
 
-  # 两级渲染：混有任何叙事事件 → 整批走 digest 卡（T5 异步化）；纯机械 → 模板卡
-  # （分类逻辑必须在 bash/jq 侧完成——jq 里调不到 bash 函数）
-  local narrative
-  narrative="$(jq -s '[.[] | select((.class == "probe-premise-dead" or .class == "own-pr-activity" or .class == "deep-budget-exhausted" or .class == "own-pr-unledgered") | not)] | length' \
-    "$batch_file" 2>/dev/null)"
-  narrative="${narrative:-0}"
-
-  local rc=0
-  if (( narrative > 0 )); then
-    if [[ "$(cfg '.notify_digest' 'true')" == "true" ]]; then
-      # T5 卡化主路：叙事批 → digest 卡（异步），flight 五分支/建卡失败/stale 全部在
-      # _digest_flush 内收口（兜底=fallback_ai 旧内联路）；本轮 rc 透传其返回值
-      _digest_flush "$batch_file" "$keys_file" "$unpushed" "$narrative" "$ep" "$ch"
-      local drc=$?
-      rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"
-      return "$drc"
-    fi
-    log "${ch} 渠道 notify_digest=false，叙事事件 ${narrative} 条挂账待 AI 会话转述"
-    rc=1
-  else
-    _render_mechanical_card "$batch_file" "$ch" > "$body"
-    log "${ch} 渠道纯机械事件 ${unpushed} 条 → 模板卡（不经 LLM）"
+  local rc_total=0 rc_ap=0
+  # —— 机械下限批：ALWAYS_PUSH → 模板卡直推（判断失效兜底；零判断层参与）——
+  if (( ap_n > 0 )); then
+    jq -s '[.[].key]' "$ap_file" > "$ap_keys"
+    _render_mechanical_card "$ap_file" "$ch" > "$body"
+    log "${ch} 渠道 ALWAYS_PUSH 事件 ${ap_n} 条 → 模板卡直推（推送下限，不经判断层）"
     # 空卡守卫：剔除报头/脚注/空行后必须还剩实质内容——模板卡排版要能通过；
     # 绝不发空壳卡、更不允许空卡把事件标记成已推（09-05 沙箱实测抓到此路径）
     # 注意用 grep -e 多模式：BSD grep 的 BRE 里 `^$\|..` 的 $ 中缀是字面量，交替会失效
     if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$body" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
       log "渲染产物无实质内容（空卡守卫触发），按失败挂账"
-      rc=1
+      rc_ap=1
     fi
-    if (( rc == 0 )); then
-      _send "$body" "$(channel_subject "$ch")" || rc=$?
+    if (( rc_ap == 0 )); then
+      _send "$body" "$(channel_subject "$ch")" || rc_ap=$?
+    fi
+    if (( rc_ap == 0 )); then
+      # 只标记本轮批次（本渠道 + 批次内 key）；ap_keys 是 JSON 数组。
+      # _flush_push_mark（存量 python 形态）标 pushed/pushed_at；route="push" 补写走
+      # _apply_verdicts 空判决路（C3 值域闭集——机械下限批的落账与判决批同词表）。
+      _flush_push_mark "$ap_keys"
+      _apply_verdicts "" "$ap_file" "$ch" "true"
+      state_bump alerts "$(today)"
+      jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+      log "告警已推送（${ch} 渠道 ALWAYS_PUSH 批 ${ap_n} 条，rendering=template-floor）"
+    else
+      # 失败：批次内 attempts+1（事件保留，下轮重试；永不 raw dump 兜底）
+      _flush_attempts_bump "$ap_keys" "$ch"
+      log "ALWAYS_PUSH 批推送失败 rc=${rc_ap}（${ch} 渠道 ${ap_n} 条保留，下轮重试）"
+      rc_total=1
     fi
   fi
 
-  if (( rc == 0 )); then
-    # 只标记本轮批次（本渠道 + 批次内 key）；keys_file 是 JSON 数组
-    _flush_push_mark "$keys_file"
-    state_bump alerts "$(today)"
-    jq --argjson ep "$ep" '.last_flush_epoch = $ep' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
-    log "告警已推送（${ch} 渠道 ${unpushed} 条事件，rendering=template）"
-  else
-    # 失败：批次内 attempts+1（事件保留，下轮重试；永不 raw dump 兜底）
-    _flush_attempts_bump "$keys_file" "$ch"
-    log "告警推送失败 rc=${rc}（${ch} 渠道 ${unpushed} 条事件保留，下轮重试）"
+  # —— 判断批：其余事件全量交判断层（digest 卡主路 / fallback 兜底）三向判决落账 ——
+  if (( unpushed > 0 )); then
+    jq -s '[.[].key]' "$batch_file" > "$keys_file"
+    local rc=0
+    if [[ "$(cfg '.notify_digest' 'true')" == "true" ]]; then
+      # T5 卡化主路：判断批 → digest 卡（异步），flight 五分支/建卡失败/stale 全部在
+      # _digest_flush 内收口（兜底=fallback_ai 旧内联路）；rc 透传其返回值。
+      # 失败时其内部 fallback_ai 已自行 attempts+1——此处不再 bump（防双计数）。
+      _digest_flush "$batch_file" "$keys_file" "$unpushed" "$unpushed" "$ep" "$ch"
+      rc=$?
+    else
+      log "${ch} 渠道 notify_digest=false，事件 ${unpushed} 条挂账待 AI 会话转述"
+      rc=1
+      _flush_attempts_bump "$keys_file" "$ch"
+    fi
+    if (( rc != 0 )); then
+      log "告警推送失败 rc=${rc}（${ch} 渠道判断批 ${unpushed} 条保留，下轮重试）"
+      rc_total=1
+    fi
   fi
-  rm -f "$all" "$brief_file" "$batch_file" "$keys_file" "$body"
+
+  rm -f "$all" "$batch_file" "$keys_file" "$ap_file" "$ap_keys" "$body"
   # 失败 rc 向上传撑（契约：AI 摘要失败/发送失败 → rc≠0，事件保留重试）；
   # 调用方均容错（operator 班次收班契约不因 rc≠0 中断）
-  return "$rc"
+  return "$rc_total"
 }
 
 # cmd_flush — 分渠聚合推送：min_interval/限额全局把守 → 逐渠道独立成批（各至多一条消息）。

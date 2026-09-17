@@ -62,7 +62,7 @@ send_body() { stub_last_body hermes; }
 # =============================================================================
 t_case "R1 卡路无 raw dump：digest 卡 body 不含原始事件哨兵"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
-sb_seed_event "pipeline-failure" "k-card" "$RAW_CARD 原始叙事事件全文（含 rq-1/PR#2/日志行等细节）"
+sb_seed_event "own-pr-activity" "k-card" "$RAW_CARD 原始叙事事件全文（含 rq-1/PR#2/日志行等细节）"
 sb_run 'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 BODYF="$(stub_last_body hermes)"
 if [ -n "$BODYF" ] && [ -f "$BODYF" ]; then
@@ -80,7 +80,7 @@ sb_cleanup
 # =============================================================================
 t_case "R2 fallback 路无 raw dump：外发载荷=AI 摘要文本，无哨兵无 JSON 结构字段"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
-sb_seed_event "pipeline-failure" "k-fall" "$RAW_FALL 原始叙事事件全文（含 jq/日志行形态细节）"
+sb_seed_event "own-pr-activity" "k-fall" "$RAW_FALL 原始叙事事件全文（含 jq/日志行形态细节）"
 BATCHF="$SB_ROOT/contrib-data/pending/digest-test-r2.json"
 mkdir -p "$SB_ROOT/contrib-data/pending"
 mk_batch_file "$BATCHF" false "k-fall"
@@ -109,7 +109,7 @@ sb_cleanup
 # =============================================================================
 t_case "R3 osascript 兜底路无 raw dump：3 败通知文案为机械提示，无哨兵无明细"
 sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
-sb_seed_event "pipeline-failure" "k-osa" "$RAW_OSA 原始叙事事件全文（三败兜底用例）" contrib 2
+sb_seed_event "own-pr-activity" "k-osa" "$RAW_OSA 原始叙事事件全文（三败兜底用例）" contrib 2
 sb_run -e STUB_HERMES_FAIL=1 -e STUB_CLAUDE_FAIL=1 \
   'bash "$MARTIN_DIR/scripts/contrib/notify.sh" flush' >/dev/null
 OSAF="$(stub_last_body osascript)"
