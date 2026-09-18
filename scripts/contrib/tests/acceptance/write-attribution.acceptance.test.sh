@@ -54,8 +54,10 @@
 #                                     （写手本窗活跃 ≠ 所有权）；③本窗伪造具名记录（回填旧 ts / 当前 ts）
 #                                     ⇒ 仍 no-delete-corroboration（记录在窗口**后**字节区 ⇒ 不构成所有权）
 #   M1/M2 mutation 抗性             库副本注入「一律 external」「未注册也放行」→ 同一检查器必转红
-#   E0–E6 影子端到端（mktemp 影子根）E0 = 影子前置（`WA_SHADOW_ROOT` 可注入根；不在被测 checkout 内 ∧
-#                                   contrib-data 无非 tracked 文件 ∧ scripts/contrib 逐字同源）；
+#   E0–E6 影子端到端（mktemp 影子根）E0 = 影子前置（`WA_SHADOW_ROOT` 可注入根；无软链穿透（根/scripts/
+#                                   contrib-data 非符号链接 ∧ 实跑锚点物理前缀于影子根）∧ 自身为 git
+#                                   工作树根（toplevel 物理化 == 影子根）∧ 不在被测 checkout 内 ∧
+#                                   contrib-data 须为目录且无非 tracked 文件 ∧ scripts/contrib 逐字同源）；
 #                                   E1–E5 = canary-create / canary-append / external-append /
 #                                   canary-delete（三轮等量）/ external-delete 真跑 s4；
 #                                   E6 = 影子数据面零残留 ∧ 被测 checkout 零金丝雀 ∧ 自建根整根清理
@@ -165,6 +167,12 @@ trap '_cleanup' EXIT
 PIN_DIFF=/usr/bin/diff
 PIN_DATE=/bin/date
 PIN_PGREP=/usr/bin/pgrep
+PIN_READLINK=/usr/bin/readlink
+# 残余风险（登记项 F5，**未机械消除**，如实保留）：$ART 为**跨 checkout 共享**的固定路径，且 s4 产物
+#   文件名固定（s4-p1.out / .s4-wa.before …）。E 组各例仅以 `_wait_quiet 300` 互斥**本套件自身**的并发；
+#   他卡/他人若在同一窗口直接 `bash s4-production-zero-touch.acceptance.sh`，会在窗口内覆写同名产物
+#   ⇒ 本套件读到的 evidence 可能混入他者归属（E2/E5 的「external≥1」尤其可能被他者的合规写填满）。
+#   窗口内产物指纹校验（比对 $ART/.s4-wa.before 的归属行与自有注入行是否同源）列为后续加固项。
 ART="/tmp/autopilot-artifacts"
 
 # =============================================================================
@@ -1285,12 +1293,37 @@ assert_eq "$M2_DIFF" "diff" "M2 注入后同一形态结果与正确版不同（
 #        影子 contrib-data 不得含任何非 tracked（生产/运行）文件 ⇒ 否则拒绝实跑（判红）；
 #     ③ 逐字同源：影子 scripts/contrib 必须与被测 checkout 工作树一致（真跑，非陈旧副本）；
 #     ④ 清理只删本套件新建物（tracked 台账不改不删）；E6 断言影子数据面零残留 + 被测 checkout 零金丝雀。
+#   卡 t_3e72f34b 加护（`WA_SHADOW_ROOT` 旋钮的**刻意构造面**；依据红队 F1–F4 实测）：结构面判据全部
+#     收进 `_shadow_probe`，把「看得见的干净」升级为「可信根」：
+#     ⑤ 软链拒绝（影子根自身 / `scripts` / `contrib-data` 任一 `-L`）——软链穿透使 s4 实跑锚点按物理
+#        getcwd 漂到影子之外（F1：证据行清单=victim，E1/E4/E6 零残留断言空转绿）；tracked 软链
+#        `contrib-data`（F2）另使 `ls-files --others` 恒 0 过闸、porcelain 看不见链外变更；
+#     ⑥ 强制 git 工作树根（`rev-parse --show-toplevel` 须成功 ∧ 物理化 == 影子根）——非 checkout 根
+#        （F3）使 `ls-files` 失败被 `2>/dev/null` 吞成空集 ⇒ 前置②/E6①/`_shadow_sweep` 三类判据全空转；
+#     ⑦ `contrib-data` 存在须为目录（F4：普通文件使 `[ -d ]` 整段跳过 ⇒ 前置②空转）；
+#     ⑧ 实跑锚点物理前缀兜底（s4 入口所在目录 `pwd -P` 后须前缀于物理化影子根）——覆盖 ⑤⑥ 之外的
+#        更深层软链穿透（如 `scripts/contrib/tests` 被换链）。
 # =============================================================================
 E2E_OK=0
 _shadow_probe() { # → 0=可用；否则置 SHADOW_REASON 并 rc≠0
-  local repo_real data n
+  local repo_real data n raw toplevel top_real shadow_real s4_dir s4_real
   [ -n "$SHADOW" ] || { SHADOW_REASON="影子根为空（WA_SHADOW_ROOT 注入值或自建路径不可用）"; return 4; }
-  SHADOW="$(_abs_dir "$SHADOW")" || { SHADOW_REASON="影子根不存在或不可读: ${SHADOW}"; return 4; }
+  # ①【F1/F2】软链拒绝——**先于**物理解析（反之 _abs_dir 会把软链解析掉、看不到它）：影子根自身 /
+  #    scripts / contrib-data 任一为符号链接 ⇒ 拒。bash 的 getcwd 按物理路径解链，s4 自解析出的
+  #    REPO_ROOT 会漂到影子之外（红队 F1 实测：证据行清单=victim，而 E1/E4/E6 的「零残留」断言
+  #    仍盯影子 contrib-data ⇒ 三轮空转绿）；tracked 软链 contrib-data（F2）另使
+  #    `ls-files --others` 恒 0 过闸、porcelain 看不见链外变更。
+  raw="$SHADOW"
+  if [ -L "$raw" ]; then
+    SHADOW_REASON="影子根自身为符号链接（${raw} → $("$PIN_READLINK" "$raw" 2>/dev/null)）——拒绝实跑（软链穿透会使实跑锚点物理漂移到影子之外）"
+    return 6
+  fi
+  SHADOW="$(_abs_dir "$raw")" || { SHADOW_REASON="影子根不存在或不可读: ${raw}"; return 4; }
+  shadow_real="$SHADOW"
+  if [ -L "$SHADOW/scripts" ] || [ -L "$SHADOW/contrib-data" ]; then
+    SHADOW_REASON="影子根内 scripts / contrib-data 为符号链接（${SHADOW}）——拒绝实跑（软链穿透 ⇒ 实跑锚点与落笔面漂到影子之外，零残留断言空转）"
+    return 6
+  fi
   data="$SHADOW/contrib-data"
   repo_real="$(_abs_dir "$REPO_ROOT")"
   case "$SHADOW/" in
@@ -1298,6 +1331,24 @@ _shadow_probe() { # → 0=可用；否则置 SHADOW_REASON 并 rc≠0
       SHADOW_REASON="影子根位于被测 checkout 内（${SHADOW} ⊂ ${repo_real}）——拒绝实跑（本套件禁写被测 checkout 的 contrib-data）"
       return 3 ;;
   esac
+  # ②【F3】强制 git 工作树根：`rev-parse --show-toplevel` 须成功 ∧ 物理化 toplevel == 影子根。否则
+  #    `git ls-files` 的失败被 `2>/dev/null` 吞成空集 ⇒ 前置「无非 tracked 文件」空转过、E6①
+  #    porcelain 空转、`_shadow_sweep` 变 no-op（该根 fixture 永不清理）。
+  toplevel="$(git -C "$SHADOW" rev-parse --show-toplevel 2>/dev/null)" || toplevel=""
+  if [ -z "$toplevel" ]; then
+    SHADOW_REASON="影子根不是 git 工作树（rev-parse --show-toplevel 失败: ${SHADOW}）——拒绝实跑（非 checkout 使 ls-files / porcelain / 清理三类判据全部空转）"
+    return 6
+  fi
+  top_real="$(_abs_dir "$toplevel")" || top_real=""
+  if [ "$top_real" != "$shadow_real" ]; then
+    SHADOW_REASON="影子根 ≠ git toplevel（物理化 ${shadow_real} vs ${top_real:-<不可解析>}）——拒绝实跑（toplevel 漂移 ⇒ 判据面与实际工作树不同源）"
+    return 6
+  fi
+  # ③【F4】contrib-data 存在但非目录（普通文件）⇒ 拒：否则前置「无非 tracked 文件」被 `[ -d ]` 整段跳过。
+  if [ -e "$data" ] && [ ! -d "$data" ]; then
+    SHADOW_REASON="影子 contrib-data 存在但不是目录（普通文件: ${data}）——拒绝实跑（「无非 tracked 文件」前置会被整段跳过）"
+    return 6
+  fi
   if [ -d "$data" ]; then
     n="$(git -C "$SHADOW" ls-files --others -- contrib-data 2>/dev/null | wc -l | tr -d ' ')"
     if [ "$n" != "0" ]; then
@@ -1311,10 +1362,20 @@ _shadow_probe() { # → 0=可用；否则置 SHADOW_REASON 并 rc≠0
   fi
   SHADOW_S4="$SHADOW/scripts/contrib/tests/acceptance/$(basename "$S4")"
   [ -f "$SHADOW_S4" ] || { SHADOW_REASON="影子内 s4 入口缺失: ${SHADOW_S4}"; return 5; }
+  # ④【F1 兜底】实跑锚点物理前缀：s4 入口所在目录物理化后须在物理化影子根之下 —— 覆盖 ①② 之外的
+  #    **更深层**软链穿透（如 scripts/contrib/tests 被换链：`[ -L scripts ]` 为假而 getcwd 仍漂到影子外）。
+  s4_dir="$(dirname "$SHADOW_S4")"
+  s4_real="$(_abs_dir "$s4_dir")" || { SHADOW_REASON="影子内 s4 入口所在目录不可解析: ${s4_dir}"; return 5; }
+  case "$s4_real/" in
+    "$shadow_real"/*) : ;;
+    *)
+      SHADOW_REASON="影子内 s4 实跑锚点物理化后落在影子根之外（${s4_real} ⊄ ${shadow_real}）——拒绝实跑（软链穿透）"
+      return 6 ;;
+  esac
   return 0
 }
 
-t_case "E0 影子前置：影子根须为生产零点干净 checkout（不在被测 checkout 内 ∧ contrib-data 无非 tracked 文件 ∧ scripts/contrib 逐字同源）"
+t_case "E0 影子前置：影子根须为生产零点干净 checkout（无软链穿透 ∧ 自身为 git 工作树根 ∧ 不在被测 checkout 内 ∧ contrib-data 须为目录且无非 tracked 文件 ∧ scripts/contrib 逐字同源）"
 if [ -n "${WA_SHADOW_ROOT:-}" ]; then
   SHADOW_OWNED=0
 else
@@ -1330,7 +1391,7 @@ if [ -n "$SHADOW_REASON" ]; then
 elif _shadow_probe; then
   SHADOW_USED=1
   E2E_OK=1
-  _pass "E0 影子前置：${SHADOW} 为生产零点干净 checkout（不在被测 checkout 内；contrib-data 无非 tracked 文件；scripts/contrib 逐字同源）"
+  _pass "E0 影子前置：${SHADOW} 为生产零点干净 checkout（无软链穿透；自身为 git 工作树根；不在被测 checkout 内；contrib-data 为目录且无非 tracked 文件；scripts/contrib 逐字同源）"
 else
   _fail "E0 影子前置" "$SHADOW_REASON"
 fi
