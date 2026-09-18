@@ -54,8 +54,11 @@
 #                                     （写手本窗活跃 ≠ 所有权）；③本窗伪造具名记录（回填旧 ts / 当前 ts）
 #                                     ⇒ 仍 no-delete-corroboration（记录在窗口**后**字节区 ⇒ 不构成所有权）
 #   M1/M2 mutation 抗性             库副本注入「一律 external」「未注册也放行」→ 同一检查器必转红
-#   E1–E5 影子端到端                canary-create / canary-append / external-append / canary-delete（三轮等量）/
-#                                   external-delete 真跑 s4；E6 = 影子树零残留守卫
+#   E0–E6 影子端到端（mktemp 影子根）E0 = 影子前置（`WA_SHADOW_ROOT` 可注入根；不在被测 checkout 内 ∧
+#                                   contrib-data 无非 tracked 文件 ∧ scripts/contrib 逐字同源）；
+#                                   E1–E5 = canary-create / canary-append / external-append /
+#                                   canary-delete（三轮等量）/ external-delete 真跑 s4；
+#                                   E6 = 影子数据面零残留 ∧ 被测 checkout 零金丝雀 ∧ 自建根整根清理
 #   G1–G3 守卫不回归                s4 命令位 /usr/bin/diff == 2、t1-04 == 1、裸 diff == 0、
 #                                   各恰 1 行 `-x /usr/bin/diff`；diff-pin-canary 套件仍 rc=0；无 skip 降级
 #   N1–N3 断言条数防删锚            s4 4.P1 段 / t1-04 4.1 段断言行数 ≥ 改造前基线（冻结常量）
@@ -85,8 +88,10 @@
 #
 # 纪律：
 #   - 每条断言硬失败（无 SKIP / 无 warn 降级 / 无 `|| true` 宽容 / 无条件放行）
-#   - 零仓内写入：临时产物只进 mktemp 目录（EXIT trap 清理）；影子 contrib-data 由本套件创建、
-#     退出时删除；**禁**写真实生产 contrib-data；**禁**调用 hermes/gh/claude/tunnel/osascript
+#   - 零仓内写入：临时产物只进 mktemp 目录（EXIT trap 清理）；E 组影子根 = mktemp 下自建
+#     throwaway checkout（生产零点；env `WA_SHADOW_ROOT` 可注入），注入式实跑一律落在该根内 ⇒
+#     **禁**写被测 checkout 的 contrib-data（E0「不在被测 checkout 内」前置机械阻断）；
+#     清理只删本套件新建物（tracked 台账不改、不删）；**禁**调用 hermes/gh/claude/tunnel/osascript
 #   - 契约模糊处标 CONTRACT_AMBIGUOUS（见文末清单），不推测未声明的私有成员
 # =============================================================================
 set -u
@@ -120,11 +125,39 @@ WA_SB="$(mktemp -d "${TMPDIR:-/tmp}/acc-wa.XXXXXX")" || {
   printf 'ACCEPTANCE-FAIL[env]: mktemp 失败（无法建立临时工作区）\n' >&2
   exit 1
 }
-SHADOW="$REPO_ROOT/contrib-data"
-SHADOW_CREATED=0
+# 影子根（E 组注入式实跑的唯一落笔面）：env `WA_SHADOW_ROOT` 可注入（mutation / 复用旋钮）；
+# 缺省由 E0 在 $WA_SB 下自建 **throwaway checkout**（生产零点）。被测 checkout 的 contrib-data 永不落笔
+# ——旧形态把影子根钉在 `$REPO_ROOT/contrib-data`，而该目录因 tracked 台账在**任何 checkout** 都存在，
+# 于是 E0 结构性必红（卡 t_709c2ef3）。
+SHADOW="${WA_SHADOW_ROOT:-}"
+SHADOW_OWNED=0      # 1 = 本套件自建（退出时整根清理）
+SHADOW_S4=""
+SHADOW_REASON=""
+SHADOW_USED=0        # 1 = 影子根已过 E0 前置（本套件以其为落笔面 ⇒ 清理才允许扫该根）
+SWEPT=0
+_abs_dir() { [ -d "$1" ] || return 1; ( cd "$1" 2>/dev/null && pwd -P ); }
+_shadow_build() { # 自建 throwaway checkout：git 元数据（供 s4 解析 REPO_ROOT）+ 工作树 scripts/contrib
+  git clone --local --quiet "$REPO_ROOT" "$SHADOW" 2>/dev/null || return 1
+  rm -rf "$SHADOW/scripts/contrib" || return 1
+  cp -R "$REPO_ROOT/scripts/contrib" "$SHADOW/scripts/contrib" || return 1
+  return 0
+}
+_shadow_sweep() { # 只删本套件新建（非 tracked）项；tracked 台账不改、不删
+  # 守卫：**仅当影子根通过 E0 前置**（本套件确实以其为落笔面）时才清理——未通过前置的注入根
+  # （mutation / 误指生产 checkout）本套件从未落笔，扫它会**误删他人/生产数据**（mutation①b 实测）。
+  if [ "$SHADOW_USED" != "1" ]; then SWEPT=1; return 0; fi
+  [ -n "$SHADOW" ] && [ -d "$SHADOW/contrib-data" ] || return 0
+  local rel
+  while IFS= read -r -d '' rel; do
+    [ -n "$rel" ] && rm -f "$SHADOW/$rel" 2>/dev/null
+  done < <(git -C "$SHADOW" ls-files --others -z -- contrib-data 2>/dev/null)
+  find "$SHADOW/contrib-data" -depth -type d -empty -delete 2>/dev/null || true
+  SWEPT=1
+}
 _cleanup() {
+  [ "$SWEPT" = "1" ] || _shadow_sweep
+  if [ "$SHADOW_OWNED" = "1" ] && [ -n "$SHADOW" ] && [ -d "$SHADOW" ]; then rm -rf "$SHADOW"; fi
   rm -rf "$WA_SB"
-  if [ "$SHADOW_CREATED" = "1" ] && [ -d "$SHADOW" ]; then rm -rf "$SHADOW"; fi
 }
 trap '_cleanup' EXIT
 
@@ -1244,40 +1277,82 @@ if [ "$(awk 'NF{n=$0} END{print n}' "$M2_C_OUT")" != "$(awk 'NF{n=$0} END{print 
 assert_eq "$M2_DIFF" "diff" "M2 注入后同一形态结果与正确版不同（mutation 确实生效）"
 
 # =============================================================================
-# 影子端到端：lane 内自建影子 contrib-data（生产同构 fixture），真跑 s4 三注入模式
+# 影子端到端：mktemp 影子根自建 throwaway checkout（生产同构 fixture），真跑 s4 六注入模式
+#   卡 t_709c2ef3 修法：
+#     ① 影子根**可注入**（env WA_SHADOW_ROOT）；缺省在 mktemp 下 `git clone --local` 自建 throwaway
+#        checkout（含 git 元数据 ⇒ s4 自解析 REPO_ROOT=影子根）+ 工作树 scripts/contrib 逐字覆盖；
+#     ② 前置护栏（「禁写生产 contrib-data」逐字保留）：影子根不得位于被测 checkout 内 ∧
+#        影子 contrib-data 不得含任何非 tracked（生产/运行）文件 ⇒ 否则拒绝实跑（判红）；
+#     ③ 逐字同源：影子 scripts/contrib 必须与被测 checkout 工作树一致（真跑，非陈旧副本）；
+#     ④ 清理只删本套件新建物（tracked 台账不改不删）；E6 断言影子数据面零残留 + 被测 checkout 零金丝雀。
 # =============================================================================
 E2E_OK=0
-t_case "E0 影子前置：lane 内不得预置 contrib-data（本套件禁写生产 contrib-data）"
-if [ -e "$SHADOW" ]; then
-  _fail "E2E 影子前置" "$SHADOW 已存在 —— 拒绝在其上做注入式实跑（可能为生产数据；本套件禁写生产 contrib-data）"
+_shadow_probe() { # → 0=可用；否则置 SHADOW_REASON 并 rc≠0
+  local repo_real data n
+  [ -n "$SHADOW" ] || { SHADOW_REASON="影子根为空（WA_SHADOW_ROOT 注入值或自建路径不可用）"; return 4; }
+  SHADOW="$(_abs_dir "$SHADOW")" || { SHADOW_REASON="影子根不存在或不可读: ${SHADOW}"; return 4; }
+  data="$SHADOW/contrib-data"
+  repo_real="$(_abs_dir "$REPO_ROOT")"
+  case "$SHADOW/" in
+    "$repo_real"/*)
+      SHADOW_REASON="影子根位于被测 checkout 内（${SHADOW} ⊂ ${repo_real}）——拒绝实跑（本套件禁写被测 checkout 的 contrib-data）"
+      return 3 ;;
+  esac
+  if [ -d "$data" ]; then
+    n="$(git -C "$SHADOW" ls-files --others -- contrib-data 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$n" != "0" ]; then
+      SHADOW_REASON="影子 contrib-data 含 ${n} 项非 tracked（生产/运行）文件 —— 拒绝在其上做注入式实跑（可能为生产数据）"
+      return 2
+    fi
+  fi
+  if ! "$PIN_DIFF" -r "$REPO_ROOT/scripts/contrib" "$SHADOW/scripts/contrib" >/dev/null 2>&1; then
+    SHADOW_REASON="影子 scripts/contrib 与被测 checkout 工作树不一致（陈旧/被篡改副本 ⇒ 非真跑）"
+    return 5
+  fi
+  SHADOW_S4="$SHADOW/scripts/contrib/tests/acceptance/$(basename "$S4")"
+  [ -f "$SHADOW_S4" ] || { SHADOW_REASON="影子内 s4 入口缺失: ${SHADOW_S4}"; return 5; }
+  return 0
+}
+
+t_case "E0 影子前置：影子根须为生产零点干净 checkout（不在被测 checkout 内 ∧ contrib-data 无非 tracked 文件 ∧ scripts/contrib 逐字同源）"
+if [ -n "${WA_SHADOW_ROOT:-}" ]; then
+  SHADOW_OWNED=0
 else
+  SHADOW="$WA_SB/shadow"
+  if _shadow_build; then
+    SHADOW_OWNED=1
+  else
+    SHADOW_REASON="自建影子根失败（git clone --local / scripts/contrib 复制不可用）: ${SHADOW}"
+  fi
+fi
+if [ -n "$SHADOW_REASON" ]; then
+  _fail "E0 影子前置" "$SHADOW_REASON"
+elif _shadow_probe; then
+  SHADOW_USED=1
   E2E_OK=1
-  _pass "E2E 影子前置：${SHADOW} 不存在，可由本套件建立影子树"
+  _pass "E0 影子前置：${SHADOW} 为生产零点干净 checkout（不在被测 checkout 内；contrib-data 无非 tracked 文件；scripts/contrib 逐字同源）"
+else
+  _fail "E0 影子前置" "$SHADOW_REASON"
 fi
 
-if [ "$E2E_OK" = "1" ]; then
-  mkdir -p "$SHADOW/logs" "$SHADOW/pending" "$SHADOW/runs"
-  SHADOW_CREATED=1
-fi
-
-_seed_shadow() { # 幂等重建影子树（生产同构 fixture）
+_seed_shadow() { # 幂等重建影子树（生产同构 fixture；落笔面 = 影子根内 contrib-data）
   local now i ts
-  mkdir -p "$SHADOW/logs" "$SHADOW/pending" "$SHADOW/runs"
+  mkdir -p "$SHADOW/contrib-data/logs" "$SHADOW/contrib-data/pending" "$SHADOW/contrib-data/runs"
   now="$("$PIN_DATE" +%s)"
-  : > "$SHADOW/logs/approval-collect.log"
+  : > "$SHADOW/contrib-data/logs/approval-collect.log"
   i=40
   while [ "$i" -ge 1 ]; do
     ts="$("$PIN_DATE" -r "$((now - i * 90))" '+%Y-%m-%d %H:%M:%S')"
-    printf '[%s] approval-collect: rq-20260913-109787: 无提交（no_submission 待决态），继续等待\n' "$ts" >> "$SHADOW/logs/approval-collect.log"
+    printf '[%s] approval-collect: rq-20260913-109787: 无提交（no_submission 待决态），继续等待\n' "$ts" >> "$SHADOW/contrib-data/logs/approval-collect.log"
     i=$((i - 1))
   done
-  printf '[%s] notify: shadow-fixture\n' "$("$PIN_DATE" '+%Y-%m-%d %H:%M:%S')" > "$SHADOW/logs/notify.log"
-  printf '{"state":"shadow"}\n' > "$SHADOW/notify-state.json"
-  printf '{"version":1,"items":[]}\n' > "$SHADOW/ready-queue.json"
-  printf '{"limits":{"week":3,"day":1},"days":{},"weeks":{},"probes":{}}\n' > "$SHADOW/budget.json"
-  : > "$SHADOW/events.jsonl"
+  printf '[%s] notify: shadow-fixture\n' "$("$PIN_DATE" '+%Y-%m-%d %H:%M:%S')" > "$SHADOW/contrib-data/logs/notify.log"
+  printf '{"state":"shadow"}\n' > "$SHADOW/contrib-data/notify-state.json"
+  printf '{"version":1,"items":[]}\n' > "$SHADOW/contrib-data/ready-queue.json"
+  printf '{"limits":{"week":3,"day":1},"days":{},"weeks":{},"probes":{}}\n' > "$SHADOW/contrib-data/budget.json"
+  : > "$SHADOW/contrib-data/events.jsonl"
 }
-_shadow_files() { ( cd "$REPO_ROOT" && find contrib-data -type f 2>/dev/null | LC_ALL=C sort ); }
+_shadow_files() { ( cd "$SHADOW" && find contrib-data -type f 2>/dev/null | LC_ALL=C sort ); }
 
 _s4_busy() { # 并发 s4 探测：**命令位**匹配（避免命中他卡 claude -p 提示词文本里的同名串；
   # 相对路径调用 / 跨 checkout 调用一律命中——/tmp/autopilot-artifacts 是跨 checkout 共享的）
@@ -1323,7 +1398,7 @@ _e2e_case() { # <mode> → 设 E_RC / E_EV / E_BEFORE / E_AFTER
   before="$(_shadow_files)"
   mkdir -p "$ART"
   : > "$ART/s4-p1.out"
-  _run_timeout 900 "$WA_SB/e2e.$mode.out" env MARTIN_DIR="$REPO_ROOT" S4_P1_INJECT="$mode" bash "$S4"
+  _run_timeout 900 "$WA_SB/e2e.$mode.out" env MARTIN_DIR="$SHADOW" S4_P1_INJECT="$mode" bash "$SHADOW_S4"
   E_RC=$?
   after="$(_shadow_files)"
   {
@@ -1356,7 +1431,7 @@ if [ "$E2E_OK" = "1" ]; then
     assert_ne "$(awk '/WA-INJECT/{n=1} END{print n+0}' "$E_EV")" "0" "E1 注入落 WA-INJECT evidence 行（可追责）"
   fi
 else
-  _fail "E1 影子前置" "影子 contrib-data 未建立（$SHADOW 已存在，拒绝注入式实跑）"
+  _fail "E1 影子前置" "影子根不可用（${SHADOW_REASON:-未建立}）—— 拒绝注入式实跑"
 fi
 
 t_case "E2 影子实跑 external-append：合规追加（模拟生产写手）→ 4.P1 PASS ∧ external≥1"
@@ -1381,7 +1456,7 @@ if [ "$E2E_OK" = "1" ]; then
     assert_ne "$(awk '/WA total=/{n=1} END{print n+0}' "$E_EV")" "0" "E2 引擎末行计数行落盘（可 grep）"
   fi
 else
-  _fail "E2 影子前置" "影子 contrib-data 未建立（拒绝注入式实跑）"
+  _fail "E2 影子前置" "影子根不可用（${SHADOW_REASON:-未建立}）—— 拒绝注入式实跑"
 fi
 
 t_case "E3 影子实跑 canary-append：注册路径追加字母表外行 → 4.P1 必判红 ∧ 同 path 无 external 行"
@@ -1399,7 +1474,7 @@ if [ "$E2E_OK" = "1" ]; then
     assert_eq "$E3_OK" "1" "E3 suite ≥ 1（实得 ${E3_SCNT}）∧ 无同窗 external 行（实得 ${E3_ECNT}；套件写入优先定性）"
   fi
 else
-  _fail "E3 影子前置" "影子 contrib-data 未建立（拒绝注入式实跑）"
+  _fail "E3 影子前置" "影子根不可用（${SHADOW_REASON:-未建立}）—— 拒绝注入式实跑"
 fi
 
 t_case "E4 影子实跑 canary-delete：套件在窗口内真删 marker 探针 ⇒ 4.P1 必红 ∧ suite≥1 ∧ reason=canary-marker ∧ 窗口差集非空 ∧ 三轮等量"
@@ -1451,7 +1526,7 @@ if [ "$E2E_OK" = "1" ]; then
     assert_ne "$E4_S1" "0" "E4 每轮 suite ≥ 1（实得 ${E4_S1}）"
   fi
 else
-  _fail "E4 影子前置" "影子 contrib-data 未建立（$SHADOW 已存在，拒绝注入式实跑）"
+  _fail "E4 影子前置" "影子根不可用（${SHADOW_REASON:-未建立}）—— 拒绝注入式实跑"
 fi
 
 t_case "E5 影子实跑 external-delete：登记写手删除其所辖文件 ⇒ 4.P1 PASS ∧ external≥1 ∧ reason=corroborated-delete-ok"
@@ -1476,19 +1551,31 @@ if [ "$E2E_OK" = "1" ]; then
     assert_eq "$E_AFTER" "$E_BEFORE" "E5 注入物零残留（运行后影子文件集与运行前一致）"
   fi
 else
-  _fail "E5 影子前置" "影子 contrib-data 未建立（拒绝注入式实跑）"
+  _fail "E5 影子前置" "影子根不可用（${SHADOW_REASON:-未建立}）—— 拒绝注入式实跑"
 fi
 
-if [ "$SHADOW_CREATED" = "1" ]; then
-  rm -rf "$SHADOW"
-  SHADOW_CREATED=0
-fi
+_shadow_sweep   # 只删本套件新建物（非 tracked）；tracked 台账不改、不删
 
-t_case "E6 影子树零残留：实跑结束不得在仓内留下影子 contrib-data"
-if [ -e "$SHADOW" ]; then
-  _fail "E6 影子树已清理" "${SHADOW} 仍存在（本套件退出后必须零仓内残留）"
+t_case "E6 影子树零残留：自建物全清（porcelain 空）∧ 被测 checkout 零金丝雀 ∧ 自建根整根清理"
+if [ "$E2E_OK" = "1" ]; then
+  # ① 影子数据面：新建物 + ignored 残留全清，且 tracked 台账未被改动/删除（porcelain --ignored 一并覆盖）
+  E6_PORC="$(git -C "$SHADOW" status --porcelain --ignored -- contrib-data 2>/dev/null | wc -l | tr -d ' ')"
+  assert_eq "$E6_PORC" "0" "E6 影子 contrib-data 零残留（porcelain --ignored 行数=0：新建物全清 ∧ tracked 台账未改动）"
+  # ② 被测 checkout 零金丝雀：本套件禁写生产 contrib-data 的机械判据（E0① 隔离前置已阻断写入路径）
+  E6_LEAK="$(find "$REPO_ROOT/contrib-data" -name 'S4-P1-*' 2>/dev/null | wc -l | tr -d ' ')"
+  assert_eq "$E6_LEAK" "0" "E6 被测 checkout 的 contrib-data 无金丝雀残留（S4-P1-* 命中 0 项）"
+  # ③ 自建根整根清理；注入式根（mutation/复用）不属本套件，不删根、只验数据面
+  if [ "$SHADOW_OWNED" = "1" ]; then
+    rm -rf "$SHADOW"
+    SHADOW_OWNED=0
+    if [ -e "$SHADOW" ]; then E6_ROOT=1; else E6_ROOT=0; fi
+    assert_eq "$E6_ROOT" "0" "E6 自建影子根已整根清理（${SHADOW} 不存在）"
+  else
+    if [ -d "$SHADOW" ]; then E6_ROOT=0; else E6_ROOT=1; fi
+    assert_eq "$E6_ROOT" "0" "E6 注入式影子根保留（非自建 ⇒ 不整根删除；数据面已清）"
+  fi
 else
-  _pass "E6 影子树已清理（${SHADOW} 不存在）"
+  _fail "E6 影子树已清理" "E 组未实跑（影子根不可用：${SHADOW_REASON:-未建立}）—— 零残留无从验证，判红"
 fi
 
 # =============================================================================
