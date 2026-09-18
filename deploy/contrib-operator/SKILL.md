@@ -209,6 +209,16 @@ stale-pr-scan（`scripts/contrib/stale-pr-scan.sh`，随 contrib-flush tick 周�
 
 `bash scripts/contrib/forge.sh init/check/set-status`（本地为止，绝不 push）。造货本体走 coder lane 卡，卡面自带 forge 配方：单关注点 + 基于 origin/main + 无 Co-Authored-By；入库三步 init → apply+commit → register（`--sha` 取 worktree 内 `git rev-parse HEAD`，`--proof` 非空且留 exit code）；保署名 `git commit --author="<原作者> <id+login@users.noreply.github.com>"`；mutation 自证**先跑 RED 再 commit**（树干净时 stash 静默失效=假 RED；已 commit 用 `checkout HEAD~1 -- <file>` 复现、`checkout HEAD -- <file>` 还原）；全程零外发（未 push 用 `ls-remote` 为空自证）；闸门确认≠投递（worker 绝不自己发评论）；salvage 评估只读，占坑判定按「引用目标文件的全部在飞车逐辆扫 diff 内容」，不信关键词检索。库存按 §3.2 三态供深检 offer。
 
+**forge 立项自检（形态条款，2026-09-18 增；来源 = 上游仓自带章程的提炼 `contrib-data/pr-standard-distilled-20260918.md`；逐条自答，答不出 ⇒ 转 watch / pass，不落笔）**：
+① **面 = 整个缺陷类**，不是一处症状——在 `origin/main` 复现并指到行 + 列全兄弟调用点（上游 `AGENTS.md:47-48`；我方败因里覆盖面劣势最高频）
+② **值取运行时权威源**，禁读静态配置/兼容期全局常量（`AGENTS.md:276-288`；#65794 判词「name the wrong model」）
+③ **测试 1–2 条不变量**、base 先证红、走真路径 E2E；禁 change-detector、**禁源码形状/源码文本断言**（`AGENTS.md:323-325/396-424`；#65794 被点名的第 3 问）
+④ **成本一行算术**：LOC/侵入度 vs 实际伤害；偏好 fail-open + 下次自愈，勿新增 fail-closed 拒绝路径（#86062「disproportionate」判例）
+⑤ **需求锚**：bug 件锚 issue；无 issue 锚的 feature = 「维护者要不要」类（上限被压，可预期 P3）；大机械重构受欢迎但**必须声明**（`AGENTS.md:53-55`）
+⑥ **落点 churn 预检**：`处置成本 ≈ 面积 × 分支年龄 × 落点 churn`——落点在被拆的 god file / 高 churn 文件上 ⇒ 先缩面或换锚，别指望 60 天后还 rebase 得动（#65794 活例：三乘数全大 ⇒ 9176 行冲突、rebase 变重做）
+⑦ **出手前搜 open + merged 双态**（issue 与 PR）；已有开放车覆盖该面 ⇒ 让路或转 review，不开竞争 dup（`CONTRIBUTING.md:25,32`）
+⑧ **合并闸 = CI required checks + 维护者 review**，机器人 review 零合入权重 ⇒ 优化目标只能是「让维护者一眼能合」（可合性 + 前提可验 + 成本可控）
+
 ### 4.4 邮件（himalaya）
 
 班内 survey 包含未读 GitHub 通知分诊。**坑位**：QQ IMAP 查询严禁带日期条件（服务端超时）；`message read` 必须带 `-p` 否则自动置已读（读=副作用，先建 [sig] 卡再深读）；私有邮件不碰。判定三通道：auto（流水线内部信号→既有通路）/ important（需用户本人关注且时效敏感→微信卡，宁进简报不进微信）/ routine（盯梢→journal 一行）。同主题多封合并，key 取最新。
