@@ -51,7 +51,7 @@
 2. **cherry-pick invitation** —— review 真发现缺口 && 库存有货时，按 #86062 模式 offer 单关注点 commit（fork sha + authorship 保留；措辞**排序推荐不并列**：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底；禁「随你方便」式对称句式——09-07 #103650 对称措辞致 substance 被采纳但署名归零），**没货就纯 review，不硬带**
 3. **salvage** —— 停滞 PR 雷达（farm 洪水的必然产物=工业化停滞供给），probe→salvage 走 §5 流程
 
-**review 红线（COI 防御）**：主载荷必须是对维护者的验证价值（file:line receipts + mutation 自证）；自己的 PR/commit 只在缺口驱动场合出现；**每周深检预算 1-3 个**（三轮验证 strategist→亲手核→fresh-context 红队成本高），其余新 PR/issue 只内部研判不发帖——不做全仓免费 QA。筛选 rubric：域契合 × 合入临近度 × 独家弹药 × 可收敛性 × 作者质量史。**漏斗度量：review → adoption → pick → 关系信号（@提及/直接 ping）。**
+**review 红线（COI 防御）**：主载荷必须是对维护者的验证价值（file:line receipts + mutation 自证）；自己的 PR/commit 只在缺口驱动场合出现；**每周深检预算 20 个**（09-19 拍板，账本 budget.json 为准；量放宽但单条标准不降——COI 防线在 rubric 门槛 + premise 复验），其余新 PR/issue 只内部研判不发帖——不做全仓免费 QA。筛选 rubric：域契合 × 合入临近度 × 独家弹药 × 可收敛性 × 作者质量史。**漏斗度量：review → adoption → pick → 关系信号（@提及/直接 ping）。**
 
 **任何对外动作落地前过 `/contrib-preflight`**（hermes-contrib-strategist agent）；对外动作走 L2 闸门（会话内批准/微信审批 + approved.log 台账）。存量可 pick 库存（#96472/#85548/#75771/#75453/#65794 + #86062 内 1d0e71e822）台账见 hermes-contribution.md §11。
 

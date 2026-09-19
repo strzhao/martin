@@ -207,7 +207,7 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
    - ③ follow-up PR = 我方兜底（对方两条都不要时才摆出）
    - 模板：「这个缺口我有一个单关注点 commit 已修（fork sha），测试齐全——**首选**你整块 cherry-pick/rebase（署名保留）；如你倾向自己重写，麻烦在该 commit 上带 Co-authored-by；两者都不合适我再出 follow-up」
    - **禁语**：「随你方便」/「equally fine」/任何把 lift 与 absorb 等权呈现的句式
-4. **每周深检预算 1-3 个**（三轮验证 strategist→亲手核→fresh-context 红队成本高）；其余新 PR 只内部研判不发帖——不做全仓免费 QA（~~09-02 定 1-3/周~~ **09-04 用户拍板放宽为周 30/日 3——token 充裕，配额只做防突发节流；COI 防线移由 rubric 门槛 + premise 复验 + 每项微信审批承担**；由 `contrib-data/budget.json` 机械记账，散文预算状态以账本为准）
+4. **每周深检预算 20 个**（09-19 用户拍板：从 1-3 提至 20——09-04 已放宽为周 60/日 30、token 充裕，实测深检使用率低位主因是旧「1-3」散文残留隐性压量；现账本周 20/日 30，由 `contrib-data/budget.json` 机械记账，散文预算状态以账本为准）；其余新 PR 只内部研判不发帖——不做全仓免费 QA（**COI 防线不在预算数字，在 rubric 门槛 + premise 复验**：量放宽后单条标准不降）
 5. 筛选 rubric：**域契合 × 合入临近度（CI 绿/review 收敛/mergeable）× 独家弹药 × 可收敛性 × 作者质量史**
 
 ### §11.1a 竞品吸收口径（2026-09-11 用户拍板）
