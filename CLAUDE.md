@@ -9,7 +9,7 @@
 - 先定位根因在框架哪一层（agent loop / 工具 / 网关 / 压缩 / 记忆…），把缺陷修在源码 `~/workspace/hermes-agent/`，再顺手解决眼前这一例——而不是反过来打补丁绕过。
 - 看到一个 case，默认问「框架怎样才能让这类 case 不再发生 / 自动恢复」，而不是「这一个怎么救」。
 - 仅当框架修复成本极高、或纯属环境/配置偶发时，才退而只处理个案；事后仍记一笔待修。
-- 修复落到框架后，同步评估是否值得提 PR 回馈上游（见记忆 [[hermes-contribution-followups]] 的贡献红线）。
+- 修复落到框架后，同步评估是否值得提 PR 回馈上游（见记忆 [[hermes-contribution-followups]] 的贡献红线）。**09-19 定形**：框架修复即上游候选——修复按 forge 标准成形（单关注点/基于 origin/main/测试/mutation 自证），本地先用，完成后 register 进 contrib inventory（`forge.sh`），由 operator 班次按四问评估路由（根因归属/上游已知/RED-GREEN/值得否，见 contrib-operator SKILL §3.8）。
 
 一句话：**根因进框架，个案走兜底。**
 
@@ -97,9 +97,9 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 
 hermes AI 全权接管温故卡（appId `6917615875709812574`，包名 `com.stringzhao.flashcards`）AGC 上架后用户运营，宪法两条：**AI first**（无阈值告警/无审批闸/无格式模板——给 AI 的是读者/目标/视角，不是规则清单；首版规则式 prompt 推出的日报带运维黑话+数据矛盾未对账，改视角式后 dry-run 验证）+ **KISS**（形态 = 1 cron + 1 skill + 1 数据目录）。**每日 21:23 cron「温故卡运营日报」**（job `34694c9ccf3c`，default store，`--deliver weixin` 直投，`--workdir harmony-space`；**必须 pin `--provider glm-flash-echo --model glm-5.3-flash`——不 pin 的 job 解析 provider 时名字含「glm」命中 hermes providers.py zai overlay，读 `~/.hermes/.env` 陈年残留 `GLM_BASE_URL=api.z.ai` 报空流；pin 后走 config 显式 base_url 即愈（计费铁证：state.db session_model_usage 全落 bigmodel）**）按 **hm-ops skill**（真源 `~/workspace/harmony-space/tools/hm/skill-template/hm-ops-SKILL.md`，双点部署 `~/.hermes/skills/harmony/hm-ops/`，改真源后 cp + cmp 自证；prompt 真源 `flashcards-data/prompt.txt`，改后 `hermes cron edit --prompt` 同步）执行班次。**两类产出两种读者**（v3 核心设计，防「工作日志直推微信」）：给委托人的微信简报=最终输出（结论先行/纯文本/零运维细节，有无可拍板事项直说）；完整工作日志落 `flashcards-data/daily/`。**全自动回复评论**：`hm reviews reply`（六域唯一 write 非 hardStop，实发前 dry-run 自检）；审计真源 `~/.hm/audit/`（CLI 机制落盘）；冷启动无料日 `[SILENT]`（渠道静默哨兵）。运行时产物 `flashcards-data/`（gitignore）；口径 SSOT 在 harmony-space `docs/post-launch-data/`；D4 边界=capabilities 里 `hardStop==true` 清单 + `opencli agc growth-open`（不在授权内，skill 引用机制不枚举命令名防漂移）。**首跑实证（2026-09-16 凌晨）**：全链通、真实数据回流（13 装/12 新用户/2 活跃）；同日按视角式改造 v3 并 dry-run 验证。
 
-## Hermes 可观测性消费（本地观测栈）
+## Hermes 可观测性消费（观测栈已退役 2026-09-19）
 
-操作/排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）前，**先读 [`hermes-observability-guide.md`](hermes-observability-guide.md)** —— 30 秒入口 `hermes forensics summary --hours 24`、症状→命令决策树、events.db 数据字典、日志路由表（含 cron→agent.log 上游单写坑：gateway.log 查不到 cron 日志 ≠ 没发生）。栈为本地补丁不入上游（`observability-stack` 分支锚定）；升级只走 fetch+rebase。
+~~`hermes forensics`~~ **已不存在**（observability-stack 分支退役、main 直营，用户拍板不维护）。排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）：`hermes logs` / `hermes doctor`（**勿带 --fix**，会改行为默认值）/ 直接看 `~/.hermes/logs/`（cron 日志走 agent.log 单写的坑仍在：gateway.log 查不到 cron 日志 ≠ 没发生）。历史决策树与 events.db 数据字典存档于 [`hermes-observability-guide.md`](hermes-observability-guide.md)（仅史料，入口命令已失效）；退役详情与 PR 跟进见 `~/Downloads/hermes-pr-115989-handoff.md`。
 
 ## 生产零写入判据的写入归属（s4 4.P1 / t1-04 4.1）
 
@@ -107,7 +107,7 @@ hermes AI 全权接管温故卡（appId `6917615875709812574`，包名 `com.stri
 
 ## Hermes Agent 环境
 
-- **版本**: v0.20.5（2026-08-23 rebase 到 origin/main@f293e7206b + 本地补丁栈，见记忆 [[hermes-upgrade-mechanism]]）
+- **版本**: main 直营（2026-09-19 快进 origin/main@e818827191+ + cherry-pick `f4e067a233` kanban.auto_subscribe_mode = 上游 PR #115989；observability-stack 分支已退役，见记忆 [[hermes-upgrade-mechanism]]）
 - **安装路径**: `/Users/stringzhao/workspace/hermes-agent/`
 - **CLI 路径**: `/Users/stringzhao/.local/bin/hermes`
 - **用户数据目录**: `~/.hermes/`（config.yaml、sessions、skills、memories、cron、logs 等）
