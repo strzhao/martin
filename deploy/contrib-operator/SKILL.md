@@ -63,7 +63,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 | 维度 | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
-| 领域契合 | 契合三问皆弱（见表后注；desktop 等表面无关域**不预设 0**——desktop 通常三问皆弱落 0 档，但非恒 0：桌面插件/CDP DOM 面我方有真实工具沉淀，落在桌面 app × gateway 生命周期交点的 issue 可翻档） | 边缘（browser/单平台冷门） | 相邻（tools/cli/update） | 核心链路（cron、gateway、sessions/state.db、weixin、compression、memory、kanban） |
+| 领域契合 | 契合三问皆弱（见表后注；desktop 等表面无关域**不预设 0**——desktop 通常三问皆弱落 0 档，但非恒 0：桌面插件/CDP DOM 面我方有真实工具沉淀，落在桌面 app × gateway 生命周期交点的 issue 可翻档） | 边缘（browser/单平台冷门/我方零使用的具体 provider 如 bedrock/ollama） | 相邻（tools/cli/update） | 核心链路（cron、gateway、sessions/state.db、weixin、compression、memory、kanban、**provider/model 配置链**——09-19 用户拍板升档，证据底座见 §3.5；注意升的是「配置链/计费/配额/解析机制 + 我方在跑的 provider」，不是任何 provider 的专属 bug） |
 | 独家证据/自利 | 无 | 间接相关 | 影响我们部署 | 我方有生产取证/取证能力直接适用 |
 | 空间状态（实查） | 拥挤（≥3 PR 或活跃车+无空间） | 活车（他人 PR 在动） | 死车（PR 停滞 >14 天） | 空（无 PR 锚 + substance 查重也空） |
 | 需求真实度 | needs-repro/无细节 | 单一环境无实据 | 有 repro/日志 | 生产环境+多站点共鸣 |
@@ -127,6 +127,8 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 ### 3.5 部署前提（自利评分的依据）
 
 本机 hermes 多 profile 重度生产部署：default（微信主入口）、coder（kanban 编码 worker）、contrib（本域）、hkstock、life、wx-echo。取证面：weixin 取证包、state.db 修复线、forensics 栈、kanban 多 profile 派单/调度/资源闸。判断「影响我们部署」看 `~/.hermes/profiles/` 实际目录与运行，不看 config 顶层 key。
+
+- **provider/model 配置链取证面（09-19 用户拍板升入域内）**：当时事实 = ①glm 双账号分账生产在跑（glm-flash / glm-flash-echo 两条自定义 provider，anthropic transport + 显式 base_url）；②providers.py zai overlay 会吞 config 解析——名字含「glm」的 cron job 不 pin provider 时读到 `~/.hermes/.env` 陈年残留 `GLM_BASE_URL=api.z.ai` 报空流（温故卡日报 cron 实证，pin 显式 base_url 即愈）；③kimi-coding k3 周配额窗三次耗尽（09-08/09-15/09-19，cron `last_status=error` + HTTP 403 分型判据已沉淀）；④计费取证锚 = state.db `session_model_usage.billing_base_url`（`billing_provider` 对 custom provider 恒记 `custom`，拿它当判据必误判）；⑤deepseek 备胎切换链全程实战过。当时判断 = 这条链上我方证据是第一人称、可复现、带灼伤记忆的，比农场账号的纸面修复硬——provider/model 的**机制面**（配置解析/base_url 覆盖/配额与重试/计费归属/fallback 链）按核心链路判契合。复检活问题（逐题重答，不按域名查表）：这个面我们生产在跑吗（在跑的 provider 集合会随分账策略变）？能产独家证据吗（本机配置链复现 vs 对方只有推测）？空间呢？——**边界保持诚实**：我方零使用的具体 provider（bedrock/ollama/exa 等）的专属 bug 仍落边缘档，没有真机/真账号就没有 RED/GREEN，不硬够。
 - **macOS 重启会重新分配 APFS 卷的 `st_dev`（inode 不变）**：实测本机 `last reboot` 09-12 02:52 前后，同一 parent 目录的 `st_dev` 从 16777231 变为 16777233、inode 恒为 54836230 ⇒ **任何把 `(st_dev, st_ino)` 当跨重启持久身份的功能都会在重启后误判**（checkpoint 的 workdir 归属判定 `_workdir_is_observably_gone` 即中招：重启前记的每条 orphan 快照永久不可回收）。跨重启的持久身份须用卷 UUID + inode 或 路径+inode；判「我方是否被咬」的这类题先查 `last reboot` 与记录值的相关性。证据：#109787 复检（contrib store 146/220 条 orphan 被静默拒删）。**冻结效应（09-13 19:29 复测，独立佐证）**：store 250 条时拒删仍 146（构成 139 `identity-mismatch` + 7 `parent-missing`；按记录 dev 分组 145 条属重启前组、1 条属后），而 orphan 220→228、会删 74→82，新增记录**全部**落「会删」桶 ⇒ 拒删集合恒等于重启前快照集合，**不随使用增长、永久不可回收、每次重启重演**；判「是否正在恶化」时用它区分「永冻的已损失量」与「持续增长量」。
 
 - **微信订阅会被网关永久摘除（09-14 实证）**：weixin `context_token` 过期使出站 `prepare failed` 时，网关侧 `gateway/kanban_watchers_notifier.py:593` 在 12 次连续发送失败后「dropping subscription … on weixin」，**无自愈路径**（09-14 01:51:32 实测我方卡 `t_a9ed7383` 的微信订阅被摘，日志在 `~/.hermes/logs/gateway.log`）。⇒ 判「某卡告警没收到」时先分清：是 notify.sh 侧未发（账本 `pushed=false`）、还是网关侧订阅已被摘（账本会显示已推/无行）——两者修复面完全不同，别默认断在 notify.sh。同族错误文案的连带损失**已闭环（already-covered，09-19 实证）**：weixin `stale_session` 掉进 rate-limit 分支 ⇒ 每次失败自开 30s 闸并报「rate limited」——kshitij **#115359**（`fix(weixin): unrecoverable prepare failed is a session error, not a rate limit`，refs canonical #80125）**已 merged（`5db9f02372`，behind_by=0）** ⇒ 误分类链被上游修掉、本机该受害形态消失；**注意摘除本体（12 连败 drop subscription）是另一条缺口、未被本车修**，其持有车面沿 §3.4（#111028/#111079）。
