@@ -238,9 +238,15 @@ stale-pr-scan（`scripts/contrib/stale-pr-scan.sh`，随 contrib-flush tick 周�
 ⑦ **出手前搜 open + merged 双态**（issue 与 PR）；已有开放车覆盖该面 ⇒ 让路或转 review，不开竞争 dup（`CONTRIBUTING.md:25,32`）
 ⑧ **合并闸 = CI required checks + 维护者 review**，机器人 review 零合入权重 ⇒ 优化目标只能是「让维护者一眼能合」（可合性 + 前提可验 + 成本可控）
 
-### 4.4 邮件（himalaya）
+### 4.4 邮件与 GitHub 通知门（信号源 + 消费闭环，09-21 定形）
 
-班内 survey 包含未读 GitHub 通知分诊。**坑位**：QQ IMAP 查询严禁带日期条件（服务端超时）；`message read` 必须带 `-p` 否则自动置已读（读=副作用，先建 [sig] 卡再深读）；私有邮件不碰。判定三通道：auto（流水线内部信号→既有通路）/ important（需用户本人关注且时效敏感→微信卡，宁进简报不进微信）/ routine（盯梢→journal 一行）。同主题多封合并，key 取最新。
+**主通道 = `gh api notifications`**（reason 字段精准分类 mention/author/comment/ci_activity，比邮件主题分流强）；himalaya 邮箱是兜底（gh 通道故障时）与镜像存档。**消费闭环**（09-21 之前缺失的根因）：研判完的线程必须标已读——未读队列就是工作队列，不标 = 每班重复研判同一批、成本指数涨（09-21 实证：堆积 212 封邮件/8 天，信号源被理性放弃）。标已读只动 GitHub 通知状态，**不碰 foxmail 邮箱**（「不碰 himalaya 写」红线不变）。
+
+- **范围白名单（写死）**：只消费/标记 `NousResearch/hermes-agent` 与 `zai-org/feedback` 线程；strzhao 名下仓库的通知是用户本人的工作信号，一个都不碰（09-21 实测未读池 ~444 条里 contrib 域外占 ~330）。
+- **班次动作**：①拉 `gh api notifications --paginate --jq '.[] | select(.unread and (.repository.full_name=="NousResearch/hermes-agent" or .repository.full_name=="zai-org/feedback"))'` → ②mention/author 逐条 gh 实查最新评论（邮件只是信号源，gh 实查为准），ci_activity 噪声直接跳过 → ③三通道判定（auto/important→微信卡，routine→journal 一行；同主题多封合并，key 取最新）→ ④处置完逐条 `gh api --method PUT notifications/threads/<id>` 标已读。
+- **标记后必须终态重查**：重跑①数未读、归零才算闭环。两个 09-21 实证坑：**gh api 的错误响应体走 stdout**——`PUT … && echo ok | wc -l` 会被 404 的错误 JSON 行数污染成假成功（111 个失败 PUT 被 wc 报成 444「成功」= 每个 404 泄 4 行 JSON）；**PUT 通知线程需要 token 带 `notifications` scope，缺失时返回 404 而非 403**（GET /notifications 却 200——别拿 GET 通当写通）。补 scope = `gh auth refresh -h github.com -s notifications`（device flow，人工步骤，标已读不可用期间通知门降级为只读研判 + journal 记账）。
+- **堆积告警**：contrib 域未读 >50 = 信号源故障（不是默默消化），原因进每日简报。
+- himalaya 兜底（QQ IMAP 坑：查询严禁带日期条件——服务端超时；`message read` 必须带 `-p` 否则自动置已读，先建 [sig] 卡再深读；私有邮件不碰）：`himalaya envelope list --page-size 200 "not flag seen"`，主题含 `[NousResearch/hermes-agent]`/`[zai-org/feedback]` = 域内。
 
 ### 4.5 异常姿态
 

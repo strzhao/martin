@@ -64,7 +64,7 @@
 contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **default profile 的 agent cron**（`3e5c6e23e260`，每小时 :02，`--skill contrib-operator`，kanban 原生外部 actor 全权看板操作），宪法真源 = `deploy/contrib-operator/SKILL.md`（部署双点：`~/.hermes/skills/github/` + contrib profile；改真源后 cp 双点 + diff 自证）。班卡/心跳脚本/收口与唤醒钳夹均已退役——operator 以 cron agent 身份原生执行全部编排动作。六节点 感知→分诊→造→过闸→守候→学习 全 AI 主导；代码只做钳夹（L2 闸/预算/心跳/watch-due 唤醒）+ 三账本（看板/approved.log/ops-journal）。
 
 - **排查入口**：operator 行为 → `contrib-data/ops-journal.md` + contrib board 班卡；架构宪法与迁移史 → [`contrib-ops-ai-native-design.md`](contrib-ops-ai-native-design.md)
-- **能力面**：新命中→[sig] 卡分诊三路（出手/[watch]/放行）；造货走 forge+coder lane（配方见 contrib-operator SKILL §4.3）；深检走 kanban swarm+`--resources deepcheck:global`；对外动作一律 L2 提案（agent 起草链落笔）
+- **能力面**：新命中→[sig] 卡分诊三路（出手/[watch]/放行）；造货走 forge+coder lane（配方见 contrib-operator SKILL §4.3）；深检走 kanban swarm+`--resources deepcheck:global`；对外动作一律 L2 提案（agent 起草链落笔）；**GitHub 通知门（09-21 定形，mail_gate 退役后重建）= 主通道 gh notifications + mark-read 消费闭环（域内白名单 hermes-agent/zai-feedback 外一个不碰）、himalaya 兜底、堆积>50 告警 → SKILL §4.4**
 - **旧的五段骨架（run-watch/scan_gate/mail_gate/deepcheck 快车道等）09-13 退役删除**，git 历史可溯；本日最高实证：#109641 感知→深研→forge→L2-A→PR #109758 单日全链闭环
 
 ### 快车道与 L2-A 微信审批环（09-04 上线）
