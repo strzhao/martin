@@ -40,6 +40,7 @@
 | 8 | 09-17 | review #113999（无件） | clempat 修复 | 全盘采纳、署名归零 | 出手形态 | 68 分钟窗口可 forge 未 forge；采纳≠进仓，有货必带 | decision-log.md 09-17 判例 |
 | 9 | 09-18 | own-PR #114159（读侧） | #114220（kshitij） | **被吸收且改进**（健康败法） | 实现完整度 | 对方收窄后缀白名单+同步沙箱读点更强，但署名认可+测试 cherry-pick offer 到手——可接受的输法 | absorb-ledger.json[22] |
 | 10 | 09-18 | own-PR #65794（+1361/−4，4 文件） | 上游 sweeper 07-18 判词「keep_open salvageability=medium」+ 62 天零回应 | **守候中活例**（判不 rebase，复查 10-18） | 面积/落点/需求锚 | 处置成本 ≈ 面积×分支年龄×落点 churn，三乘数全大即指数化：+1361 LOC × 62 天 × 落点 `run.py` 拆分窗口（25107 删/3566 增/409 提交）⇒ rebase 实测 7 块/9176 行 = 重做而非 rebase；且无 issue 锚的 feature 被标 P3 | pr-disposition-20260918.md §1.4 |
+| 11 | 09-20 | forge-116950-python-cred-read（d3da0d1477，commit 完成于占坑后 15 分钟） | #117028（chelsealong，独立趋同，同 pattern id 同豁免形状） | **B 路差异化转守候** | 速度/空间轮盲区 | 教训不是「慢了被占」而是**占坑后 75 分钟无人察觉**——岗哨标题轮逐辆核 diff 仍判空槽，根因 = issue 锚面缺 body 引用轮（`is:pr is:open <issue号>`，占坑车标题纯机制描述）；已修入 skill 空间轮口径（造货收尾前必跑）；处置 = 残余 delta 面（expanduser+读变体，RED 实证 5 面）followup 件 + 评审 offer（#86062 模式）转守候，原件转 conditional fallback | absorb-ledger id=1 + watch t_7a4429d5 |
 
 ## 正面基准（对标对象，不是败例）
 
