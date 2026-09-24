@@ -41,9 +41,14 @@
 | 9 | 09-18 | own-PR #114159（读侧） | #114220（kshitij） | **被吸收且改进**（健康败法） | 实现完整度 | 对方收窄后缀白名单+同步沙箱读点更强，但署名认可+测试 cherry-pick offer 到手——可接受的输法 | absorb-ledger.json[22] |
 | 10 | 09-18 | own-PR #65794（+1361/−4，4 文件） | 上游 sweeper 07-18 判词「keep_open salvageability=medium」+ 62 天零回应 | **守候中活例**（判不 rebase，复查 10-18） | 面积/落点/需求锚 | 处置成本 ≈ 面积×分支年龄×落点 churn，三乘数全大即指数化：+1361 LOC × 62 天 × 落点 `run.py` 拆分窗口（25107 删/3566 增/409 提交）⇒ rebase 实测 7 块/9176 行 = 重做而非 rebase；且无 issue 锚的 feature 被标 P3 | pr-disposition-20260918.md §1.4 |
 | 11 | 09-20 | forge-116950-python-cred-read（d3da0d1477，commit 完成于占坑后 15 分钟） | #117028（chelsealong，独立趋同，同 pattern id 同豁免形状） | **B 路差异化转守候** | 速度/空间轮盲区 | 教训不是「慢了被占」而是**占坑后 75 分钟无人察觉**——岗哨标题轮逐辆核 diff 仍判空槽，根因 = issue 锚面缺 body 引用轮（`is:pr is:open <issue号>`，占坑车标题纯机制描述）；已修入 skill 空间轮口径（造货收尾前必跑）；处置 = 残余 delta 面（expanduser+读变体，RED 实证 5 面）followup 件 + 评审 offer（#86062 模式）转守候，原件转 conditional fallback | absorb-ledger id=1 + watch t_7a4429d5 |
+| 12 | 09-21 | own-PR #118077（custom provider max_tokens，goods 09:52:49Z 就绪） | #118073（kokhlo，claim 锚 10:02:12Z，PR 10:07:56Z） | **对等撞车**（语义完全同构，对方早 3.5 分钟，双方均开放零噪音待维护者裁决） | 速度/时机（publish diligence 窗口） | goods 19 分钟就绪仍被先手 3.5 分钟：本仓 issue 后 claim 锚 + PR 的 farm 节奏（09-21 实测 5.7 分钟）要求 goods 落库后**立即**单号 probe + publish，把「上轮空间实查」当新鲜值 = 搜索索引延迟盲区（probe 返 0 时对方车已在飞、索引未收录）；撞车后非全面更好 ⇒ 不撤不评，PR 留场+台账+红队对拍，让维护者裁决 | absorb-ledger.json[5] + watch-118077-fate.json |
+| 13 | 09-21 | own-PR #117385（model.provider read-path，06:07Z 自关 superseded） | #117498（#117345 salvage 载体，09-21T08:45Z merged） | **全署名落袋**（正面基准） | 收编路径 | lift 终极形态 = 维护者把真人手写件 cherry-pick 进自家 salvage 车保署名 merge——main 现形 2069de86b 三步核签全过（author strzhao/daniel21436 + behind_by=0 + commits/pulls 归属 #117498）；主动关自家原件并留一句致谢完成让路闭环，不等维护者代关 | §8 09-15 判例 + ops-journal 09-21 19:2x |
+| 14 | 09-21 | own-PR #117518（rate-limit cooldown reset window，00:39Z closed superseded） | #117604（teknium1 salvage #117503，merged） | **credit-only 让路（零署名落袋）** | 形状竞争失败 | "same mechanism, larger diffs"——同面三车竞争时 diff 体量是独立竞争轴：维护者收编最小修、大件只得 body credit 不 pick commit；出件前应对标 issue 内并行车的体量，形状大而无增量证据 = 让路预期 | l2 台账 + ops-journal 09-21 19:2x |
 
 ## 正面基准（对标对象，不是败例）
 
 - **#109149**（aux vision notice）：issue 后 24m43s、+192/-11、3 文件、8 条回归测试、Fixes 锚——「一次修全+测试自带」的竞品标准形态。
 - **#103201**（rg eacces）：+378/-34 超集含诊断管道——「把相关面顺手修干净」的形状（对读：我方何时该做超集 vs 何时保持单关注点）。
 - 我方健康样板 **#111453 被收编**（60f3763c23 署名进 main）与 **t_709c2ef3**（catch 到会删生产数据的 D1）——我方达到过这个标准。
+
+- **#118179 撤回**（同日碰撞 #118160 白名单谓词 vs 我方键集清单，红队判 WITHDRAW，t_7e191a22）：own-PR 与竞品车键集互有覆盖时，覆盖面判定必须对着 config schema 权威集（_KNOWN_PROVIDER_KEYS/_CAMEL_ALIASES）逐键核，凭复现用例两边都过就判 differ = 漏判决定性轴；红队 fresh-context 抓到了 operator 对拍 brief 没抓到的 4 处硬伤（漏 models 键/漏 camelCase/name+provider 假阳性/正文承诺非 dict 行为与代码矛盾）——出手前对拍要包含 schema 权威集逐键 diff，不能只对拍复现行为。零观众窗口内主动撤回 + 一句让路收工。证据：t_7e191a22 comment 490 + config_providers.py:102-125 main 实查。
