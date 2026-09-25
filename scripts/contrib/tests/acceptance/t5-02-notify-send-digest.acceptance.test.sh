@@ -14,6 +14,9 @@
 #   S6  空卡守卫：摘要仅报头 → FAIL + exit 1 + 零发送 + 批次文件不得标 sent:true
 #   S7  dry-run 全链（验收标准 5）：dry_run=true 下 flush 建卡 → worker send-digest exit 0+
 #       sent:false → 卡 done 后下轮 flush 走 fallback 接管 → 账本最终收敛（不丢不重）
+#   S8  全批非 push 短路（09-25）：verdicts 全 brief/suppress → OK + exit 0 + 零发送 +
+#       零限额消耗 + 判决照常落账（brief 进简报/suppress 留痕）+ 批次 sent:true reason=brief-only；
+#       混合批（含 push）不短路走正常发送；摘要仅报头亦可（空卡守卫不辖 brief-only 批）
 # 依据：state.md「## 设计文档」§2 + 契约规约：
 #   「send-digest --digest <摘要文件> --batch <批次json>；stdout 一行 OK/FAIL <原因>；exit 0/1；
 #     空卡守卫照抄 flush 同款；限额拒发 reason=limit；dry-run reason=dry-run 且 exit 0；
@@ -28,7 +31,9 @@
 #     若实现把 reason 写往快照外载体（sidecar）则红 → 回设计对齐
 # 红队纪律：黑盒（未读 notify.sh 本次改动）；每断言硬失败；无 skip。Mental Mutation：锁保护
 #   缺失退回 acquire_lock 静默语义→S4 红；dry-run 误 exit 1/误标 sent:true→S3/S7 红；限额
-#   检查删→S2 红；幂等快路删→S5 重复发送红；空卡守卫删→S6 红；账本标记与发送删→S1 红。
+#   检查删→S2 红；幂等快路删→S5 重复发送红；空卡守卫删→S6 红；账本标记与发送删→S1 红；
+#   brief-only 短路删→S8 误发微信红（回退旧形态：整批 brief 推「无需推送」消息）；短路误吞
+#   混合批（push 行存在仍短路）→S8 混合批断言红。
 # =============================================================================
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -285,6 +290,55 @@ assert_eq "$(events_total)" "1" "S7 账本不重：事件恰 1 行"
 assert_eq "$(events_pushed_true)" "1" "S7 账本不丢：pushed 恰 1 次（fallback 接管完成收敛）"
 assert_eq "$(events_attempts_sum)" "0" "S7 attempts 零（dry-run 下 fallback 成功链不计数）"
 assert_eq "$(alerts_today)" "1" "S7 dry-run 只盖发送不盖账本（state_bump 照记，知识库坑口径）"
+sb_cleanup
+
+# =============================================================================
+t_case "S8 全批非 push 短路 → OK+exit 0+零发送+零限额+判决落账+sent:true reason=brief-only"
+sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
+BATCH="$(make_real_batch "k8-brief")"
+[ -n "$BATCH" ] && [ -f "$BATCH" ] || { _fail "S8 前置自证" "快照未产出"; t_finish; }
+# 摘要仅报头——brief-only 批不受空卡守卫辖（守卫只拦「该推但摘要空」）
+DIG="$SB_ROOT/tmp/digest-s8.md"
+mkdir -p "$SB_ROOT/tmp"
+make_empty_digest_file "$DIG"
+printf '%s' '[{"key":"k8-brief","route":"brief","reason":"信息性无决策点，宁进简报不进微信"}]' \
+  >"${BATCH%.json}.verdicts.json"
+OUT="$(sb_run -e NOTIFY_DRY_RUN=false \
+  "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DIG' --batch '$BATCH' --verdicts '${BATCH%.json}.verdicts.json'")"
+RC=$?
+assert_exit 0 $RC "S8 exit 0"
+assert_eq "$(first_line "$OUT")" "OK" "S8 stdout 一行 OK"
+assert_eq "$(send_calls)" "0" "S8 零微信外发（旧形态此处会推「无需推送」消息）"
+assert_eq "$(events_pushed_true)" "1" "S8 判决照常落账（pushed=true）"
+assert_eq "$(jq -r 'select(.key == "k8-brief") | .route' "$SB_ROOT/contrib-data/events.jsonl")" "brief" "S8 route=brief"
+BRIEF8="$SB_ROOT/contrib-data/briefs/$(date +%F).md"
+assert_file_contains "$BRIEF8" '`k8-brief`' "S8 brief 落当日简报机械小节"
+assert_eq "$(alerts_today)" "0" "S8 零限额消耗（brief-only 不占告警配额）"
+assert_eq "$(batch_sent_state "$BATCH")" "true" "S8 批次 sent:true 闭环"
+grep -q '"reason"[[:space:]]*:[[:space:]]*"brief-only"' "$BATCH" \
+  && _pass "S8 reason=brief-only 字面" \
+  || _fail "S8 reason=brief-only 字面" "回写载体未含 brief-only"
+sb_cleanup
+
+# --- S8b 混合批（含 push 判决）不短路 → 走正常发送链 ---
+t_case "S8b 混合批含 push → 不短路，正常发送（send_calls=1+账本分态落账）"
+sb_new >/dev/null 2>&1 || { _fail "sb_new" "沙箱创建失败"; t_finish; }
+BATCH="$(make_real_batch "k8b-push" "k8b-brief")"
+[ -n "$BATCH" ] && [ -f "$BATCH" ] || { _fail "S8b 前置自证" "快照未产出"; t_finish; }
+DIG="$SB_ROOT/tmp/digest-s8b.md"
+mkdir -p "$SB_ROOT/tmp"
+make_digest_file "$DIG"
+printf '%s' '[{"key":"k8b-push","route":"push","reason":"有决策点"},{"key":"k8b-brief","route":"brief","reason":"留痕"}]' \
+  >"${BATCH%.json}.verdicts.json"
+OUT="$(sb_run -e NOTIFY_DRY_RUN=false \
+  "bash \"\$MARTIN_DIR/scripts/contrib/notify.sh\" send-digest --digest '$DIG' --batch '$BATCH' --verdicts '${BATCH%.json}.verdicts.json'")"
+RC=$?
+assert_exit 0 $RC "S8b exit 0"
+assert_eq "$(first_line "$OUT")" "OK" "S8b stdout 一行 OK"
+assert_eq "$(send_calls)" "1" "S8b 混合批不短路（正常发送恰 1 次）"
+assert_eq "$(jq -r 'select(.key == "k8b-push") | .route' "$SB_ROOT/contrib-data/events.jsonl")" "push" "S8b push 行 route=push"
+assert_eq "$(jq -r 'select(.key == "k8b-brief") | .route' "$SB_ROOT/contrib-data/events.jsonl")" "brief" "S8b brief 行 route=brief"
+assert_eq "$(alerts_today)" "1" "S8b 发送批占限额（与 S1 同口径）"
 sb_cleanup
 
 t_finish

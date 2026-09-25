@@ -656,8 +656,8 @@ _digest_card_body() {
 - suppress（不推）：如已自愈 / 上游已知族 / 设计驻停无决策点 → reason 必填一句理由
 
 判决依据 = 快照里的厚事实（事件全字段）+ 本节目的说明；没有类名豁免表、没有数字阈值——
-你自己判断。若整批判为 brief/suppress，摘要正文写一行「本批 N 条事件经判断均无需即时推送」
-（仍须过空卡守卫的实质行要求），并照常调 send-digest 带 --verdicts。
+你自己判断。若整批判为 brief/suppress，摘要正文只留报头一行即可，照常调 send-digest 带
+--verdicts——全批非 push 时框架自动只落账不外发（brief-only 短路），不会有任何微信推送。
 
 ## 目的说明（为什么这样判）
 
@@ -831,6 +831,8 @@ _batch_channel() {
 # --verdicts <file>（可选，改动 2）：schema = [{"key":"<账本key>","route":"push|brief|suppress",
 # "reason":"<一句>"}]；缺席 = 全批 push（向后兼容，降级缺省非判决）；批内未点名 key 亦 push 兜底；
 # schema 非法 → FAIL bad-verdicts（校验置于一切副作用之前——账本零动作）。
+# 全批非 push 短路（09-25）：verdicts 展开后零 push 行 → 只落账不外发（brief-only），批次
+# sent:true reason=brief-only、零限额消耗；空卡守卫仅辖「该推但摘要空」的批次。
 cmd_send_digest() {
   local digest="" batch="" verdicts="" ch="contrib"
   while [[ $# -gt 0 ]]; do
@@ -863,6 +865,22 @@ cmd_send_digest() {
   if [[ "$(_digest_batch_sent "$batch")" == "true" ]]; then
     echo "OK"
     exit 0
+  fi
+  # 全批非 push 短路（09-25）：--verdicts 判决展开后零 push 行 → 判决照常落账（brief 进简报 /
+  # suppress 留痕）、批次 sent:true reason=brief-only 闭环，**零微信外发、零限额消耗**。
+  # 旧形态逼 AI 写一行「无需即时推送」硬闯空卡守卫换闭环——每次整批 brief 都推 4 条消息说
+  # 「无需推送」（09-25 18:08 #122462 空批次实证），违反「宁进简报不进微信」。展开口径与
+  # _apply_verdicts 同源（未点名 key 仍 push 兜底，缺席/展开失败不短路、落回既有守卫链）。
+  if [[ -n "$verdicts" ]]; then
+    local expanded push_rows
+    expanded="$(_verdicts_expand "$verdicts" "$batch")"
+    push_rows="$(printf '%s\n' "$expanded" | awk -F'\t' '$2 == "push"' 2>/dev/null | wc -l | tr -d ' ')"
+    if [[ -n "$expanded" ]] && (( push_rows == 0 )); then
+      _apply_verdicts "$verdicts" "$batch" "$ch" "true"
+      _digest_write_sent "$batch" true "brief-only"
+      echo "OK"
+      exit 0
+    fi
   fi
   # 空卡守卫（照抄 flush 同款多模式 grep：剔除报头/脚注/空行/分隔线后必须还有实质内容）
   if (( $(grep -v -e '^🟠' -e '^（明细' -e '^$' -e '^──' "$digest" 2>/dev/null | wc -l | tr -d ' ') == 0 )); then
