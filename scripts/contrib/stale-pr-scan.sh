@@ -165,6 +165,12 @@ first_err() { # <合流输出> → 压成单行（换行折叠为空格、连续
 
 # ---- total_count（唯一权威总数；显式 -X GET）----
 SEARCH_Q="repo:$REPO is:pr is:open updated:<$CUTOFF_DATE -author:strzhao"
+# 搜索请求间节流（秒）：一轮 = total_count + ~10 页连发，零间隔即撞 search secondary rate
+# limit（30 req/min 面；09-18..09-27 实测 108 连败）。默认 3s；env 置 0 = 测试/离线零等待。
+SCAN_SEARCH_PACE="${SCAN_SEARCH_PACE:-3}"
+case "$SCAN_SEARCH_PACE" in
+  ''|*[!0-9]*) SCAN_SEARCH_PACE=3 ;;
+esac
 total_raw="$("$GH" api -X GET search/issues -f q="$SEARCH_Q" -f per_page=1 --jq '.total_count' 2>&1)"
 gh_rc=$?
 TOTAL_COUNT=""
@@ -174,6 +180,7 @@ fi
 if [ "$gh_rc" -ne 0 ] || [ -z "$TOTAL_COUNT" ]; then
   fail_and_exit 1 "search total_count FAILED: $(first_err "$total_raw")"
 fi
+sleep "$SCAN_SEARCH_PACE"   # 节流：下一搜索请求前（枚举页）
 
 # ---- 枚举（手动翻页 + 二次过滤；累计至 SCAN_LIMIT / 短页 / 空）----
 ENUM=""
@@ -207,6 +214,7 @@ while :; do
   if [ "$page_n" -lt 100 ]; then
     break   # 短页 = 最后一页
   fi
+  sleep "$SCAN_SEARCH_PACE"   # 节流：下一枚举页前
   page=$((page + 1))
 done
 
