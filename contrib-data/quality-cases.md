@@ -44,6 +44,7 @@
 | 12 | 09-21 | own-PR #118077（custom provider max_tokens，goods 09:52:49Z 就绪） | #118073（kokhlo，claim 锚 10:02:12Z，PR 10:07:56Z） | **对等撞车**（语义完全同构，对方早 3.5 分钟，双方均开放零噪音待维护者裁决） | 速度/时机（publish diligence 窗口） | goods 19 分钟就绪仍被先手 3.5 分钟：本仓 issue 后 claim 锚 + PR 的 farm 节奏（09-21 实测 5.7 分钟）要求 goods 落库后**立即**单号 probe + publish，把「上轮空间实查」当新鲜值 = 搜索索引延迟盲区（probe 返 0 时对方车已在飞、索引未收录）；撞车后非全面更好 ⇒ 不撤不评，PR 留场+台账+红队对拍，让维护者裁决 | absorb-ledger.json[5] + watch-118077-fate.json |
 | 13 | 09-21 | own-PR #117385（model.provider read-path，06:07Z 自关 superseded） | #117498（#117345 salvage 载体，09-21T08:45Z merged） | **全署名落袋**（正面基准） | 收编路径 | lift 终极形态 = 维护者把真人手写件 cherry-pick 进自家 salvage 车保署名 merge——main 现形 2069de86b 三步核签全过（author strzhao/daniel21436 + behind_by=0 + commits/pulls 归属 #117498）；主动关自家原件并留一句致谢完成让路闭环，不等维护者代关 | §8 09-15 判例 + ops-journal 09-21 19:2x |
 | 14 | 09-21 | own-PR #117518（rate-limit cooldown reset window，00:39Z closed superseded） | #117604（teknium1 salvage #117503，merged） | **credit-only 让路（零署名落袋）** | 形状竞争失败 | "same mechanism, larger diffs"——同面三车竞争时 diff 体量是独立竞争轴：维护者收编最小修、大件只得 body credit 不 pick commit；出件前应对标 issue 内并行车的体量，形状大而无增量证据 = 让路预期 | l2 台账 + ops-journal 09-21 19:2x |
+| 15 | 09-27 | provider 配置链独家自利（glm A/B 双账号同挂 open.bigmodel.cn） | #124527 + 车 #124528 | pass 不追 | —— | 「机制成立」≠「我方部署咬合」：本地实测 named+named 拓扑不触发串 key（name-first 解析各归各键、交叉匹配双向 False、pool 空）、车已覆盖主面且作者自陈残留面不改——自利面必须本地探针实测后才算独家证据，配置拓扑形态差一层就零咬合 | probes/s270-124527-local-repro.py |
 
 ## 正面基准（对标对象，不是败例）
 
@@ -52,3 +53,7 @@
 - 我方健康样板 **#111453 被收编**（60f3763c23 署名进 main）与 **t_709c2ef3**（catch 到会删生产数据的 D1）——我方达到过这个标准。
 
 - **#118179 撤回**（同日碰撞 #118160 白名单谓词 vs 我方键集清单，红队判 WITHDRAW，t_7e191a22）：own-PR 与竞品车键集互有覆盖时，覆盖面判定必须对着 config schema 权威集（_KNOWN_PROVIDER_KEYS/_CAMEL_ALIASES）逐键核，凭复现用例两边都过就判 differ = 漏判决定性轴；红队 fresh-context 抓到了 operator 对拍 brief 没抓到的 4 处硬伤（漏 models 键/漏 camelCase/name+provider 假阳性/正文承诺非 dict 行为与代码矛盾）——出手前对拍要包含 schema 权威集逐键 diff，不能只对拍复现行为。零观众窗口内主动撤回 + 一句让路收工。证据：t_7e191a22 comment 490 + config_providers.py:102-125 main 实查。
+
+- **#124117 收编落袋**（我方 #123641 heal 件被 kshitijk4poor salvage 合入，09-26 merge 819c62469f1d，署名保进 main `6e4e0638e83b`，#124117-salvage-landed）：正面判例——「heal 只在 confirmed-missing 时触发 + 全前缀重放」形状被收编方补强而非稀释；中代批量收编生态里单关注点+REPRED 可验件的开窗期兑现实录（开出 ~11h 被 salvage，比族史均值快）。证据：pulls/124117 commits + compare behind_by=0 + #123641 closure comments。
+
+- **#124583 弃件后的 B 路关闭**（09-27 s272，absorb-ledger id=56）：占坑车 #124611 只修 background 提示腿、terminal_tool.py 6 处 stale 无人占——但 B 路（差异化补 terminal_tool.py 腿）不成立的三重实证：①运行时零伤害 = `_LEGACY_TOOL_ALIASES`（model_tools.py:892 dispatch seam）把 `process` 解析到 `process_manage`，alias 是有意设计（兼容旧 session/存档 prompt）⇒ 纯文案卫生无 RED 可交；②同文件 #85984 正在重写 hint 文本（文案清扫必撞）；③issue 首条评论已把「copy 跟 schema 还是 schema 跟 copy」定性为维护者方向题（§3.2 none 形）。教训：**「gap 存活 ≠ 缺口未关」——运行时兜底（alias/自愈/降级路径）存在时，文案级 gap 不构成出手理由**，判 goods 前先验运行时伤害是否真实存在。
