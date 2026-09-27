@@ -1,6 +1,6 @@
 # statusline-sage
 
-> Sage 色彩体系的 Claude Code 状态栏 —— 路径压缩 · git/worktree · 订阅限额双 provider（GLM / Kimi 自动识别）· 上下文用量。
+> Sage 色彩体系的 Claude Code 状态栏 —— 路径压缩 · git/worktree · 订阅限额双 provider（GLM / Kimi 自动识别）· cc-switch 套餐识别 · 上下文用量。
 
 一个用 [stringzhao.life/colors](https://stringzhao.life/colors) 色彩体系重写的 Claude Code `statusLine` 脚本。纯 bash（兼容 macOS 自带 bash 3.2），零运行时依赖（仅需系统自带的 `jq` / `git` / `curl`），自带订阅限额的本地缓存与后台刷新，**绝不阻塞输入**。
 
@@ -17,12 +17,14 @@ worktree：        ⎇ feat-x ⌥wt-name │ · martin │ GLM 5h:6% wk:80% max 
 非 git 目录：     · tmp │ GLM 5h:6% wk:80% max │ glm-5.2[1m] │ ctx 5%
 高峰期（14-18点）：⎇ main │ · martin │ GLM 5h:6% wk:80% max ×3 │ glm-5.2[1m] │ ctx 12%
 Kimi 环境：       ⎇ main      │ · martin │ KIMI 5h:18% wk:15% │ k3[1M] │ ctx 12%
+套餐识别（cc-switch）：⎇ main │ · martin │ GLM 5h:6% wk:80% │ glm flash echo · glm-5.3[1M] │ ctx 12%
 ```
 
 **色彩语义**（随用量/状态自动切换）：
 
 - 分支名 / 项目名 → 苔浅 `Sage Light`
 - `⎇` 标记：主仓库用苔绿 `Sage`，worktree 用琥 `Amber`
+- 套餐名 → 苔浅 `Sage Light`，身份簇分隔 `·` → 烟 `Smoke`（`套餐 · 模型`，模型名天 `Sky`）
 - dirty 计数 `●N` → 朱 `Vermillion`
 - GLM / context 用量：< 60% 苔绿 `Sage`，60–85% 琥 `Amber`，≥ 85% 朱 `Vermillion`（Kimi 同理）
 - 模型名 → 天 `Sky`，分隔符 `│` → 烟 `Smoke`，限额标签（`GLM`/`KIMI`）→ 烟 `Smoke`
@@ -38,6 +40,7 @@ Kimi 环境：       ⎇ main      │ · martin │ KIMI 5h:18% wk:15% │ k3[1
 | **git 状态** | 分支 / detached short-hash / dirty 计数 `●N` / ahead-behind `↑N↓N` / **worktree 自动识别**（基于 `--absolute-git-dir` vs `--git-common-dir`） |
 | **订阅限额** | **双 provider 按 `ANTHROPIC_BASE_URL` 主机名显式识别**（`kimi.com`/`moonshot.cn|ai` → Kimi，`bigmodel.cn`/`z.ai` → GLM，**其它端点整段隐藏**）：双窗口 token limit（短周期 `5h` + 长周期 `wk`）+ 套餐等级（GLM `max`/`pro`、Kimi `LEVEL_*`），60s 缓存 + 后台静默刷新；缓存带 provider 标记，切 provider 自动重取 |
 | **上下文** | context window 使用百分比，兼容 `used_percentage` / `remaining_percentage` 多版本字段 |
+| **套餐识别** | 读 `~/.cc-switch/cc-switch.db`（**只读**），以当前生效 token 的 sha256 前 8 位指纹匹配 cc-switch 条目名，紧贴模型名渲染「套餐 · 模型」身份簇；同 key 撞车按 `ANTHROPIC_MODEL` 相等 → `is_current` → `sort_index` 消歧；未命中/异常一律隐藏（fail-open）。60s 缓存，切套餐下一次渲染立即生效 |
 | **模型** | 当前模型 `display_name` |
 | **性能** | 缓存命中 ~0.35s，冷启动一次性同步获取 ~0.85s；git 调用合并到 3 次 |
 
@@ -190,6 +193,22 @@ Header: Authorization: Bearer <ANTHROPIC_AUTH_TOKEN>    # 必须 Bearer 前缀�
 
 ---
 
+## 套餐识别原理（cc-switch 集成）
+
+模型段会紧贴模型名渲染当前 cc-switch 套餐条目名，组成身份簇：`glm flash echo · glm-5.3[1M]`（套餐名苔浅 `Sage Light`，`·` 烟 `Smoke`，模型名天 `Sky`）。
+
+**数据源与指纹匹配**：读取 `~/.cc-switch/cc-switch.db` 的 `providers` 表（**只读**，`sqlite3 -readonly`，仅 `app_type='claude'` 条目）。匹配键 = 当前生效 token（进程 env → `~/.claude/settings.json` 回落，与限额区同源）的 **sha256 前 8 位指纹**——像 glm flash lastest 与 glm flash echo 这种「同 base_url 仅 key 不同」的条目，只有指纹能区分。指纹命中多条（同一把 key 配了多个条目名）时按固定链消歧：① 条目 `settings_config` 里的 `env.ANTHROPIC_MODEL` 与当前 env 精确相等优先 → ② `is_current=1` 优先 → ③ `sort_index` 最小兜底。
+
+**fail-open**：token 为空（官方登录）/ DB 不存在 / schema 变更 / 文件损坏 / 指纹无匹配——任何异常一律**隐藏套餐名、照常渲染其余区段**，绝不报错上屏。DB 缺失时即使本地缓存仍新鲜也隐藏。
+
+**缓存**：`~/.claude/.statusline-sage-plan.json`（60s TTL，缓存键 = {token 指纹, `ANTHROPIC_MODEL`}，切套餐下一次渲染立即生效）。与 quota 网络缓存相互独立——套餐是纯本地解析，限额接口失败不连坐套餐显示。**token 本体零落盘零输出**，缓存里只有 8 位指纹。
+
+**「全局当前选中」语义**：statusline 是独立子进程，只能看到全局生效 env——它显示的是 cc-switch **当前全局选中**的套餐。切换套餐后，所有会话（包括旧会话）的状态栏都会立即显示新套餐，可能超前于该会话实际使用的模型——与订阅限额区的既有语义一致。
+
+> `~/.claude/statusline.mjs`（node 全局版）同步支持，形态为镜像的「模型 · 套餐」：模型名天 `Sky`、套餐名苔浅 `Sage`；缓存按 session_id 存 `/tmp/cc-sl-<session_id>.plan`（5min TTL）。
+
+---
+
 ## 可配置项
 
 编辑 `statusline-sage.sh` 顶部：
@@ -219,6 +238,8 @@ PEAK_MODELS='glm-5\.2|glm-5-turbo'  # 受倍率影响的高阶模型（ERE）；
 | 一直显示 `GLM …` / `KIMI …` | API 未通或未配置 token。检查 `~/.claude/settings.json` 的 `env.ANTHROPIC_BASE_URL` / `env.ANTHROPIC_AUTH_TOKEN`；手动测（GLM）：`curl -sH "Authorization: <token>" https://open.bigmodel.cn/api/monitor/usage/quota/limit`；（Kimi）：`curl -sH "Authorization: Bearer <token>" https://api.kimi.com/coding/v1/usages`；删缓存重试：`rm ~/.claude/.statusline-sage-quota.json` |
 | 限额区完全不显示 | 当前 `ANTHROPIC_BASE_URL` 不在支持列表（Kimi: `kimi.com` / `moonshot.cn` / `moonshot.ai`；GLM: `bigmodel.cn` / `z.ai`，均含子域），属**预期隐藏**（不发请求）；换到受支持端点即恢复 |
 | 限额区 provider 标签不对 | 缓存里存的是上一个 provider 的数据。删缓存即可：`rm ~/.claude/.statusline-sage-quota.json`（正常切换时会自动同步重取，一般无需手动） |
+| 套餐名不显示 | 先确认是否属预期 fail-open：token 为空（官方登录）、`~/.cc-switch/cc-switch.db` 不存在、当前 token 指纹在库里无匹配（cc-switch 里的 key 和实际生效的不是同一把）、DB schema 变更。排查：删缓存强制重扫 `rm ~/.claude/.statusline-sage-plan.json`；核对 `sqlite3 -readonly ~/.cc-switch/cc-switch.db "SELECT name, app_type FROM providers"` 里有没有当前 key 对应的条目 |
+| 套餐名显示的不是想用的条目 | 同一把 key 配了多个条目名（撞车）时按 `env.ANTHROPIC_MODEL` 相等 → `is_current` → `sort_index` 消歧；在 cc-switch 里把想用的条目设为当前选中、或给它配好 `env.ANTHROPIC_MODEL` |
 | 颜色显示为乱码/原始码 | 终端不支持 truecolor。换用 iTerm2 / WezTerm / Ghostty / Kitty / 现代版 Terminal.app |
 | worktree 未识别 | git 版本需 ≥ 2.5（`--git-common-dir` 支持）。`git --version` 检查 |
 | 渲染偏慢 | 常态应 < 0.4s。若 git 仓库巨大，`git status --porcelain` 会变慢，属正常 |
@@ -229,7 +250,7 @@ PEAK_MODELS='glm-5\.2|glm-5-turbo'  # 受倍率影响的高阶模型（ERE）；
 ## 卸载
 
 ```bash
-rm ~/.claude/statusline-sage.sh ~/.claude/.statusline-sage-quota.json
+rm ~/.claude/statusline-sage.sh ~/.claude/.statusline-sage-quota.json ~/.claude/.statusline-sage-plan.json
 # 从 ~/.claude/settings.json 删除 "statusLine" 字段（或恢复 .bak 备份）
 ```
 

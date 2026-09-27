@@ -563,3 +563,27 @@ stop-hook §5.7 按 /tmp/autopilot-artifacts/<pred-id>.out 校验谓词 artifact
 - **教训**：**hook 报的 PASS 不能当作「本次提交的内容已过关」的证据**——它的作用域可能是另一个树。worktree 工作流下，入库证据须是「在目标树内手跑门 + 记录文件数」（本轮：`bash scripts/contrib/tests/gate.sh` → `GATE: PASS (75 files, 0 findings)`）。
 - **排查次序**：hook 输出异常先验**作用域**（`git config core.hooksPath` 是绝对还是相对、hook 内 `REPO_ROOT` 怎么推的、两树计数各是多少），别先怀疑「转写错误」。本坑本卡连续两轮踩中：r1 的 commit-agent 报 73，被编排器记为「转写错误」（复跑 74）；r2 直接量测 hooksPath（绝对路径）+ 两树计数（73 / 75）证实**是作用域错位而非转写**。
 - **未修（如实登记）**：本轮卡约束「只允许在 C3 分支做最小修复」，故未动 hook / `core.hooksPath`；候选修法 = 相对路径 `core.hooksPath`（git 按当前 worktree 解析）+ hook 侧改用 `git rev-parse --show-toplevel` 推根。
+
+<!-- tags: caching, cache-key, disambiguation, tie-break, design, statusline, cc-switch, fingerprint -->
+## [2026-09-28] 缓存/匹配键必须覆盖全部判定输入维度（缓存键缺维 = 换维场景确定性不可满足）
+
+statusline 套餐匹配缓存初版键 = token 指纹单维；但匹配链的消歧输入还有 `ANTHROPIC_MODEL`（同 token 撞车对靠 model 消歧）——同 token 双连跑只换 model 时缓存恒命中旧值，冻结场景 5.P2 的反转用例确定性不可满足（plan-review BLOCKER）。
+
+- **规则**：凡「缓存值 = f(多输入)」的设计，缓存键必须包含 f 的**全部**输入维度；逐输入清单化（本例：fp + active_model 二元组），漏一维 = 该维变化路径上所有断言必假。
+- **检验法**：对每个判定输入问「只变它、其他不动，输出该不该变？」——该变而缓存命中不变的场景就是键缺维的反转用例，写进验收。
+
+<!-- tags: testing, predicate, vacuous-pass, tie-break, fixture, mutation-kill, red-team, filtering -->
+## [2026-09-28] tie-break 链会掩蔽「过滤缺失」变异：干扰 fixture 的次级键取值必须与正确方向反向
+
+验收谓词「DB 含 hermes 同 token 条目不参与匹配」初版 vacuous：干扰条目 sort_index=50 **大于** 正确条目 10，即使实现漏掉 `app_type='claude'` 过滤，匹配链 tie-break（model 同中→is_current 同 0→sort_index 取小）仍收敛到正确条目——变异体全绿存活（plan-review r1 BLOCKER 3 修复未闭合、r2 才抓到）。
+
+- **规则**：要测「某过滤器存在」，干扰条目必须**在无过滤世界里胜出**——其 tie-break 链每一级的取值都要反着冻结（本例 si=5 < 10）。逐级推演「有过滤/无过滤」两个世界的输出可分性，可分才算谓词有判别力。
+- **同族**：「判定词断言正/负样本可分」（2026-09-13 条）的深化——那里是子串可分性，这里是**多级 tie-break 链对变异的传导掩蔽**，链越长越要逐级核对。
+
+<!-- tags: security, token, qa, sqlite, redact, hash-on-extract, operational-discipline -->
+## [2026-09-28] QA 自查命令直查真库：secret 列必须即取即哈希，绝不 SELECT 出明文
+
+编排器一版 DB 指纹对照命令没设 sqlite 分隔符，token 列以明文进了会话输出（未入 artifacts/仓/commit，但已不可撤回）。正确姿势：SQL 里只 `SELECT token列 || char(9) || name`，管道里 `read` 后**立刻** `shasum` 只输出指纹（qa-fp-crosscheck.txt 形态）。
+
+- **规则**：凡自查/取证命令触碰含 secret 的真库，「读取→转换→输出」链路中明文的暴露面要压到最小——在管道第一跳就完成脱敏转换，别指望「我看一眼就关」。
+- **附带坑**：sqlite3 list 模式默认分隔符是 `|`，按 `$'\t'` read 前必须显式 `-separator`，否则整行落进第一个变量、后续列全空（本例 sha256 全变空串指纹 `e3b0c442` 的直接原因）。

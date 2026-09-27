@@ -14,7 +14,7 @@
 #                  未命中的端点（如 deepseek）→ 限额区整段隐藏（不发请求/不留占位）。
 #                  带 60s 缓存 + 后台刷新防阻塞
 #   4. 上下文    — context window 使用百分比（多版本字段兼容）
-#   5. 模型      — 当前模型名
+#   5. 模型      — 当前模型名 + cc-switch 套餐名身份簇（token 指纹匹配，「套餐 · 模型」）
 # 色彩体系：https://stringzhao.life/colors（苔绿 Sage 为主色，truecolor 24-bit）
 # 兼容：macOS bash 3.2（不使用 mapfile / 关联数组）
 # =============================================================================
@@ -22,6 +22,7 @@
 # ---------- 可调配置 ----------
 CACHE_TTL_OK=60            # API 成功时缓存有效期（秒）
 CACHE_TTL_FAIL=15          # API 失败时缓存有效期（秒，更短以便重试）
+PLAN_TTL=60                # 套餐解析缓存有效期（秒；缓存键 = {token 指纹, ANTHROPIC_MODEL}）
 REFRESH_DEBOUNCE=30        # 后台刷新防抖窗口（秒），避免每次渲染都 fork curl
 GLM_API_TIMEOUT=3          # 后台刷新 curl 超时（秒）
 GLM_FIRST_TIMEOUT=2        # 冷启动首次同步获取 curl 超时（秒，仅一次性阻塞）
@@ -44,6 +45,7 @@ PEAK_MODELS='glm-5\.2|glm-5-turbo'
 
 CACHE_FILE="${HOME}/.claude/.statusline-sage-quota.json"
 REFRESH_FLAG="${HOME}/.claude/.statusline-sage-refreshing"
+PLAN_CACHE_FILE="${HOME}/.claude/.statusline-sage-plan.json"  # 套餐解析缓存（纯本地解析，独立于 quota 网络缓存）
 
 # ---------- Sage 色彩（truecolor 24-bit）----------
 # hex → RGB 对照见仓库 COLORS / README
@@ -184,6 +186,7 @@ _read_glm_env() {
   local sf="${HOME}/.claude/settings.json"
   [ -z "$ANTHROPIC_BASE_URL" ]   && ANTHROPIC_BASE_URL="$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$sf" 2>/dev/null)"
   [ -z "$ANTHROPIC_AUTH_TOKEN" ] && ANTHROPIC_AUTH_TOKEN="$(jq -r '.env.ANTHROPIC_AUTH_TOKEN // empty' "$sf" 2>/dev/null)"
+  [ -z "$ANTHROPIC_MODEL" ]      && ANTHROPIC_MODEL="$(jq -r '.env.ANTHROPIC_MODEL // empty' "$sf" 2>/dev/null)"
 }
 
 # 按 ANTHROPIC_BASE_URL 主机名显式识别订阅 provider：kimi / glm（白名单，不做 catch-all 回落）
@@ -204,6 +207,84 @@ _detect_provider() {
     *)
       printf '' ;;
   esac
+}
+
+# ---------- 套餐解析（cc-switch DB 只读消费）----------
+# 解析当前生效 token 对应的 cc-switch 套餐条目名，紧贴 model 渲染身份簇「套餐 · 模型」。
+# 数据源：~/.cc-switch/cc-switch.db providers 表（仅 app_type='claude'，sqlite3 -readonly 只读）。
+# 匹配链：token sha256 前 8 位指纹命中集合 →
+#   唯一命中取之；撞车（同一把 key 配多个条目名）时固定消歧：
+#   ① 条目 settings_config 的 env.ANTHROPIC_MODEL 与当前 env 精确相等优先
+#   ② is_current=1 优先  ③ sort_index 最小兜底（全同取查询序先到者，SQL 已 ORDER BY rowid）。
+# fail-open：token 空 / DB 缺失 / schema 变更 / 损坏 / 无匹配 → 输出空（隐藏套餐段）；
+#   DB 缺失时即使缓存仍新鲜也隐藏（fail-open 优先于缓存命中）。
+# token 本体零输出零落盘（契约硬约束）：缓存只存 8 位指纹；
+# 缓存键 = {fp, active_model} 二元组（撞车场景换 model 立即重扫），TTL PLAN_TTL。
+_resolve_plan() {
+  local tok="${ANTHROPIC_AUTH_TOKEN:-}"
+  [ -z "$tok" ] && return 0
+  local fp; fp="$(printf '%s' "$tok" | shasum -a 256 2>/dev/null | cut -c1-8)"
+  [ -z "$fp" ] && return 0
+
+  local db="${HOME}/.cc-switch/cc-switch.db"
+  [ -f "$db" ] || return 0
+  local am="${ANTHROPIC_MODEL:-}"
+
+  # 缓存命中（fp + active_model 双键全等且 < TTL）→ 直接用，免扫 DB
+  if [ -f "$PLAN_CACHE_FILE" ]; then
+    local _hit _c_ts _c_plan
+    _hit="$(jq -r --arg fp "$fp" --arg am "$am" \
+      'select(.fp == $fp and .am == $am) | (.ts // 0), (.plan // "")' \
+      "$PLAN_CACHE_FILE" 2>/dev/null)"
+    if [ -n "$_hit" ]; then
+      _c_ts="$(printf '%s\n' "$_hit" | sed -n '1p')"
+      _c_plan="$(printf '%s\n' "$_hit" | sed -n '2p')"
+      case "$_c_ts" in ''|*[!0-9]*) _c_ts="" ;; esac
+      if [ -n "$_c_ts" ] && [ "$((_now - _c_ts))" -lt "$PLAN_TTL" ]; then
+        printf '%s' "$_c_plan"
+        return 0
+      fi
+    fi
+  fi
+
+  # 单次 SQL：token 与 model 经 json_extract 一并取出；
+  # json_valid 守卫让单条目非法 JSON 不拖垮全表扫描（该条目按无 token 跳过）
+  local rows
+  rows="$(sqlite3 -readonly -separator $'\t' "$db" "SELECT name, is_current, sort_index, CASE WHEN json_valid(settings_config) THEN json_extract(settings_config,'\$.env.ANTHROPIC_AUTH_TOKEN') END, CASE WHEN json_valid(settings_config) THEN json_extract(settings_config,'\$.env.ANTHROPIC_MODEL') END FROM providers WHERE app_type='claude' ORDER BY rowid;" 2>/dev/null)" || rows=""
+
+  # 匹配链消歧：mm（model 精确相等）> mc（is_current）> si（sort_index 最小）> 先到者
+  local _name _cur _si _rtok _rmodel _rfp
+  local best_name="" best_mm=0 best_mc=0 best_si=""
+  while IFS=$'\t' read -r _name _cur _si _rtok _rmodel; do
+    [ -n "$_rtok" ] || continue
+    _rfp="$(printf '%s' "$_rtok" | shasum -a 256 2>/dev/null | cut -c1-8)"
+    [ "$_rfp" = "$fp" ] || continue
+    local mm=0 mc=0
+    { [ -n "$am" ] && [ "$_rmodel" = "$am" ]; } && mm=1
+    [ "${_cur:-}" = "1" ] && mc=1
+    case "$_si" in ''|*[!0-9]*) _si="" ;; esac
+    local take=0
+    if [ -z "$best_name" ]; then take=1
+    elif [ "$mm" -gt "$best_mm" ]; then take=1
+    elif [ "$mm" -eq "$best_mm" ]; then
+      if [ "$mc" -gt "$best_mc" ]; then take=1
+      elif [ "$mc" -eq "$best_mc" ] && [ -n "$_si" ]; then
+        { [ -z "$best_si" ] || [ "$_si" -lt "$best_si" ]; } && take=1
+      fi
+    fi
+    if [ "$take" = "1" ]; then
+      best_name="$_name"; best_mm=$mm; best_mc=$mc; best_si="$_si"
+    fi
+  done <<< "$rows"
+
+  # 原子写缓存（空结果也缓存：TTL 内未命中场景免重扫）
+  local _tmp="${PLAN_CACHE_FILE}.tmp"
+  jq -cn --arg fp "$fp" --arg am "$am" --arg plan "$best_name" --arg ts "$_now" \
+    '{fp:$fp, am:$am, plan:$plan, ts:($ts|tonumber)}' \
+    > "$_tmp" 2>/dev/null && mv -f "$_tmp" "$PLAN_CACHE_FILE" 2>/dev/null
+
+  printf '%s' "$best_name"
+  return 0
 }
 
 # 同步抓取 quota 并原子写入缓存
@@ -365,10 +446,17 @@ if [ -n "$_ctx_val" ]; then
   _ctx_part="$(_level_color "$_ctx_val")ctx ${_ctx_val}%${c_reset}"
 fi
 
-# ---------- 模型 ----------
+# ---------- 模型 + 套餐（身份簇）----------
 _model_part=""
 if [ -n "$model" ] && [ "$model" != "null" ]; then
   _model_part="$(_sky)${model}${c_reset}"
+  # 套餐名紧贴 model 组成身份簇：[苔浅 plan] [烟 ·] [天 model]；
+  # plan 未命中 / 解析失败 → 仅 model（与改造前逐字节等价）；
+  # stdin 缺 model 字段 → 整簇不渲染（防悬挂半簇）
+  _plan_name="$(_resolve_plan)"
+  if [ -n "$_plan_name" ]; then
+    _model_part="$(_sage_light)${_plan_name}${c_reset} $(_smoke)·${c_reset} ${_model_part}"
+  fi
 fi
 
 # ---------- 组装单行输出 ----------

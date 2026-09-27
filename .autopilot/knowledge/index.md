@@ -87,3 +87,6 @@
 - [2026-09-13] 运行时产物的红队断言求值根：gitignore 产物只在生产仓存在，REPO_ROOT 求值必假红；同源 seam 回退（两根皆缺仍硬失败） | tags: testing, acceptance, runtime-artifact, evaluation-root, seam, contrib-watch | → patterns.md
 - [2026-09-13] CC 会话沙箱放行 /tmp 写、拦 /tmp 读：QA artifact 主落 workspace + 镜像 /tmp 双落位 | tags: qa, autopilot, artifact, sandbox, tmp, dual-write, silent-failure | → patterns.md
 - [2026-09-14] git worktree × `core.hooksPath` 绝对路径：pre-commit 门校验的是**主检出**而非当前 worktree（hook 报 PASS 的覆盖计数 N 是作用域指纹，先比对 N 再采信；"hook PASS ≠ 本次提交内容已过关"） | tags: git, worktree, hooks, pre-commit, core.hooksPath, gate, scope-mismatch, false-validation, evidence | → patterns.md
+- [2026-09-28] 缓存/匹配键必须覆盖全部判定输入维度（缓存键缺维 = 换维场景确定性不可满足；逐输入问「只变它输出变不变」找反转用例） | tags: caching, cache-key, disambiguation, design, statusline, cc-switch | → patterns.md
+- [2026-09-28] tie-break 链会掩蔽「过滤缺失」变异：干扰 fixture 的次级键取值须与正确方向反向（无过滤世界干扰条目须胜出，逐级推演两世界可分性） | tags: testing, predicate, vacuous-pass, tie-break, fixture, mutation-kill, red-team | → patterns.md
+- [2026-09-28] QA 自查直查真库：secret 列即取即哈希绝不 SELECT 明文（附 sqlite3 list 模式默认分隔符 `|`、-separator 必显式的坑） | tags: security, token, qa, sqlite, redact, operational-discipline | → patterns.md
