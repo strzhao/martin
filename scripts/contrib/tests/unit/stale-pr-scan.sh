@@ -100,6 +100,8 @@ calls_n() {
 scan_run() { # <direct|tick> <YYYY-MM-DD> [额外 K=V...] → stdout；rc 经 $? 透出
   local mode="$1" day="$2"
   shift 2
+  # 沙箱默认零等待（PACE seam 的测试面；生产默认 30s 由扫描脚本自持）
+  set -- "$@" "-e" "SCAN_SEARCH_PACE=0"
   if [ "$mode" = "tick" ]; then
     sb_run -e "STUB_DATE_TODAY=$day" "$@" 'bash "$MARTIN_DIR/scripts/contrib/stale-pr-scan.sh" --tick'
   else

@@ -57,7 +57,7 @@ MARTIN="${MARTIN_DIR:-$HOME/workspace/martin}"
 CONTRIB="${CONTRIB_DATA_DIR:-$MARTIN/contrib-data}"
 REPO="${SCAN_REPO:-NousResearch/hermes-agent}"
 STALE_DAYS="${STALE_DAYS:-15}"
-SCAN_LIMIT="${SCAN_LIMIT:-1000}"
+SCAN_LIMIT="${SCAN_LIMIT:-500}"
 SWEEPER_LOGINS="${SWEEPER_LOGINS:-teknium1,OutThisLife}"
 TICK_MIN_INTERVAL_DAYS="${TICK_MIN_INTERVAL_DAYS:-6}"
 
@@ -165,11 +165,15 @@ first_err() { # <合流输出> → 压成单行（换行折叠为空格、连续
 
 # ---- total_count（唯一权威总数；显式 -X GET）----
 SEARCH_Q="repo:$REPO is:pr is:open updated:<$CUTOFF_DATE -author:strzhao"
-# 搜索请求间节流（秒）：一轮 = total_count + ~10 页连发，零间隔即撞 search secondary rate
-# limit（30 req/min 面；09-18..09-27 实测 108 连败）。默认 3s；env 置 0 = 测试/离线零等待。
-SCAN_SEARCH_PACE="${SCAN_SEARCH_PACE:-3}"
+# 搜索请求间节流（秒）：同查询昂贵 fetch 连发过密触发 GitHub search 滥用检测——
+# 09-27 实测（contrib-data/probes/s273-page-*.sh）：3s/15s 间隔连发 3 个请求即 trip
+# （page2 恒败、惩罚窗 40-75s 冷却后自愈），30s 间隔连发 3 页全过，但 30s 间隔下
+# 累计 ~12 个请求仍 trip（page=11 处倒下）⇒ 触发线在「累计请求量」不在「间隔」。
+# 对策 = 30s 节奏 + 枚举上限 500（~6 个搜索请求，落在两个实测点之间）。
+# env 置 0 = 测试/离线零等待。6 页 × 30s ≈ 180s，在 tick timeout 600s 内。
+SCAN_SEARCH_PACE="${SCAN_SEARCH_PACE:-30}"
 case "$SCAN_SEARCH_PACE" in
-  ''|*[!0-9]*) SCAN_SEARCH_PACE=3 ;;
+  ''|*[!0-9]*) SCAN_SEARCH_PACE=30 ;;
 esac
 total_raw="$("$GH" api -X GET search/issues -f q="$SEARCH_Q" -f per_page=1 --jq '.total_count' 2>&1)"
 gh_rc=$?
