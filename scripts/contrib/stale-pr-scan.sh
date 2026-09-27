@@ -187,8 +187,17 @@ ENUM=""
 ENUM_N=0
 page=1
 while :; do
-  page_raw="$("$GH" api -X GET search/issues -f q="$SEARCH_Q" -f page="$page" -f per_page=100 -f sort=updated -f order=desc --jq '.items[] | [.number, (.updated_at|.[0:10])] | @tsv' 2>&1)"
-  gh_rc=$?
+  # 页请求失败先重试两次（5s/15s）：搜索 secondary rate limit 是分钟级瞬态（09-27 10:xx
+  # 班手工复放同页成功实证），:03 时刻与 operator 班次唤醒探针同窗碰撞，一次失败即整轮 fail
+  # = 周级 stamp 闸只认 ok 行的同类止血缺口第二次发生（§3.7 教训①）。
+  page_raw=""
+  gh_rc=1
+  for _attempt in 1 2 3; do
+    page_raw="$("$GH" api -X GET search/issues -f q="$SEARCH_Q" -f page="$page" -f per_page=100 -f sort=updated -f order=desc --jq '.items[] | [.number, (.updated_at|.[0:10])] | @tsv' 2>&1)"
+    gh_rc=$?
+    [ "$gh_rc" -eq 0 ] && break
+    [ "$_attempt" -lt 3 ] && sleep $(( (_attempt - 1) * 10 + 5 ))
+  done
   if [ "$gh_rc" -ne 0 ]; then
     fail_and_exit 1 "search enumeration page=$page FAILED: $(first_err "$page_raw")"
   fi
