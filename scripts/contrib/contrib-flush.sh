@@ -76,4 +76,9 @@ PATROL="$MARTIN/scripts/contrib/watch-due-patrol.sh"
 STALE_SCAN="$MARTIN/scripts/contrib/stale-pr-scan.sh"
 [ -f "$STALE_SCAN" ] && bash "$STALE_SCAN" --tick
 
+# ── pth-shim 自愈巡逻（t_22fa1e8f 升级线：PM staging 再生抹 toolchain .pth ⇒ worker 全灭；
+#    09-26/09-27 两次生产咬伤后装 tick 级确定性闸。stdout 仅状态变化时 1 行、恒 exit 0）──
+PTH_PATROL="$MARTIN/scripts/contrib/pth-shim-patrol.sh"
+[ -f "$PTH_PATROL" ] && bash "$PTH_PATROL"
+
 exit 0
