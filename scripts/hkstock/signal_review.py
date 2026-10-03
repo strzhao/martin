@@ -130,8 +130,8 @@ def _mktd_daily_close(symbol, days):
         rows = json.loads(text[start:end + 1])
         result = []
         for row in rows:
-            d = str(row.get("date", row.get("日期", "")))[:10]
-            c = row.get("close", row.get("收盘", row.get("close_price")))
+            d = str(row.get("date", row.get("timestamp", row.get("日期", ""))))[:10]
+            c = row.get("close", row.get("price", row.get("收盘", row.get("close_price"))))
             if d and isinstance(c, (int, float)):
                 result.append((d, float(c)))
         result.sort(key=lambda x: x[0])
