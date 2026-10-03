@@ -5,7 +5,7 @@
 # 退出码：0 = 全绿；非 0 = 有 FAIL
 set -u
 
-MARTIN_ROOT="${MARTIN_ROOT:-/Users/stringzhao/workspace/martin}"
+MARTIN_ROOT="${MARTIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"; export MARTIN_ROOT  # 跟随测试文件所在仓定位（<root>/scripts/hkstock/tests 上爬三层；主 checkout 行为不变），并 export 供子进程继承；硬编码绝对路径会在 worktree 裸跑时静默测错树
 REVIEW="$MARTIN_ROOT/scripts/hkstock/signal_review.py"
 
 TMP="$(mktemp -d /tmp/t3-review-accept.XXXXXX)"
@@ -17,13 +17,15 @@ pass() { printf 'PASS %s\n' "$1"; }
 
 # ---------- fixture 生成 ----------
 mk_valid_line() {
-  printf '{"date":"2026-09-07","asset":"a-stock","symbol":"600519","direction":"bullish","confidence":0.7,"horizon":"swing","rationale":"基本面三分析师收敛多空对照偏多","source":"mktd daily 600519 @2026-09-08T08:00","created_by":"hkstock-worker"}\n'
+  local d
+  d="$(date -v-2d +%F)"
+  printf '{"date":"%s","asset":"a-stock","symbol":"600519","direction":"bullish","confidence":0.7,"horizon":"swing","rationale":"基本面三分析师收敛多空对照偏多","source":"mktd daily 600519 @2026-09-08T08:00","created_by":"hkstock-worker"}\n' "$d"
 }
 
 # 合法行 ×2（一 bull 一 neutral）+ 无效行 ×3（缺 rationale / direction 枚举越界 / 非法 JSON）
 {
   mk_valid_line
-  printf '{"date":"2026-09-07","asset":"hk","symbol":"00700","direction":"neutral","confidence":0.4,"horizon":"intraday","rationale":"事件面无方向","source":"mktd hk 00700 @2026-09-08T08:00","created_by":"hkstock-worker"}\n'
+  printf '{"date":"%s","asset":"hk","symbol":"00700","direction":"neutral","confidence":0.4,"horizon":"intraday","rationale":"事件面无方向","source":"mktd hk 00700 @2026-09-08T08:00","created_by":"hkstock-worker"}\n' "$(date -v-2d +%F)"
   printf '{"date":"2026-09-07","asset":"a-stock","symbol":"600519","direction":"bearish","confidence":0.6,"horizon":"swing","created_by":"hkstock-worker"}\n'
   printf '{"date":"2026-09-07","asset":"a-stock","symbol":"600519","direction":"very-bullish","confidence":0.6,"horizon":"swing","rationale":"x","source":"y","created_by":"hkstock-worker"}\n'
   printf '{broken json\n'
