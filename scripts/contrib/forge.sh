@@ -57,6 +57,7 @@ case "$cmd" in
 
   init)
     slug="${1:-}"; [[ -n "$slug" ]] || usage
+    slug="${slug#forge-}"   # 全名/短名等价：caller 把 issue 全名当 slug 传时归一（双前缀三次实证 t_48e0415d）
     shift
     repo=""; issue=""; dir=""
     while [[ $# -gt 0 ]]; do
@@ -104,6 +105,7 @@ case "$cmd" in
 
   register)
     slug="${1:-}"; [[ -n "$slug" ]] || usage
+    slug="${slug#forge-}"   # 与 init 同一归一：register(find forge-$slug) 必须能配对 init 的条目 id
     shift
     branch=""; sha=""; domain=""; proof=""; notes=""
     while [[ $# -gt 0 ]]; do
