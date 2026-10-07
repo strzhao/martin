@@ -76,9 +76,9 @@ PATROL="$MARTIN/scripts/contrib/watch-due-patrol.sh"
 STALE_SCAN="$MARTIN/scripts/contrib/stale-pr-scan.sh"
 [ -f "$STALE_SCAN" ] && bash "$STALE_SCAN" --tick
 
-# ── pth-shim 自愈巡逻（t_22fa1e8f 升级线：PM staging 再生抹 toolchain .pth ⇒ worker 全灭；
-#    09-26/09-27 两次生产咬伤后装 tick 级确定性闸。stdout 仅状态变化时 1 行、恒 exit 0）──
-PTH_PATROL="$MARTIN/scripts/contrib/pth-shim-patrol.sh"
-[ -f "$PTH_PATROL" ] && bash "$PTH_PATROL"
+# ── pth-shim 自愈巡逻：已于 2026-10-07 21:3x 退役（t_11a4b240 撤离四步收口）——
+#    gateway 20:34 重启后上游修复 _propagate_module_import_root 承重，.pth 垫片撤除，
+#    冒烟卡 t_07c369d4 SMOKE_OK。回滚 = 恢复 contrib-data/backup-contrib-flush-pre-patrol-retire-20261007.sh
+#    （部署点）+ git checkout 真源，patrol 会自动重装垫片。
 
 exit 0
