@@ -155,11 +155,27 @@ resolve_self_decided() {
 
 # 幂等预检：本脚本可判定的重复形态（rq 锚 / 分支锚优先；URL 锚仅在无其它锚时作为唯一判据
 # —— 同一 URL 配不同分支/不同 rq 是**新动作**，不得被误判为重复而漏记）→ 命中 ALREADY（exit 0）
+#
+# mode（默认 branch = publish 路原语义；record 路传 action）：
+#   publish 重跑不做新对外动作（已有 PR 只跳过 push），分支级幂等在 publish 路是正确语义；
+#   record 路同分支多动作是常态（补强 push / 追加 review / rebase refresh），分支锚会吞掉
+#   同分支后续动作的自决账（2026-10-09 #132080 补强 push 实证：ALREADY-LEDGERED 零落账、
+#   exit 0 静默）⇒ action 模式把 dedup 粒度从「分支」收窄到「动作」：
+#     - 无 --summary：视为同动作补记，保持分支锚幂等（09-12 原契约，unit 既有断言冻结）
+#     - 带 --summary：branch + summary 联合锚 + 行尾哨兵（ledger_has_action），同分支新
+#       summary = 新动作照落账；仅完全同参重试判 ALREADY。台账是唯一真源（§12 契约 1），
+#       宁可罕见的重试措辞漂移产生双行（良性），不可吞动作（少记不可接受）。
 already_ledgered() {
-  local why=""
+  local mode="${1:-branch}" why=""
   [[ -n "${OUT_RQ:-}" ]] && ledger_has "rq ${OUT_RQ}" && why="rq ${OUT_RQ}"
-  if [[ -z "$why" && -n "${OUT_BRANCH:-}" ]] && ledger_has "branch=${OUT_BRANCH}"; then
-    why="branch=${OUT_BRANCH}"
+  if [[ -z "$why" && -n "${OUT_BRANCH:-}" ]]; then
+    if [[ "$mode" == "action" && -n "${OUT_SUMMARY:-}" ]]; then
+      if ledger_has_action "${OUT_BRANCH}" "${OUT_SUMMARY}"; then
+        why="branch=${OUT_BRANCH} + summary 联合锚"
+      fi
+    else
+      ledger_has "branch=${OUT_BRANCH}" && why="branch=${OUT_BRANCH}"
+    fi
   fi
   if [[ -z "$why" && -z "${OUT_RQ:-}" && -z "${OUT_BRANCH:-}" && -n "${OUT_URL:-}" ]] \
     && ledger_has "$OUT_URL"; then
@@ -168,6 +184,20 @@ already_ledgered() {
   [[ -n "$why" ]] || return 1
   printf 'ALREADY-LEDGERED %s\n' "$why"
   return 0
+}
+
+# ledger_has_action <branch> <summary> → 0=命中（只读）。联合锚 = "branch=<B> — <S>" 且
+# 锚后必须直抵行尾（summary 是 detail 列最后一节，行尾即哨兵）。行尾哨兵防 grep -F 子串
+# 假阳：新动作 summary 是既有 summary 的前缀时（"补强 push" vs "补强 push: …"），无哨兵
+# 会被旧行吞掉。awk index/length 全程字节口径自洽（BSD/gawk 一致），无 locale 依赖。
+ledger_has_action() {
+  [[ -f "$LEDGER" ]] || return 1
+  local anchor="branch=${1} — ${2}"
+  awk -v anchor="$anchor" '
+    { pos = index($0, anchor)
+      if (pos > 0 && substr($0, pos + length(anchor)) == "") { found = 1; exit } }
+    END { exit found ? 0 : 1 }
+  ' <(tr -d '\r' <"$LEDGER")
 }
 
 # append_ledger — 用 OUT_* 变量组行并追加（5 列，` | ` 分隔，与 execute.sh 同形）
@@ -275,7 +305,7 @@ cmd_record() {
   OUT_APPROVAL="$(sanitize "$approval")"
   OUT_SUMMARY="$(sanitize "$summary")"
 
-  if already_ledgered; then
+  if already_ledgered action; then
     [[ "$dry" == "true" ]] || log "record ${OUT_RQ:-${OUT_BRANCH:-$issue}} 已在账（幂等跳过）"
     return 0
   fi

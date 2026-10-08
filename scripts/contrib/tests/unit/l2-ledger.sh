@@ -2,8 +2,11 @@
 # l2-ledger.sh — Tier U：l2_ledger.sh（L2 台账写入器 + own-PR 发布闸）stub 测试矩阵
 # 覆盖（#108006 台账缺口闭环的写法面）：
 #   record：5 列格式与 execute.sh 同形 / 分支 token / 渠道标签 / 批准原文入账 /
-#           幂等（同分支重复 ALREADY 零第二行）/ 缺 --approval fail-closed / 缺 --channel /
-#           未知 --kind / secret 拒写 / 竖线转义（列数恒 5）/ --dry-run 零写入
+#           幂等（同分支重复 ALREADY 零第二行）/
+#           同分支新动作 dedup 粒度（带 --summary 联合锚照落账；同参重试仍 ALREADY；
+#           前缀重叠 summary 行尾哨兵防吞——2026-10-09 #132080 分支锚吞动作收口）/
+#           缺 --approval fail-closed / 缺 --channel / 未知 --kind / secret 拒写 /
+#           竖线转义（列数恒 5）/ --dry-run 零写入
 #   check：branch token 命中 / PR 号锚（pull/N）/ 裸分支历史手工行 / 无台账 → 0|1 态；
 #          只读（台账哈希不变）
 #   publish：批准证据闸（--approval 空 → 零 git/gh 调用）/ --rq 状态闸（非 approved 拒）/
@@ -91,6 +94,31 @@ sb_l2 record --kind evidence --issue 108007 --channel "L2-auto" \
   --approval "a | b | c 三段" --branch feat/pipe-test >/dev/null
 assert_eq "$(ledger_lines)" "2" "第二行已写"
 assert_eq "$(awk -F'[|]' 'NR == 2 { print NF }' "$LEDGER")" "5" "含竖线行仍 5 列（4 个分隔竖线）"
+
+t_case "record 同分支新动作（带 --summary）：不吞，照落新行（2026-10-09 分支锚缺陷收口）"
+out="$(sb_l2 record --kind own-PR --issue 108006 --channel "contrib" \
+  --self-decided "补强 push（红队两硬伤修复）" --branch contrib/kanban-resource-gate \
+  --summary "strengthen push: 补强修复 + body 同步")"
+assert_exit 0 $? "同分支新动作 exit 0（不再 ALREADY）"
+assert_not_contains "$out" "ALREADY-LEDGERED" "新动作不判 ALREADY"
+assert_eq "$(ledger_lines)" "3" "台账 3 行（原 2 行 + 新动作行）"
+assert_file_contains "$LEDGER" "branch=contrib/kanban-resource-gate — strengthen push" "联合锚入账（branch — summary）"
+
+t_case "record 同分支同参重试（带 --summary）：联合锚命中 → ALREADY 零新行"
+out="$(sb_l2 record --kind own-PR --issue 108006 --channel "contrib" \
+  --self-decided "补强 push（红队两硬伤修复）" --branch contrib/kanban-resource-gate \
+  --summary "strengthen push: 补强修复 + body 同步")"
+assert_exit 0 $? "同参重试 exit 0（幂等）"
+assert_contains "$out" "ALREADY-LEDGERED" "完全同参重试仍判 ALREADY"
+assert_eq "$(ledger_lines)" "3" "台账仍 3 行"
+
+t_case "record 同分支前缀重叠 summary：行尾哨兵防子串假阳，不吞新动作"
+out="$(sb_l2 record --kind own-PR --issue 108006 --channel "contrib" \
+  --self-decided "第二批补强" --branch contrib/kanban-resource-gate \
+  --summary "strengthen push")"
+assert_exit 0 $? "前缀重叠新动作 exit 0"
+assert_not_contains "$out" "ALREADY-LEDGERED" "前缀锚不命中（行尾哨兵）"
+assert_eq "$(ledger_lines)" "4" "台账 4 行（前缀 summary 照落账）"
 
 t_case "record fail-closed：缺 --approval / 缺 --channel / 未知 kind"
 before="$(ledger_lines)"
