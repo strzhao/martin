@@ -386,9 +386,21 @@ cmd_sweep() {
 }
 
 # ---------------- budget ----------------
+usage_budget() {
+  cat <<'EOF'
+rq.sh budget — 深检/probe 预算钳夹
+  budget reserve <id> --lane deep|probe   # 占额（id 以 *-drill 结尾=演练不计额）
+  budget refund  <id> --lane deep|probe   # 退额（deep 退还需 refund_failed_deep_check=true）
+  budget check   [--lane deep|probe]      # 探测余量（gate 用，不占额）
+  budget status                           # 输出可读余量行
+  budget -h | --help | help               # 本帮助
+EOF
+}
 cmd_budget() {
   local sub="${1:-status}"; shift || true
   ensure_files
+  case "$sub" in -h|--help|help) usage_budget; exit 0 ;; esac
+  case "${1:-}" in -h|--help|help) usage_budget; exit 0 ;; esac
   case "$sub" in
     reserve)
       local id="${1:-}"; shift || true
@@ -398,6 +410,7 @@ cmd_budget() {
         *) shift ;;
       esac; done
       [[ -n "$id" ]] || die "budget reserve 用法: budget reserve <id> --lane deep|probe"
+      [[ "$id" != -* ]] || die "budget reserve: 选项不可作 id（看用法: budget --help）"
       # 演练件不占真实预算（终态=drill，不进 approved.log）
       if [[ "$id" == *-drill ]]; then echo "OK(drill-不计额)"; exit 0; fi
       acquire_lock
@@ -433,6 +446,8 @@ cmd_budget() {
         --lane) lane="$2"; shift 2 ;;
         *) shift ;;
       esac; done
+      [[ -n "$id" ]] || die "budget refund 用法: budget refund <id> --lane deep|probe"
+      [[ "$id" != -* ]] || die "budget refund: 选项不可作 id（看用法: budget --help）"
       acquire_lock
       local wk day allow
       wk="$(week_key)"; day="$(date +%F)"
@@ -598,5 +613,5 @@ case "$cmd" in
     ;;
   budget)  cmd_budget "$@" ;;
   validate) cmd_validate ;;
-  help|*)  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|*)  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
