@@ -237,6 +237,8 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 | 资产 | 域 | 搭车场景 |
 |---|---|---|
+| #140418/#140419 downgrade-exit exit-75（10-17，draft PR——守卫 pin 行为的裁定件，teknium 选 Option 2 则废弃无损）| gateway/lifecycle（launchd supervisor 契约）| 盯 #140419 收敛；方向合意则转正式 |
+| hermes-otel-plugin #2/#3 `HERMES_OTEL_LOGS_ENABLED`（10-17，正式 PR，fork `feat/logs-enabled-flag`@dc633c6）| repo:Mandark-droid/hermes-otel-plugin（fagi spans-only 接入）| 盯 #3 收敛（teknium catalog 准入窗口，响应概率高）|
 | #96472 import sanity canary（CI 绿、review 闭环、等复审）| gateway 启动/lifecycle | 同域 PR review 顺带提 |
 | #85548 safe-mode memory provider（needs-decision）| config/safe-mode | 同域 issue/PR |
 | #75771 poll-loop guard salvage / #75453 ffmpeg drain salvage | process/cron 执行 | process 域 PR review 时 offer rebase |
