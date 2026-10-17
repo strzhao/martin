@@ -10,7 +10,10 @@
 #                   在上游仓建 worktree + 分支 forge/<slug>（基于 origin/main），
 #                   打印 worktree 路径；--dir 覆盖上游仓根（缺省 HERMES_AGENT_DIR，~/workspace/hermes-agent）
 #   forge.sh register <slug> --branch <b> --sha <sha> --domain <d> [--proof <path>] [--notes <s>]
-#                   成品入库（inventory.json，status=ready, kind=fork-commit）
+#                     [--base <sha>]
+#                   成品入库（inventory.json，status=ready, kind=fork-commit）；
+#                   --base 补记成品实际基座（跳过 init 的 standalone 登记必给——radar
+#                   新鲜度巡检按 base_sha 对上游 rev-list 算漂移，空值=逃过巡检）
 #   forge.sh set-status <id> <ready|stale|in-flight|spent|needs-decision|dead|idea>
 #   forge.sh check [--stale-days <n>]
 #                   新鲜度巡检：列各项 base_sha 与 checked 距今天数（缺省 14 天标 STALE；
@@ -107,7 +110,7 @@ case "$cmd" in
     slug="${1:-}"; [[ -n "$slug" ]] || usage
     slug="${slug#forge-}"   # 与 init 同一归一：register(find forge-$slug) 必须能配对 init 的条目 id
     shift
-    branch=""; sha=""; domain=""; proof=""; notes=""
+    branch=""; sha=""; domain=""; proof=""; notes=""; base=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --branch) branch="$2"; shift 2 ;;
@@ -115,28 +118,31 @@ case "$cmd" in
         --domain) domain="$2"; shift 2 ;;
         --proof) proof="$2"; shift 2 ;;
         --notes) notes="$2"; shift 2 ;;
+        --base) base="$2"; shift 2 ;;
         *) usage ;;
       esac
     done
     inv_require
     [[ -n "$branch" && -n "$sha" && -n "$domain" ]] || die "register 需要 --branch --sha --domain" 2
     [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || die "sha 形态非法: $sha" 2
+    [[ -z "$base" || "$base" =~ ^[0-9a-f]{7,40}$ ]] || die "base 形态非法: $base" 2
     [[ -z "$proof" || -s "$proof" ]] || die "proof 文件不存在: $proof" 2
     inv_write --arg id "forge-$slug" --arg b "$branch" --arg s "$sha" \
-      --arg d "$domain" --arg p "$proof" --arg n "$notes" --arg t "$(today)" '
+      --arg d "$domain" --arg p "$proof" --arg n "$notes" --arg t "$(today)" --arg base "$base" '
       def ready_fields: .branch = $b | .fork_sha = $s | .domain = $d | .proof = $p
-           | .notes = $n | .status = "ready" | .kind = "fork-commit" | .checked = $t;
+           | .notes = $n | .status = "ready" | .kind = "fork-commit" | .checked = $t
+           | (if $base != "" then .base_sha = $base else . end);
       .items = (
         ((.items // []) | map(if .id == $id then ready_fields else . end))
         + (if any(.items[]; .id == $id)
            then []
            else [{id: $id, title: ("forge/" + $id), kind: "fork-commit",
                   loc: ("fork branch " + $b), domain: $d, status: "ready",
-                  vehicle: "", notes: $n, base_sha: null, branch: $b,
+                  vehicle: "", notes: $n, base_sha: (if $base != "" then $base else null end), branch: $b,
                   fork_sha: $s, proof: $p, checked: $t} | ready_fields]
            end))' \
       || die "登记失败（inventory 写盘失败）"
-    log "已入库: forge-$slug → $branch @ ${sha:0:12}（domain=$domain, proof=${proof:-未附}）"
+    log "已入库: forge-$slug → $branch @ ${sha:0:12}（domain=$domain, base=${base:-未附}, proof=${proof:-未附}）"
     ;;
 
   set-status)
