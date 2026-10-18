@@ -235,10 +235,12 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 > **件生命周期（2026-09-17 起）= 造→发→盯收敛，无长期 ready 待 offer 滞留态**：review 发现缺口 → forge 造货 → 立即开我方 PR（关联对方车/issue）→ review 评论里邀对方 cherry-pick（§11.3 措辞：lift 保署名显式首选）。下表「搭车场景」列读作「分发面」，描述存量件的典型出手面，不是「等车来才 offer」的滞留依据。
 
+> **⚠️ 10-18 上游 5-PR 配额清仓**：hermes-agent 开启了「无写权限用户 ≤5 open PR + draft 计数」（10-08 GitHub changelog 新配置，opencli 实证 READY=5 banner 仍在 → 转 draft 不腾槽）。52 open 被全路径锁死 → **静默关闭 48 留 4**（#121786/#125464/#126213/#126532，按「真人互动 × mergeable」留），aux-timeout PR #141151 随即挂出。**关闭 ≠ 销毁**：分支全留 fork，teknium salvage 走 fork sha 直取（#86622/#109758 先例）；重开占槽 → 重挂走 FIFO。**配额闸（框架立项待落）**：forge/contrib-operator 造货前必查 open 配额，库存默认 branch-only、PR 按需挂；forge 批量产 draft 不查配额 = AI farm 指纹反噬可见性。
+
 | 资产 | 域 | 搭车场景 |
 |---|---|---|
-| #141016 + draft PR（fork `fix/aux-timeout-quarantine`@69b830e173，10-18；本地先用 eee78bb3da，gateway 16:35 已激活）——auxiliary 连续满额超时熔断器（2 strikes 隔离 300s + 隔离期免拨号 + 半开单探针 + 成功治愈，sync/async；breaker+payment-hold cache 同迁 auxiliary_health.py 过 ratchet）| auxiliary ladder/健康隔离 | 盯 #141016 收敛；最近邻 #109401 复活则按差异化一句话应答（opt-in config 型 credential cooldown，机制不同）|
-| #140418/#140419 downgrade-exit exit-75（10-17，draft PR——守卫 pin 行为的裁定件，teknium 选 Option 2 则废弃无损）| gateway/lifecycle（launchd supervisor 契约）| 盯 #140419 收敛；方向合意则转正式 |
+| **#141151**（10-18 正式 READY PR，fork `fix/aux-timeout-quarantine`@69b830e173，锚 #141016；本地先用 eee78bb3da，gateway 16:35 已激活）——auxiliary 连续满额超时熔断器（2 strikes 隔离 300s + 隔离期免拨号 + 半开单探针 + 成功治愈，sync/async；breaker+payment-hold cache 同迁 auxiliary_health.py 过 ratchet）| auxiliary ladder/健康隔离 | 盯 #141151 收敛；最近邻 #109401 复活则按差异化一句话应答（opt-in config 型 credential cooldown，机制不同）|
+| #140418/#140419 downgrade-exit exit-75（10-17 draft，**10-18 配额清仓已关**，分支 `forge/downgrade-exit-restart-code` 留 fork 可按需重挂——守卫 pin 行为的裁定件，teknium 选 Option 2 则废弃无损）| gateway/lifecycle（launchd supervisor 契约）| 盯 #140418 收敛；方向合意则配额空出时重挂 |
 | hermes-otel-plugin #2/#3 `HERMES_OTEL_LOGS_ENABLED`（10-17，正式 PR，fork `feat/logs-enabled-flag`@dc633c6）| repo:Mandark-droid/hermes-otel-plugin（fagi spans-only 接入）| 盯 #3 收敛（teknium catalog 准入窗口，响应概率高）|
 | #96472 import sanity canary（CI 绿、review 闭环、等复审）| gateway 启动/lifecycle | 同域 PR review 顺带提 |
 | #85548 safe-mode memory provider（needs-decision）| config/safe-mode | 同域 issue/PR |
