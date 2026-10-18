@@ -4,6 +4,32 @@
 
 ---
 
+## AI First 元原则（先于一切 harness 机制设计，2026-10-18 立）
+
+> **定位**：后文 harness 十原则回答「**要建机制时怎么建**」；本节回答「**这件事到底要不要建机制**」。顺序颠倒会翻车—— founding case：上游 PR 配额案，拿 B（模型不可靠→机制层强制）给一个资源判断问题预制了配额账本 + 槽位 TTL 巡检，而正解只是把「5 个上限、draft 也计数」这条事实放进 PR 创建现场，agent 即自伺服（用户拍板否回：「在真正创建 PR 的地方说明限制，剩下 AI 全都知道要怎么处理」；提炼自 skill-authoring-guide 五原则 + 本案复盘）。
+
+### 1. 默认给事实，不建机器
+
+agent 是推理引擎，绝大多数失败是**缺知识**不是**缺约束**。先问：「若 agent 事先知道 X，还会犯吗？」——不会，则修法 = 把 X 写进动作现场（SKILL / 卡面 / SOUL 的「环境事实」节），到此为止。环境事实比机器闸便宜：不加运行时成本、随 context 走、agent 在事实没直接覆盖的邻域也能推理。
+
+### 2. 自由度单判据：这一步错了会不会报废重来
+
+（skill 原则二收窄成一个问句）失败是 **fail-loud、自解释、可逆**（API 拒绝 / 测试红 / 用户纠正）→ 高自由度放手；失败是 **fail-silent、静默损坏、不可逆** → 才收紧自由度、上机器。推论：**外部系统已经 fail-loud 的地方，永不重复建闸**——GitHub 的 limit 拒绝本身就是最硬的配额闸，在它前面再建一道账本是重复建设，还要养它不过期。
+
+### 3. 机器闸只保留三个适用域
+
+**不可逆、静默损坏、安全/隐私**。其余一律软契约（事实 + 类型 + 约定，保留 model agency）。这与后文 E 的判别是同一条线，但必须在「要不要建」的门口就过，不是建完机制之后再补分类——E 放在十原则第 5 条太靠后，这就是本次误导的结构成因。
+
+### 4. 规则清单是最后手段；且清单过期会变成毒药
+
+给 AI 的是**读者 / 目标 / 视角 + 环境事实**，不是 if-else 清单（AGC 口径「给视角不给规则」；skill 反模式「堆平级选项 / 时效性表述」同源）。预制规则的第二宗罪：**过期规则比没规则更毒**——本案误诊口径「是仓库级权限收紧，不要归因自己」把班次 agent 带偏十天；事实 + 判据才能在清单没预料的情境里推对方向。
+
+### 5. eval-first 同构于机制设计
+
+没有真实失败案例（bare-run 找到的 gap）不建机制——为想象中的需求建机器 = skill 反模式「为想象中的需求写文档」。第一个真实失败就是你的 eval；失败没发生就建的闸，维护成本照付、收益为零，且失败可能永远不来（外部规则一变，闸成了文物）。
+
+---
+
 ## 核心元原则（贯穿所有子系统）
 
 ### 1. 准确性 > 流畅度（0 假设）
@@ -143,7 +169,7 @@ context 窗口是稀缺资源，**每个功能设计都要问"它怎么影响 co
 ---
 
 ## 一句话总结
-harness 是**正交的子系统集合**（loop / permission / mode-matrix / subagent / compact / hook / obs / streaming / mcp / prompt-assembly / skill / todowrite / claude-md / memory）。每个子系统只解决一个维度、显式声明失败语义、走统一的 dispatch + hook + attachment 通道。**模型不可靠**，所以安全/隐私/cardinality 全部机制层强制；约束优先软契约（prompt/类型）而非 runtime throw。**Context 窗口和 cache 命中率是核心 KPI**，任何设计都要回答"它怎么影响 context 经济"。
+**AI First 先行**：默认给事实不建机器，机器闸只留给不可逆 / 静默损坏 / 安全隐私三域（顶部元原则节）；harness 十原则只在「确认要建」之后接管。harness 是**正交的子系统集合**（loop / permission / mode-matrix / subagent / compact / hook / obs / streaming / mcp / prompt-assembly / skill / todowrite / claude-md / memory）。每个子系统只解决一个维度、显式声明失败语义、走统一的 dispatch + hook + attachment 通道。**模型不可靠**，所以安全/隐私/cardinality 全部机制层强制；约束优先软契约（prompt/类型）而非 runtime throw。**Context 窗口和 cache 命中率是核心 KPI**，任何设计都要回答"它怎么影响 context 经济"。
 
 ---
 
