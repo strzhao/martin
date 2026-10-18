@@ -237,6 +237,7 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 | 资产 | 域 | 搭车场景 |
 |---|---|---|
+| `forge/aux-timeout-breaker`@ea65aaa9b6（10-18，本地先用 cf02ce4be2）——auxiliary 连续满额超时熔断器（2 strikes 隔离 300s + 隔离期免拨号 + 半开单探针 + 成功治愈，sync/async）| auxiliary ladder/健康隔离 | 找 aux fallback/timeout 域 issue 带 offer（触发实证=10-18 本机 llama-server wedge 每图烧 300s；#139641 同模式佐证；无锚 issue 则按「先开锚 issue」纪律）|
 | #140418/#140419 downgrade-exit exit-75（10-17，draft PR——守卫 pin 行为的裁定件，teknium 选 Option 2 则废弃无损）| gateway/lifecycle（launchd supervisor 契约）| 盯 #140419 收敛；方向合意则转正式 |
 | hermes-otel-plugin #2/#3 `HERMES_OTEL_LOGS_ENABLED`（10-17，正式 PR，fork `feat/logs-enabled-flag`@dc633c6）| repo:Mandark-droid/hermes-otel-plugin（fagi spans-only 接入）| 盯 #3 收敛（teknium catalog 准入窗口，响应概率高）|
 | #96472 import sanity canary（CI 绿、review 闭环、等复审）| gateway 启动/lifecycle | 同域 PR review 顺带提 |
