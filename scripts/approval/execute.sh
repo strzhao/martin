@@ -732,11 +732,13 @@ rq-id: ${ID} | issue: #${ISSUE} | pr: ${ITEM_PR:--} | disposition: ${DISPOSITION
 分支档案: ${BRANCH_MD}
 worktree: ${WT_DIR} | 分支: ${BRANCH_NAME} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:${BRANCH_NAME}
+配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
 timeout_budget: 1200"
   else
     BODY_LINES+="
 worktree: 由 kanban 物化（\${HERMES_KANBAN_WORKSPACE}）| 分支: fix/issue${ISSUE} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:fix/issue${ISSUE}
+配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
 构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
   fi
   BODY_LINES+="

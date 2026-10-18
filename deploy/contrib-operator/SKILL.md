@@ -272,7 +272,7 @@ stale-pr-scan（`scripts/contrib/stale-pr-scan.sh`，随 contrib-flush tick 周�
 - draft PR 的 body 也要过 §3.6 草稿质量法（占坑≠可以糙）；
 - 本跑道不改变 §0 铁律 5（agent 起草，链落笔）——push 与开 PR 仍走既定外发通道。
 
-**draft 时代口径（用户裁定）**：own-PR 非 draft create 与 ready 转正同被仓方拒绝，是**仓库级权限收紧**（protect-main ruleset 族，批量账号同受限），非我方账号问题——**不要问上游、不要归因自己**。draft 车主路径 = 被维护者收编（有先例：收编进联合分支后 merge、署名落袋），故 draft 车质量要求上调（Fixes 锚/mergeable/干净 rebase）以最大化被收编概率；ready 探针降级为低频例行（零副作用可保留）。收编/翻案动态由岗哨自然带回。
+**上游 PR 配额（10-18 实证定谳，取代旧「仓库级权限收紧」误诊）**：上游对无写权限账号限 **5 个 open PR，draft 也计数**（GitHub 2026-10-08 起的仓库配置；创建被拒报 limit 错误，属配额用尽，非权限故障/账号问题——此前被拒错误码伪装成 404 致误诊）。10-18 以「静默关 48 留 4 → PR #141151 即时挂出」实证闭环。open PR 是稀缺资源：**造货终态默认 branch-only 入库**（锚 issue + review offer 带 fork sha 都不占配额），PR 只为活跃收敛窗开；槽位满时自己权衡关谁——真人互动 × mergeable 优先留；关 PR 不销毁库存（分支留 fork，可被 sha 直取或重挂；重开也占槽）；实时槽位 `gh pr list --author strzhao --state open` 现查，不建账本。抢跑道步骤 1 的 draft PR 先开同样占槽，走不走按当下配额自裁。draft 车质量要求照旧上调（Fixes 锚/mergeable/干净 rebase）以最大化被收编概率（车主路径=被维护者收编，先例：#86622/#109758 fork sha 直取、署名落袋）。
 
 **外部共建邀请的同类姿态**：受邀到**别的项目**提 issue/协作时，我方角色 = 高质量报告者 + 用户反馈者，不抢对方自己人已认领的活——认领请求出现就让渡（附发现时备注 + 回归测试建议 + 关联 issue 协调提示，让得专业）；创始人要「用户视角反馈」就给实测框架而非代劳修车。对外任何信件动作前，先检索同线的试点日志/journal 既有动作——重复触达比晚回更伤。
 
