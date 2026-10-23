@@ -96,25 +96,16 @@ fail() { # <原因> → 置 failed（仅当前态允许时）+ pipeline-failure 
   exit 1
 }
 
-# strip_leading_comments <file> → stdout
-# 剥离头部 `<!-- ... -->` 注释块（可多块，块间空行一并跳过），其余行逐字输出（C8）；
-# 并截掉「## 内部备注」起的尾部段（09-06 投递事故复盘：103568 草稿含内部备注段，
-# 若不截断会随评论外泄——与审批页 payload 口径一致）
-strip_leading_comments() {
-  awk '
-    BEGIN { scanning = 1; inblock = 0 }
-    scanning {
-      if ($0 ~ /^[[:space:]]*$/) next
-      if (inblock) { if ($0 ~ /-->/) { inblock = 0 }; next }
-      if ($0 ~ /^[[:space:]]*<!--/) {
-        if ($0 ~ /-->/) next
-        inblock = 1; next
-      }
-      scanning = 0
-    }
-    /^## 内部备注/ { exit }
-    { print }
-  ' "$1"
+# strip_leading_comments 单一真源 = 同目录 strip-comment.sh（卡 t_ee058c57，2026-10-24）：
+# 剥离头部 `<!-- ... -->` 注释块（可多块，块间空行一并跳过）+ 截掉「## 内部备注」尾段
+# （09-06 投递事故复盘口径），语义与实现细节见该文件。本链（L2-A 隧道全链）与 L2-auto
+# 免隧道投递路 post-comment.sh 同源共用，禁在本文件回植第二份剥离实现（单测守卫）。
+# shellcheck source=strip-comment.sh
+source "$MARTIN/scripts/approval/strip-comment.sh"
+# fail-closed：共享库缺函数（坏 checkout/半截同步）→ 终止而非带空剥离能力投递
+declare -F strip_leading_comments >/dev/null 2>&1 || {
+  echo "FATAL: strip-comment.sh 未提供 strip_leading_comments，终止" >&2
+  exit 1
 }
 
 # ── stalled-occupier 豁免（卡 t_b8ef4f58，2026-09-12）────────────────────────────

@@ -506,7 +506,9 @@ assert_eq "$(reason_of)" "canary-marker" "C17 marker 短路先于佐证判定"
 
 # =============================================================================
 t_case "C18 时序近邻主修：佐证记录在窗但距 mtime >30s ⇒ 不成立（no-corroboration）"
-WA_FAR_TS="$(date -r $((WA_NOW + 90)) +'%Y-%m-%d %H:%M:%S')"
+# 远邻戳取过去向 −90s（窗口松弛带 ±120 内）：套件耗时只会把 mtime 推离它，Δt 单向增大恒 >30s；
+# 若取未来向 +N，套件一旦变慢（≥N−30s）该记录会滑进近邻窗反成佐证（2026-10-24 C27 同形实证）
+WA_FAR_TS="$(date -r $((WA_NOW - 90)) +'%Y-%m-%d %H:%M:%S')"
 : > "$WT/repo/contrib-data/logs/notify.log"
 printf '[%s] notify: 远邻佐证\n' "$WA_FAR_TS" >> "$WT/repo/contrib-data/logs/notify.log"
 snap_before
@@ -667,8 +669,10 @@ assert_eq "$(sum_key external)" "1" "C26 external=1（窗口内唯一变更）"
 
 # =============================================================================
 t_case "C27 删除类反例：删除面内路径被删但无在窗近邻佐证 ⇒ suite/no-delete-corroboration"
-# 「在窗」与「近邻」是两个必要条件：记录取 +90s（落在窗口松弛带内、但距锚 >30s）⇒ 必须判红
-WA_DEL_FAR_TS="$(date -r $((WA_NOW + 90)) +'%Y-%m-%d %H:%M:%S')"
+# 「在窗」与「近邻」是两个必要条件：记录取过去向 −90s（落在窗口松弛带内、距删除锚恒 >30s）
+# ⇒ 必须判红。（勿改回未来向 +90：套件一慢锚点后移，未来戳会滑进 30s 近邻窗反成佐证——
+# 2026-10-24 实证：unit 维度新增文件使套件过 60s 后本用例 1/3 概率翻红）
+WA_DEL_FAR_TS="$(date -r $((WA_NOW - 90)) +'%Y-%m-%d %H:%M:%S')"
 : > "$WT/repo/contrib-data/logs/notify.log"
 printf '[%s] notify: 删除类远邻佐证\n' "$WA_DEL_FAR_TS" >> "$WT/repo/contrib-data/logs/notify.log"
 printf '{"digest":"nocorr"}\n' > "$WT/repo/contrib-data/pending/gone-nocorr.json"

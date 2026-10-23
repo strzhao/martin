@@ -13,6 +13,8 @@ tunnel 审批页点选 批准/否决/需修改（短码已自动回填名字栏�
 |---|---|
 | `collect.sh` | 90s 轮询收集器：decision 判定 → 消费（`rq.sh set approved`）→ 调 execute；顺带回收搁置/过期公开页 |
 | `execute.sh` | 确定性执行器（无 LLM）：TTL 复验 → gh 投递 → approved.log → 状态推进/回收/回执 |
+| `strip-comment.sh` | 评论剥离单一真源（头部 `<!-- -->` 注释块 + 「## 内部备注」尾段）；execute.sh source 共用，也可 `bash strip-comment.sh <file>` 直呼兜底 |
+| `post-comment.sh` | L2-auto 免隧道评论投递薄包装：strip + `gh api -X POST …/comments`（2026-10-24 内部块外泄事故的机械修复——凡不走 execute.sh 全链的投递一律过此通道） |
 | `com.stringzhao.approval-collect.plist` | launchd 定义（**仓内文件，未装载**） |
 | `tests/run.sh` | 沙箱集成测试（全 stub / 全 dry-run，零真实外发） |
 
