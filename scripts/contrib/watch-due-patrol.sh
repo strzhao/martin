@@ -13,9 +13,12 @@
 #   (cron job 3e5c6e23e260) calls this script, so no new job, no new plist, no new job field.
 #
 # CONTRACT (keep in sync with card t_cc4c9fcd + deploy/contrib-operator/SKILL.md 4.1)
-#   1. Board DB is read-only and always via `?immutable=1`. Never `?mode=ro`: on this WAL board
-#      that read fails rc=14 "unable to open database file" whenever -wal/-shm are absent, and
-#      the retired clamp's `2>/dev/null || true` swallowed exactly that, silently.
+#   1. Board DB is read-only. Read path = `?mode=ro` FIRST (WAL-aware = current state while the
+#      dispatcher keeps -wal/-shm sidecars alive), `?immutable=1` ONLY as fallback for the parked
+#      state (sidecars absent -> mode=ro fails rc=14; main db is then current, no pending WAL).
+#      2026-10-24 incident: the old unconditional immutable=1 read took a stale main-db snapshot
+#      during an active window and mass-woke 94 not-yet-due watch cards off pre-revision windows
+#      (the 00:4x-02:2x revision wave's new windows all lived only in the -wal sidecar).
 #   2. Scan domain = task_comments only (machine lines are a comment contract). Card bodies are
 #      NOT scanned: they carry the operating rule and prose that mentions the token, which only
 #      adds false windows.
@@ -107,7 +110,13 @@ select r.id || '|X|len=' || length(min(r.due)) || ' first=0x' || hex(substr(min(
   from w r where not exists (select 1 from v where v.id = r.id)
  group by r.id"
 
-raw="$(sqlite3 "file:$DB?immutable=1" "$READ_SQL" 2>&1)"; rc=$?
+raw="$(sqlite3 "file:$DB?mode=ro" "$READ_SQL" 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then
+  # Parked board (no -wal/-shm sidecars): mode=ro fails rc=14, but then the main db IS current
+  # (nothing pending in WAL) -> fall back to the immutable snapshot. Anything else stays FAILED.
+  log_line "read fallback mode=ro rc=$rc -> immutable (board parked or transient)"
+  raw="$(sqlite3 "file:$DB?immutable=1" "$READ_SQL" 2>&1)"; rc=$?
+fi
 if [ "$rc" -ne 0 ]; then
   log_line "read FAILED rc=$rc: $raw"
   printf 'watch-due patrol: read FAILED rc=%s（DB=%s；详见 logs/watch-due-patrol.log）\n' "$rc" "$DB"

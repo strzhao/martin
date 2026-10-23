@@ -70,6 +70,10 @@ fi
 
 # ── watch-due 到期巡检（同一确定性 tick 面：cron tick 即巡检；stdout 携带本 tick 唤醒的卡）──
 PATROL="$MARTIN/scripts/contrib/watch-due-patrol.sh"
+# 2026-10-24 02:3x 紧急停用 → 03:1x 修复恢复（同一事故收口）：patrol 曾以 immutable=1 读板库，
+#   WAL 活跃窗取到 stale 主库快照 → 01:08 tick 按「上一代旧窗口」假唤醒 94 张已续期未到期 watch 卡。
+#   修复 = 读取面 mode=ro 主读（WAL-aware）+ rc!=0 时 immutable 退路（静止板态），沙箱 41/41 断言全绿
+#   （含新增 WAL 活跃窗/静止态两臂，tests/unit/watch-due-patrol.sh ⑦）。
 [ -f "$PATROL" ] && bash "$PATROL"
 
 # ── stale-pr 停滞雷达（周级 stamp 门槛，同一确定性 tick 面：--tick 恒静默、恒 exit 0）──

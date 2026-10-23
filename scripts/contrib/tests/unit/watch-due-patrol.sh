@@ -202,4 +202,38 @@ sim_day 2026-09-20 "t_19c1f214"
 assert_eq "$(calls_n)" "10" "全程唤醒调用总数=10（10 张卡各一次，无重复无遗漏）"
 
 sb_cleanup
+
+# ================= ⑦ WAL 时态（2026-10-24 事故判据）=================
+# 事故：unconditional immutable=1 在 dispatcher 活跃窗（-wal/-shm 在位）读主库 stale 快照，
+# 上一代旧窗口把 94 张已续期未到期卡判成 due → 批量假唤醒。修复后判据：
+#   a) 活跃窗（sidecar 在位）：mode=ro 主读成功 ⇒ 新窗口生效、未来窗零唤醒；
+#   b) 静止态（sidecar 缺失）：mode=ro rc=14 ⇒ immutable 退路接管，原有判据不回退。
+
+t_case "WAL 活跃窗：sidecar 在位时读最新写（新窗口生效，旧窗不复活）"
+sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+seed_patrol_db t_wal1 blocked 'watch-due: 2026-09-18  第一代窗口'
+# 模拟活跃窗：非 WAL 原子的旁路更新（内核路径必然经过 sidecar；这里直接演示「主库旧、真相新」）
+sqlite3 "$(patrol_db)" "insert into task_comments (task_id, body) values ('t_wal1','watch-due: 2026-09-25（续期抬窗）');"
+# sidecar 在位（哪怕主库未 checkpoint）：mode=ro 必须读到两窗的最大值 09-25
+: >"$(dirname "$(patrol_db)")/kanban.db-wal"; : >"$(dirname "$(patrol_db)")/kanban.db-shm"
+OFF="$(calls_n)"
+out="$(run_day 2026-09-18)"
+assert_eq "$(wake_ids_since "$OFF")" "" "活跃窗下 09-18 不得按旧窗唤醒（新窗 09-25 在 max 内）"
+assert_eq "$out" "" "stdout 零输出"
+rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanban.db-shm"
+sb_cleanup
+
+t_case "WAL 静止态：sidecar 缺失时 mode=ro rc=14 → immutable 退路仍唤醒到期卡"
+sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+seed_patrol_db t_wal2 blocked 'watch-due: 2026-09-16  静止库单窗'
+# 把沙箱库转成 WAL 格式并删 sidecar：WAL 头 + 无 -wal/-shm = mode=ro rc=14 的真实静止态
+sqlite3 "$(patrol_db)" "pragma journal_mode=wal;" >/dev/null
+rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanban.db-shm"
+OFF="$(calls_n)"
+out="$(run_day 2026-09-16)"
+assert_eq "$(wake_ids_since "$OFF")" "t_wal2" "静止态退路仍正常唤醒"
+assert_file_contains "$(patrol_log)" "woke t_wal2 due=2026-09-16" "退路日志在位"
+assert_file_contains "$(patrol_log)" "read fallback mode=ro rc=" "退路触发落 fallback 行（可观测）"
+sb_cleanup
+
 t_finish
