@@ -24,7 +24,7 @@
 
 ## harness 工程原则
 
-开发/修改 hermes 任何子系统（agent loop / permission / compact / hook / streaming / mcp / skill / memory 等）前，**先读 [`harness-engineering-principles.md`](harness-engineering-principles.md)** —— 提炼自 `learn-everything` 14-artifact harness 教程（以 Claude Code 为参照系）。核心四条：**① 正交架构**（新子系统不改旧的，接入前问"能否零改动")；**② 模型不可靠**（安全/隐私/cardinality 机制层强制，不靠 prompt 自律）；**③ 软契约**（约束写 prompt/类型，不 runtime throw；仅数据损坏/安全才硬约束）；**④ context 经济是 KPI**（cache 命中 + 双轨注入 stable-prompt/dynamic-attachment + 双层去重 LRU/Session-Set）。文档含 10 条通用原则 + 27 条反模式 + 14 子系统速查表。配合 [[hermes-contribution-followups]] 的 sweeper 红线食用。
+开发/修改 hermes 任何子系统（agent loop / permission / compact / hook / streaming / mcp / skill / memory 等）前，**先读 [`harness-engineering-principles.md`](harness-engineering-principles.md)** —— 提炼自 `learn-everything` 14-artifact harness 教程（以 Claude Code 为参照系）。**顶部 AI First 元原则先读（10-18 立）：只输入模型推不出来的（环境事实+目标/视角），约束密度随不可逆性增长，原则要短规则会腐烂——harness 十原则只在确认要建机制之后接管。**核心四条：**① 正交架构**（新子系统不改旧的，接入前问"能否零改动")；**② 模型不可靠**（安全/隐私/cardinality 机制层强制，不靠 prompt 自律）；**③ 软契约**（约束写 prompt/类型，不 runtime throw；仅数据损坏/安全才硬约束）；**④ context 经济是 KPI**（cache 命中 + 双轨注入 stable-prompt/dynamic-attachment + 双层去重 LRU/Session-Set）。文档含 AI First 元原则 3 条 + 10 条通用原则 + 27 条反模式 + 14 子系统速查表。配合 [[hermes-contribution-followups]] 的 sweeper 红线食用。
 
 ## skill 开发规范
 
@@ -91,7 +91,7 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 
 ## 开源项目运营（oss-ops）
 
-运营 strzhao 名下开源项目组合（ai-todo 打样 → 组合铺开 → 内容引擎 → 发布脉冲）时，**先读 [`oss-ops.md`](oss-ops.md)** —— 沉淀了审批分层红线（L1 全自动只读；**一切对外动作 = L2，无 L3**，按场景走两路：**L2-A 异步路** Hermes 发起→微信审批、**L2-B 实时路** Claude Code 会话内用户明示即执行、不走微信不等时间窗；两路共用 approved.log 账本，preflight 与反 slop 不豁免）、渠道规则事实核查（Topics 自设 / dev.to API 可全自动 / awesome-claude-code 14 天门槛已满足）、9 仓组合台账与 ai-todo 打样 playbook。双 COO 分工：Hermes Agent 承担异步日常执行（每日巡检 cron + `~/.hermes/skills/github/oss-ops/` skill），martin 侧 Claude Code 承担实时合作运营 + 上下文工程 + 打样质量件 + pre-flight 审视（`/oss-preflight`）。动态进度见记忆 [[oss-ops-progress]]。
+运营 strzhao 名下开源项目组合（ai-todo 打样 → 组合铺开 → 内容引擎 → 发布脉冲）时，**先读 [`oss-ops.md`](oss-ops.md)** —— 沉淀了审批分层红线（L1 全自动只读；**一切对外动作 = L2，无 L3**，按场景走两路：**L2-A 异步路** Hermes 发起→微信审批、**L2-B 实时路** Claude Code 会话内用户明示即执行、不走微信不等时间窗；两路共用 approved.log 账本，preflight 与反 slop 不豁免）、渠道规则事实核查（Topics 自设 / dev.to API 可全自动 / awesome-claude-code 14 天门槛已满足）、9 仓组合台账与 ai-todo 打样 playbook；**一次性预批动作（投稿/PR）要推迟到未来日期执行时用 §8.1 的 cron 三件套配方**（`--repeat 1` 自删 + 成功静默失败才推微信，10-17 沉淀）。双 COO 分工：Hermes Agent 承担异步日常执行（每日巡检 cron + `~/.hermes/skills/github/oss-ops/` skill），martin 侧 Claude Code 承担实时合作运营 + 上下文工程 + 打样质量件 + pre-flight 审视（`/oss-preflight`）。动态进度见记忆 [[oss-ops-progress]]。
 
 ## 温故卡 AGC 运营（flashcards，2026-09-16 立项）
 
@@ -100,6 +100,8 @@ hermes AI 全权接管温故卡（appId `6917615875709812574`，包名 `com.stri
 ## Hermes 可观测性消费（观测栈已退役 2026-09-19）
 
 ~~`hermes forensics`~~ **已不存在**（observability-stack 分支退役、main 直营，用户拍板不维护）。排查 hermes 异常（消息没发、说一半断、疑似限流、定时任务没跑）：`hermes logs` / `hermes doctor`（**勿带 --fix**，会改行为默认值）/ 直接看 `~/.hermes/logs/`（cron 日志走 agent.log 单写的坑仍在：gateway.log 查不到 cron 日志 ≠ 没发生）。历史决策树与 events.db 数据字典存档于 [`hermes-observability-guide.md`](hermes-observability-guide.md)（仅史料，入口命令已失效）；退役详情与 PR 跟进见 `~/Downloads/hermes-pr-115989-handoff.md`。
+
+**新观测路径（2026-10-16 起）**：gateway health export 走 OTLP 导出到 fagi（`http://127.0.0.1:4318/v1/traces`，fagi Tracing 页按项目 `hermes-gateway` 看 span；spans-only，metrics/logs 桥已关）。排查导出问题（401/404/400 定层、配置位置、凭据格式）→ 看记忆 `hermes-fagi-otlp-health-export`；框架补丁（logs_bridge_enabled 开关 + project_name 白名单）= hermes-agent carried commit `2b49344711`，上游 PR 候选。
 
 ## 生产零写入判据的写入归属（s4 4.P1 / t1-04 4.1）
 
@@ -111,11 +113,15 @@ hermes AI 全权接管温故卡（appId `6917615875709812574`，包名 `com.stri
 - **安装路径**: `/Users/stringzhao/workspace/hermes-agent/`
 - **CLI 路径**: `/Users/stringzhao/.local/bin/hermes`
 - **用户数据目录**: `~/.hermes/`（config.yaml、sessions、skills、memories、cron、logs 等）
-- **当前模型**: `glm-5.3-flash`（bigmodel anthropic 端点 `https://open.bigmodel.cn/api/anthropic`，key 在 `~/.hermes/.env` 的 `BIGMODEL_API_KEY`；2026-09-16 晚用 `gcli hermes "glm flash lastest"` 切回 glm-flash/lastest 套餐——09-15 晚曾走 glm-flash-echo 套餐（`GLM_FLASH_ECHO_API_KEY` 条目仍在，可随时 `gcli hermes "glm flash echo"` 切回），09-14 Kimi 额度用尽曾临时走 deepseek-flash；config 备份 `~/.hermes/config.yaml.bak-before-glm-flash-1789573802`；回滚 `gcli hermes rollback`，9 个 cron 已随切换自动重 pin；⚠注意：state.db 里 custom provider 的 `billing_provider` 统一记 `custom`，真锚=`billing_base_url`，切换验证时别把 `custom` 当失败）
+- **当前模型**: `glm-5.3-flash`（glm-flash/lastest 套餐，BigModel anthropic 端点 `https://open.bigmodel.cn/api/anthropic`，key 在 `~/.hermes/.env` 的 `BIGMODEL_API_KEY`；2026-10-24 用 `gcli hermes "glm flash lastest"` 从 echo 切回（第八次切 glm；10-22 曾切 echo）——10 个 cron 随切换重 pin + hkstock-morning-brief（曾在 10-22 后被有意 pin 回 kimi）经用户拍板一并重 pin glm-flash，config 备份 `~/.hermes/config.yaml.bak-before-glm-flash-1792852035`，state.db 铁证三元组复验一致；fallback 链=glm-flash-echo（独立 credit 池）——primary=lastest 与 coder 卡 claude -p 同池，echo 对冲限额，对冲语义已恢复；回滚 `gcli hermes "glm flash echo"`；⚠CC shell 里调 gcli/hermes 须 `env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL`；state.db 里 custom provider 的 `billing_provider` 统一记 `custom`，真锚=`billing_base_url`，切换验证时别把 `custom` 当失败）
 - **终端后端**: local（命令直接在宿主机执行）
 - **当前工具集**: hermes-cli
 
 ## 常用命令速查
+
+### 手机验证码拉取（smsctl）
+
+**需要拿 Pura X Max 上的短信验证码时**（登录/绑定/授权场景自助获取，不再找用户人工转发）：全局命令 `smsctl code` 提取验证码（`--from 关键词` 按发送者过滤）、`smsctl list [N]` 看最近会话（`hd sms` 等价，任意目录可跑）。前提=hdc 在线 + 手机亮屏已解锁（锁屏拉不到，鸿蒙禁止自动解锁）。能力 SSOT 已迁 honeydo 仓 `packages/sms/`（用法与硬边界见其 USAGE.md）；本仓 `scripts/sms/smsctl.sh` 为原型存档，不再维护。
 
 ### 交互式聊天
 
