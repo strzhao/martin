@@ -200,6 +200,7 @@ L3_A="$(sed -n '3p' <<<"$CARD_A")"
 L4_A="$(sed -n '4p' <<<"$CARD_A")"
 L5_A="$(sed -n '5p' <<<"$CARD_A")"
 L6_A="$(sed -n '6p' <<<"$CARD_A")"
+L7_A="$(sed -n '7p' <<<"$CARD_A")"
 NLINES_A="$(grep -c . <<<"$CARD_A" | tr -d ' ')"
 
 # 场景5.P1（driver: fs-grep 审批卡 dry-run 输出）
@@ -216,15 +217,18 @@ check_match "C6 行1: disposition 表述非空" ".+" "$EXPR_A"
 check_not_contains "5.P3(硬编码修正①): 行1 不是旧硬编码「<disp> 评论」形态" "review-evidence 评论" "$L1_A"
 check_match "C6 行2: 目标行完整形状" "^目标: NousResearch/hermes-agent#103901 · 13/15 · strategist\+红队双审$" "$L2_A"
 check_eq "C6 行3: 概要 = title 原文（title 未超 80）" "概要: delivery_outcome 遥测断裂修复" "$L3_A"
-check_match "C6 行4: 点开即批行形状（page-url?key=<code>）" \
-  "^✅ 点开即批（短码已自动填入）: https://d\.stringzhao\.life/[a-z0-9]{10}\?key=[a-km-np-z2-9]{6}$" "$L4_A"
-check_match "C6 行5: 截止行形状（MM-DD HH:MM 前有效（48h））" \
-  "^⏱ [0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} 前有效（48h），超时自动搁置$" "$L5_A"
-check_eq "C6 行6: 微信备用降级指令逐字" "💬 微信备用: 批/否 #${ID_A}；改 #${ID_A}: 意见" "$L6_A"
-check_eq "C6 行序固定: 卡片恰 6 行" "6" "$NLINES_A"
+# 行4 = c9f914d（09-11）新增「我方货」必答行：有 goods_note 显值，无则占位提示（fail-visible）
+check_match "C6 行4: 我方货行形状（goods_note 显值或未判定占位）" \
+  "^(我方货: .+|我方货: 未判定（批前请确认本次是否涉及我方 PR/commit）)$" "$L4_A"
+check_match "C6 行5: 点开即批行形状（page-url?key=<code>）" \
+  "^✅ 点开即批（短码已自动填入）: https://d\\.stringzhao\\.life/[a-z0-9]{10}\\?key=[a-km-np-z2-9]{6}$" "$L5_A"
+check_match "C6 行6: 截止行形状（MM-DD HH:MM 前有效（48h））" \
+  "^⏱ [0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} 前有效（48h），超时自动搁置$" "$L6_A"
+check_eq "C6 行7: 微信备用降级指令逐字" "💬 微信备用: 批/否 #${ID_A}；改 #${ID_A}: 意见" "$L7_A"
+check_eq "C6 行序固定: 卡片恰 7 行（含我方货必答行，无升级行）" "7" "$NLINES_A"
 
-# 场景5.P2：截止时间字段值 + 降级指令均非空非占位符
-DL="$(sed -E 's/^⏱ ([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}) 前有效.*/\1/' <<<"$L5_A")"
+# 场景5.P2：截止时间字段值 + 降级指令均非空非占位符（行6=截止行，c9f914d 后行序 +1）
+DL="$(sed -E 's/^⏱ ([0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}) 前有效.*/\1/' <<<"$L6_A")"
 DL_EPOCH="$(date -j -f "%Y-%m-%d %H:%M" "$(date +%Y)-$DL" "+%s" 2>/dev/null || true)"
 NOW_EPOCH="$(date +%s)"
 if [[ "$DL_EPOCH" =~ ^[0-9]+$ && "$NOW_EPOCH" =~ ^[0-9]+$ ]]; then
@@ -235,15 +239,15 @@ if [[ "$DL_EPOCH" =~ ^[0-9]+$ && "$NOW_EPOCH" =~ ^[0-9]+$ ]]; then
     ok "5.P2: 截止时间 = 发卡时刻 + 48h（±10min），delta=${DIFF48}s"
   fi
 else
-  fail "5.P2: 截止时间字段值可解析且换算 epoch" "无法从行5提取/解析 MM-DD HH:MM: [$(sed -n '5p' <<<"$CARD_A")] raw_dl=[$DL]"
+  fail "5.P2: 截止时间字段值可解析且换算 epoch" "无法从行6提取/解析 MM-DD HH:MM: [$(sed -n '6p' <<<"$CARD_A")] raw_dl=[$DL]"
 fi
 check_contains "5.P2: 降级微信文本指令存在" "批/否 #${ID_A}" "$CARD_A"
 check_contains "5.P2: 降级改意见指令存在" "改 #${ID_A}: 意见" "$CARD_A"
 check_not_contains "5.P2: 截止时间非占位符" "MM-DD" "$CARD_A"
 
-# 场景5.P1：卡片 slug/key == 登记值
-CARD_SLUG_A="$(sed -E 's#.*life/([a-z0-9]{10})\?key=.*#\1#' <<<"$L4_A")"
-CARD_CODE_A="$(sed -E 's#.*\?key=([a-km-np-z2-9]{6})$#\1#' <<<"$L4_A")"
+# 场景5.P1：卡片 slug/key == 登记值（行5=点开即批行，c9f914d 后行序 +1）
+CARD_SLUG_A="$(sed -E 's#.*life/([a-z0-9]{10})\?key=.*#\1#' <<<"$L5_A")"
+CARD_CODE_A="$(sed -E 's#.*\?key=([a-km-np-z2-9]{6})$#\1#' <<<"$L5_A")"
 REG_SLUG_A="$(jq -r --arg id "$ID_A" '.items[] | select(.id == $id) | .tunnel.slug // ""' "$CONTRIB/ready-queue.json")"
 REG_CODE_A="$(jq -r --arg id "$ID_A" '.items[] | select(.id == $id) | .tunnel.code // ""' "$CONTRIB/ready-queue.json")"
 check_eq "5.P1: 卡片 slug == rq 登记 .tunnel.slug" "$REG_SLUG_A" "$CARD_SLUG_A"
@@ -340,6 +344,7 @@ L1_B="$(sed -n '1p' <<<"$CARD_B")"
 L2_B="$(sed -n '2p' <<<"$CARD_B")"
 L3_B="$(sed -n '3p' <<<"$CARD_B")"
 L4_B="$(sed -n '4p' <<<"$CARD_B")"
+L5_B="$(sed -n '5p' <<<"$CARD_B")"
 check_match "5.P3: B 卡行1 前缀 = B 项 id" "^🟡【L2 审批 #${ID_B}】." "$L1_B"
 EXPR_B="${L1_B#*】}"
 check_match "5.P3: B 卡行1 disposition 表述非空（取自 B 项而非 A 项）" ".+" "$EXPR_B"
@@ -347,10 +352,12 @@ check_not_contains "5.P3(硬编码修正①): B 卡行1 不再是硬编码「 �
 check_eq "5.P3: B 卡行2 = B 项 issue/score + probe 单轮" \
   "目标: NousResearch/hermes-agent#103902 · 9/15 · strategist 单轮" "$L2_B"
 check_eq "5.P3: B 卡行3 = B 项 title" "概要: cron 投递 stale_session 边界取证" "$L3_B"
-check_match "5.P3: B 卡行4 形状（URL?key=code）" \
-  "^✅ 点开即批（短码已自动填入）: https://d\.stringzhao\.life/[a-z0-9]{10}\?key=[a-km-np-z2-9]{6}$" "$L4_B"
-CARD_SLUG_B="$(sed -E 's#.*life/([a-z0-9]{10})\?key=.*#\1#' <<<"$L4_B")"
-CARD_CODE_B="$(sed -E 's#.*\?key=([a-km-np-z2-9]{6})$#\1#' <<<"$L4_B")"
+check_match "5.P3: B 卡行4 我方货行形状" \
+  "^(我方货: .+|我方货: 未判定（批前请确认本次是否涉及我方 PR/commit）)$" "$L4_B"
+check_match "5.P3: B 卡行5 形状（URL?key=code）" \
+  "^✅ 点开即批（短码已自动填入）: https://d\.stringzhao\.life/[a-z0-9]{10}\?key=[a-km-np-z2-9]{6}$" "$L5_B"
+CARD_SLUG_B="$(sed -E 's#.*life/([a-z0-9]{10})\?key=.*#\1#' <<<"$L5_B")"
+CARD_CODE_B="$(sed -E 's#.*\?key=([a-km-np-z2-9]{6})$#\1#' <<<"$L5_B")"
 REG_SLUG_B="$(jq -r --arg id "$ID_B" '.items[] | select(.id == $id) | .tunnel.slug // ""' "$CONTRIB/ready-queue.json")"
 REG_CODE_B="$(jq -r --arg id "$ID_B" '.items[] | select(.id == $id) | .tunnel.code // ""' "$CONTRIB/ready-queue.json")"
 check_eq "5.P3: B 卡 slug == B 项登记值" "$REG_SLUG_B" "$CARD_SLUG_B"
