@@ -643,7 +643,8 @@ fi
 #   allow_own_pr_push=false（急停总开关）→ approved 保留 + approval-manual-required 事件（人工路，不建卡）
 #   =true → 探测 runs/*-issue<ISSUE>/BRANCH.md 分流建 coder 卡（dispatcher spawn worker 驱动 claude -p 执行）：
 #     mode=push-only      BRANCH.md 存在且 worktree 校验通过 → --workspace dir:<worktree> --max-runtime 45m
-#     mode=build-and-push 无 build 产物/校验失败回退    → --workspace worktree:<hermes-agent 仓> --branch fix/... --max-runtime 4h
+#     mode=build-and-push 无档案/未命中（真需构建）→ --workspace scratch（s288 修：worktree 型 = 死形禁发，
+#                         卡体自带 clone 构建指令）--max-runtime 4h
 #   rq 状态推进（set executed）由 worker 收尾执行，claude 不碰 martin 仓。建卡失败只记日志、不阻断事件链。
 if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "0" ]]; then
   log "own-PR ${ID}: 确定性执行器不投递，交 coder lane（allow_own_pr_push 闸门）"
@@ -661,13 +662,63 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
   # 闸开：探测 build 产物定模式（dir: 对缺失路径会 mkdir 空目录——kanban_db.py 空目录陷阱，
   # 故必须 -d + git rev-parse 双校验，不满足回退 build-and-push）
   BRANCH_MD="$(ls -t "$CONTRIB"/runs/*-issue"${ISSUE}"/BRANCH.md 2>/dev/null | head -1 || true)"
+  ALLOW_REFRESH="$(cfg '.allow_own_pr_refresh' 'false')"
   # refresh-branch 闸门（09-14 用户授权）：config 缺键/false 或分支档案未声明 refresh: yes
   # ⇒ 走原路（对既有 push-only/build-and-push 路径逐字节等价）
-  ALLOW_REFRESH="$(cfg '.allow_own_pr_refresh' 'false')"
   # 声明形态宽容：行首（可带列表符 `- `）`refresh: yes` 独立一行即认；其它值/缺失 ⇒ 不启用
   REFRESH_DECL=""
   if [[ -n "$BRANCH_MD" ]] && grep -qE '^[[:space:]]*-?[[:space:]]*refresh:[[:space:]]*yes[[:space:]]*$' "$BRANCH_MD" 2>/dev/null; then
     REFRESH_DECL="yes"
+  fi
+  # s288 修（t_2b4d9afc，2026-10-26）：worktree 型 workspace = 死形（git worktree cwd 无 committed
+  # install → "no dependency environment is committed"，s288 A/B 探针 + t_40c2d544 双 crash 定谳）。
+  # build-and-push 不再产 worktree 卡，改两级：① inventory 探测——命中（ready 件 + fork 分支可解析到
+  # 主仓 fork remote 的 sha）⇒ 合成 BRANCH.md 档案，下方既有探测自然落 push-only（dir: 主仓 cwd =
+  # committed install 本尊，s288 C 腿实证健康）；② 未命中 ⇒ scratch 卡（卡体带 clone 指令）。
+  # 仅自然 BRANCH.md 缺席时执行——合成件永不覆盖既有档案，也就永不触碰 refresh 声明。
+  if [[ -z "$BRANCH_MD" ]]; then
+    REPO_DIR="${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}"
+    INV_HIT="$(python3 - "$CONTRIB/inventory.json" "$ISSUE" "$REPO_DIR" "${GIT_BIN:-git}" 2>/dev/null <<'PYEOF' || true
+import json, re, subprocess, sys
+inv, issue, repo, git_bin = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    items = json.load(open(inv))
+except Exception:
+    sys.exit(0)
+items = items.get("items", items.get("inventory", items)) if isinstance(items, dict) else items
+pat = re.compile(r"^(?:forge-)?%s-" % re.escape(issue))
+for it in items if isinstance(items, list) else []:
+    if not isinstance(it, dict) or it.get("status") != "ready":
+        continue
+    if not pat.match(str(it.get("id", ""))):
+        continue
+    branch = str(it.get("branch") or "")
+    sha = str(it.get("fork_sha") or "")
+    if not branch or not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        continue
+    try:
+        r = subprocess.run([git_bin, "-C", repo, "rev-parse", "-q", "--verify",
+                            "refs/remotes/fork/%s^{commit}" % branch],
+                           capture_output=True, text=True, timeout=30)
+    except Exception:
+        continue
+    if r.returncode == 0 and r.stdout.strip().startswith(sha):
+        print(branch + "\t" + r.stdout.strip())
+        break
+PYEOF
+)"
+    if [[ -n "$INV_HIT" ]]; then
+      INV_BRANCH="${INV_HIT%%$'\t'*}"
+      INV_SHA="${INV_HIT#*$'\t'}"
+      RUNS_DIR="$CONTRIB/runs/$(date +%F)-issue${ISSUE}"
+      mkdir -p "$RUNS_DIR"
+      printf '# BRANCH — %s\n\n- worktree：`%s`\n- fork_sha：`%s`\n- 来源：inventory 命中合成（s288 修，t_2b4d9afc）\n' \
+        "$INV_BRANCH" "$REPO_DIR" "$INV_SHA" > "$RUNS_DIR/BRANCH.md"
+      BRANCH_MD="$RUNS_DIR/BRANCH.md"
+      log "own-PR ${ID}: 无 BRANCH.md 档案，inventory 命中 issue#${ISSUE}（fork 分支 ${INV_BRANCH}）→ 合成 push-only 档案 ${BRANCH_MD}"
+    else
+      log "own-PR ${ID}: 无 BRANCH.md 且 inventory 未命中，build-and-push 改发 scratch 卡（worktree 型 = s288 死形，禁发）"
+    fi
   fi
   MODE="build-and-push"; WT_DIR=""; BRANCH_NAME=""
   if [[ -n "$BRANCH_MD" ]]; then
@@ -695,7 +746,7 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
     if [[ "$MODE" == "push-only" ]]; then
       echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 45m --workspace dir:${WT_DIR}（own-PR ${ID} push-only 卡，分支 ${BRANCH_NAME}）"
     else
-      echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 4h --workspace worktree:${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent} --branch fix/issue${ISSUE}（own-PR ${ID} build-and-push 卡）"
+      echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 4h --workspace scratch（own-PR ${ID} build-and-push 卡；worktree 型 = s288 死形禁发，卡体自带 clone 构建指令）"
     fi
     exit 0
   fi
@@ -727,7 +778,7 @@ PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strz
 timeout_budget: 1200"
   else
     BODY_LINES+="
-worktree: 由 kanban 物化（\${HERMES_KANBAN_WORKSPACE}）| 分支: fix/issue${ISSUE} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
+构建基线: git clone https://github.com/strzhao/hermes-agent.git 并 checkout 分支 fix/issue${ISSUE}（fork 已有该分支则直接 checkout；fork 无此分支则从 origin/main 起构建新提交——worktree 型 workspace 已禁发：s288 判例，git worktree cwd 无 committed install 必死）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:fix/issue${ISSUE}
 配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
 构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
@@ -740,7 +791,7 @@ PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strz
   if [[ "$MODE" == "push-only" ]]; then
     KANBAN_ARGS+=(--max-runtime 45m --workspace "dir:${WT_DIR}")
   else
-    KANBAN_ARGS+=(--max-runtime 4h --workspace "worktree:${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}" --branch "fix/issue${ISSUE}")
+    KANBAN_ARGS+=(--max-runtime 4h --workspace scratch)
   fi
   CARD_ID="$("$HERMES_BIN" "${KANBAN_ARGS[@]}" 2>>"$LOG" | grep -oE 't_[0-9a-f]+' | head -1 || true)"
   if [[ -n "${CARD_ID:-}" ]]; then
