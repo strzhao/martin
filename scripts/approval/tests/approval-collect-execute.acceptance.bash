@@ -570,12 +570,15 @@ check_contains "10.B: kanban create 带 --idempotency-key=<id>（幂等锚点）
 check_contains "10.B: 卡 title 含 rq-id" "执行 own-PR: $ID_K" "$H_LOG"
 check_contains "10.B: build-and-push 改发 scratch（s288 死形 worktree 禁发）" "--workspace scratch" "$H_LOG"
 check_eq "10.B: 零 worktree: workspace 参数" "0" "$(grep -c -- '--workspace worktree:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
-check_eq "10.B: 零 --branch 参数（worktree 卡专用，随死形一并废除）" "0" "$(grep -c -- '--branch ' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.B: 零 --branch 参数（worktree 卡专用，随死形废除；卡体 l2_ledger 样板 --branch <分支> 不算参数）" "0" "$(grep -c -- '--branch fix/issue' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
 check_contains "10.B: build-and-push max-runtime 4h" "--max-runtime 4h" "$H_LOG"
 check_contains "10.B: body 带类型标记" "类型: own-PR 执行" "$H_LOG"
 check_contains "10.B: body 标 mode" "mode: build-and-push" "$H_LOG"
 check_contains "10.B: body 带成稿路径" "$DRAFT_K" "$H_LOG"
-check_contains "10.B: body 带 push remote=fork 说明" "push remote: fork" "$H_LOG"
+check_contains "10.B: body 带 push remote=fork 说明（上游锚行 origin=fork）" "push 用它" "$H_LOG"
+check_contains "10.B: body 带 upstream 锚指令（F2，t_3b52d6b8）" "git remote add upstream https://github.com/NousResearch/hermes-agent.git && git fetch upstream" "$H_LOG"
+check_contains "10.B: 过老 rebase 锚 upstream/main（origin/main 口径不作基线）" "rebase 到 upstream/main" "$H_LOG"
+check_not_contains "10.B: 遗产「先 git fetch origin」口径已灭（origin=fork 语义翻转修复）" "先 git fetch origin" "$H_LOG"
 check_eq "10.B: 零 gh 投递" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
 check_eq "10.B: 台账零增量" "0" "$(( $(ledger_lines "$SB3/approved.log") - LEDGER_BEFORE_K ))"
 check_eq "10.B: 状态保持 approved（不 set executed）" "approved" \
@@ -602,6 +605,7 @@ check_contains "10.C: push-only max-runtime 45m" "--max-runtime 45m" "$H_LOG"
 check_contains "10.C: body 标 mode" "mode: push-only" "$H_LOG"
 check_contains "10.C: body 带 timeout_budget" "timeout_budget: 1200" "$H_LOG"
 check_contains "10.C: body 带分支名" "fix/test-ownpr-branch" "$H_LOG"
+check_not_contains "10.C: 自然档案卡体零守卫行（F1 仅合成命中追加，自然路径逐字节等价）" "worktree 守卫" "$H_LOG"
 check_eq "10.C: 零 gh 投递" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
 
 printf '%s\n' '--- 10.D：陷阱（BRANCH.md 指向不存在目录 → 回退 build-and-push）---'
@@ -612,9 +616,11 @@ K_RC=0
 env "${RQ_ENV[@]}" bash "$EXECUTE" "$ID_K" approved >/dev/null 2>&1 || K_RC=$?
 H_LOG="$(cat "$SB3/h.log")"
 check_eq "10.D: execute 退出码 0" "0" "$K_RC"
-check_contains "10.D: 回退 build-and-push（worktree: workspace）" "--workspace worktree:" "$H_LOG"
-check_contains "10.D: 不产生 dir: 参数（空目录陷阱被绕开）" "0" \
+check_contains "10.D: 校验失败回退 build-and-push（scratch，s288 死形禁发）" "--workspace scratch" "$H_LOG"
+check_eq "10.D: 不产生 dir: 参数（空目录陷阱被绕开）" "0" \
   "$(grep -c -- '--workspace dir:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.D: 零 worktree: 参数（死形恒禁发，回退不复活）" "0" \
+  "$(grep -c -- '--workspace worktree:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
 
 printf '=== 场景10.E-10.L：refresh-branch（刷新既有 PR 分支；09-14 用户授权 L2-B）===\n'
 # 契约（卡 t_2b06fd69）：① 闸缺键/false ⇒ 行为不变 ② 闸开+档案声明 ⇒ dry-run 打印复推形态且无 gh pr create
@@ -828,6 +834,11 @@ check_contains "10.M1: 合成 BRANCH.md 档案落 runs/ 目录" "data/runs/" "$M
 check_contains "10.M1: 档案分支=inventory 命中分支" "forge/103921-probe" "$(cat "$M1_BMD" 2>/dev/null)"
 check_contains "10.M1: 落 push-only（dir: 主仓，s288 C 腿健康形态）" "--workspace dir:$HOME/workspace/hermes-agent" "$H_LOG"
 check_contains "10.M1: 卡体带分支档案行" "分支档案:" "$H_LOG"
+check_contains "10.M1: 卡体带 worktree 守卫行（F1，t_3b52d6b8）" "worktree 守卫: 本卡 worktree=主仓共享树（committed install 本尊）" "$H_LOG"
+check_contains "10.M1: 守卫行禁 checkout/禁本地构建提交" "禁止 checkout、禁止在本地构建/提交" "$H_LOG"
+check_contains "10.M1: 守卫行写明分支 tracking-ref 形态" "refs/remotes/fork/forge/103921-probe" "$H_LOG"
+check_contains "10.M1: 守卫行限定幂等预检手段与本卡动作" "git ls-remote fork" "$H_LOG"
+check_contains "10.M1: 守卫行限定本卡动作仅建 PR" "本卡动作仅建 PR" "$H_LOG"
 check_eq "10.M1: 零 worktree: workspace 参数" "0" "$(grep -c -- '--workspace worktree:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
 check_eq "10.M1: 零 gh 投递" "0" "$(grep -c '=== gh' "$SB3/gh.log" 2>/dev/null | tr -d ' ')"
 
@@ -841,8 +852,9 @@ H_LOG="$(cat "$SB3/h.log")"
 check_eq "10.M2: execute 退出码 0" "0" "$M2_RC"
 check_contains "10.M2: 改发 scratch 卡（worktree 死形禁发）" "--workspace scratch" "$H_LOG"
 check_eq "10.M2: 零 worktree: workspace 参数" "0" "$(grep -c -- '--workspace worktree:' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
-check_eq "10.M2: 零 --branch 参数" "0" "$(grep -c -- '--branch ' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
+check_eq "10.M2: 零 --branch 参数（卡体 l2_ledger 样板 --branch <分支> 不算参数）" "0" "$(grep -c -- '--branch fix/issue' "$SB3/h.log" 2>/dev/null | tr -d ' ')"
 check_contains "10.M2: 卡体带 clone 指令（worker 自建执行体）" "git clone https://github.com/strzhao/hermes-agent.git" "$H_LOG"
+check_contains "10.M2: 卡体带 upstream 锚指令（F2 同 10.B）" "git remote add upstream" "$H_LOG"
 check_eq "10.M2: 未命中零多余 rev-parse（无 fork/forge-103922 解析企图）" "0" "$(grep -c 'fork/forge-103922' "$SB3/git-m2.log" 2>/dev/null | tr -d ' ')"
 
 # M3：inventory 有件但 fork sha 不匹配（head 已被另案推进）⇒ 不命中，仍 scratch（绝不推错 head）

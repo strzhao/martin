@@ -676,6 +676,11 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
   # 主仓 fork remote 的 sha）⇒ 合成 BRANCH.md 档案，下方既有探测自然落 push-only（dir: 主仓 cwd =
   # committed install 本尊，s288 C 腿实证健康）；② 未命中 ⇒ scratch 卡（卡体带 clone 指令）。
   # 仅自然 BRANCH.md 缺席时执行——合成件永不覆盖既有档案，也就永不触碰 refresh 声明。
+  # F1（t_3b52d6b8 红队必修）：合成命中 ⇒ push-only 卡体追加 worktree 守卫行——合成件 cwd=主仓
+  # 共享树（committed install 本尊）而分支仅以 refs/remotes/fork/<b> 存在（未检出），与 25 件
+  # 自然档案「分支在所指目录已检出」形态全异；不守卫则 worker 可能 checkout 弄脏 live install
+  # 或就地构建提交。自然档案卡体不加（逐字节等价）。
+  SYNTH_HIT=0
   if [[ -z "$BRANCH_MD" ]]; then
     REPO_DIR="${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}"
     INV_HIT="$(python3 - "$CONTRIB/inventory.json" "$ISSUE" "$REPO_DIR" "${GIT_BIN:-git}" 2>/dev/null <<'PYEOF' || true
@@ -715,6 +720,7 @@ PYEOF
       printf '# BRANCH — %s\n\n- worktree：`%s`\n- fork_sha：`%s`\n- 来源：inventory 命中合成（s288 修，t_2b4d9afc）\n' \
         "$INV_BRANCH" "$REPO_DIR" "$INV_SHA" > "$RUNS_DIR/BRANCH.md"
       BRANCH_MD="$RUNS_DIR/BRANCH.md"
+      SYNTH_HIT=1
       log "own-PR ${ID}: 无 BRANCH.md 档案，inventory 命中 issue#${ISSUE}（fork 分支 ${INV_BRANCH}）→ 合成 push-only 档案 ${BRANCH_MD}"
     else
       log "own-PR ${ID}: 无 BRANCH.md 且 inventory 未命中，build-and-push 改发 scratch 卡（worktree 型 = s288 死形，禁发）"
@@ -776,12 +782,18 @@ worktree: ${WT_DIR} | 分支: ${BRANCH_NAME} | push remote: fork（strzhao/herme
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:${BRANCH_NAME}
 配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
 timeout_budget: 1200"
+    if [[ "$SYNTH_HIT" == "1" ]]; then
+      # F1 守卫行（t_3b52d6b8）：仅合成档案的 push-only 卡追加——worktree=主仓共享树是
+      # 合成件独有形态，自然档案（分支已检出）不得改动卡体（逐字节等价）。
+      BODY_LINES+="
+worktree 守卫: 本卡 worktree=主仓共享树（committed install 本尊）：禁止 checkout、禁止在本地构建/提交；分支仅以 refs/remotes/fork/${BRANCH_NAME} 存在，幂等预检用 git ls-remote fork / gh pr list --state all --json headRefName 本地过滤，本卡动作仅建 PR"
+    fi
   else
     BODY_LINES+="
-构建基线: git clone https://github.com/strzhao/hermes-agent.git 并 checkout 分支 fix/issue${ISSUE}（fork 已有该分支则直接 checkout；fork 无此分支则从 origin/main 起构建新提交——worktree 型 workspace 已禁发：s288 判例，git worktree cwd 无 committed install 必死）
+构建基线: git clone https://github.com/strzhao/hermes-agent.git 并 checkout 分支 fix/issue${ISSUE}（fork 已有该分支则直接 checkout；fork 无此分支则从 upstream/main 起构建新提交——worktree 型 workspace 已禁发：s288 判例，git worktree cwd 无 committed install 必死）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:fix/issue${ISSUE}
 配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
-构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
+上游锚: clone 后 origin=fork（strzhao/hermes-agent，push 用它）；构建/过老 rebase 一律锚上游——git remote add upstream https://github.com/NousResearch/hermes-agent.git && git fetch upstream，rebase 到 upstream/main 再构建（origin/main 口径不作为基线）"
   fi
   BODY_LINES+="
 执行: ① claude 裸跑（不带权限 flags、不传 --model），完整指令写 workspace 内 BRIEFING.md，启动命令落 run-ownpr.sh 再 bash（hermes 终端过滤器拦内嵌 git push/gh pr 字面量与 perl -e alarm）② 成稿先拷入 workspace 并裁注释头成 PR-BODY.md（取首个 '# ' 标题行到文件尾，--body-file 用它；建 PR 后 gh pr view 逐字 diff 复核）③ 幂等预检：分支已有 commit 跳过构建；上游已有该 head 的 PR 只收尾（gh pr list --head 对 fork head 静默返空，用 --state all --json headRefName 本地过滤）④ 收尾由 worker 执行：l2_ledger.sh record --kind own-PR --rq ${ID} --branch <分支> --url <pr_url>（账本，漏记会被 hourly 差集告警）→ rq.sh set ${ID} executed --note <pr_url>（revise/failed 同口径）→ notify.sh receipt（仅 executed 发；失败态发 own-pr-failed 事件）→ kanban_complete(metadata 带 rq_id/mode/branch/pr_url)
