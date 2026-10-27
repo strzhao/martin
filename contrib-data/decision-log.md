@@ -300,10 +300,10 @@ escalate: 2026-09-15 当日复核 —— `sqlite3 "file:<contrib board>.db?immut
 
 ---
 
-## 2026-10-27 · 停滞 Issue/PR 接手线整体退役
+## 2026-10-27 · 策略收敛为 Review → Offer → Pick
 
-**用户拍板**：长期无人跟进的 Issue/PR 由我方接手这条路线完全没有价值，彻底去掉；共建/洞察日报也不再体现。
+**用户两次拍板**：①长期无人跟进的 Issue/PR 接手线彻底去掉；②新 issue 抢首车路线也去掉。后续专注高质量 review，在 review 中发现真实缺口并交出代码，让作者或维护者 pick。
 
-**现行策略**：只保留两腿——① issue→首车即终态的我方 PR；② 高质量 review→发现缺口→forge 造货→立即开 PR→cherry-pick offer。停滞对象不再因为我方「能接手」而成为候选。
+**现行策略**：唯一主线为 `Review → Offer → Pick`。不再扫描、评估或介入停滞对象；不再从新 issue 市场抢首车，也不为抢坑独立开 PR。先对活跃 PR 做有执行证据的 review，真发现缺口再 forge，我方 PR 只作为该 review 的可 cherry-pick 代码载体。自发现真实上游缺陷仍按 operator §3.8 处理，不属于抢 issue。
 
-**落地范围**：operator 删除停滞雷达判断面与 probe-salvage 新出手路；`contrib-flush` 摘除 stale-pr-scan 周期调用；共建日报删除第三链路及 stale-pr-scan 数据源；`hermes-contribution.md` 改回两腿分工，旧 §4–§6 仅作历史归档。历史脚本、快照和判例保留作档案，不再作为执行依据。
+**落地范围**：operator 改为单主线；共建日报只汇报 review、代码 offer、adoption/pick，不再展示新 issue 抢坑量或停滞接手候选；`hermes-contribution.md`、`CLAUDE.md`、`hermes-contrib-pipeline` 同步为单主线。历史脚本、快照和判例保留作档案，不再作为执行依据。

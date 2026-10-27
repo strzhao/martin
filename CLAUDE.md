@@ -34,21 +34,23 @@
 
 参与 `NousResearch/hermes-agent` 共建时，**先读 [`hermes-contribution.md`](hermes-contribution.md)** —— 沉淀了被合入 PR 画像、kshitijk4poor 打法逆向、sweeper 机制（含 09-02 AI farm 生态侦察）、sweeper 红线、邮件时滞坑、**策略主轴 2.0 全文**。具体 PR 进度见记忆 [[hermes-contribution-followups]]。
 
+**agent-device（callstack 上游）共建**：参与 `callstack/agent-device` 共建（issue/PR/上游合并）前，**先读 [`agent-device-contribution.md`](agent-device-contribution.md)** —— 三仓拓扑、上游画像（AI-native、正式 ADR 流程）、PR 质量闸 8 项、内网标记 scrub 红线、v1 手动通道（forge.sh + l2_ledger.sh `--domain agent-device-contrib`；operator 未接）。策略 2.0 机制全文仍以 hermes-contribution.md §11 为准。
+
 ### 策略主轴 2.0（2026-09-02 拍板）：review-first，让维护者做 pick
 
 **背景**：上游已是 AI agent 贡献农场生态（自锚打包/消防 hose 竞速/issue 农场三种架构，issue→PR 以小时计、单账号日发 7 PR）；09-02 实证 8 个当日抢坑 PR **零合入** → **anchor ≠ merge，分钟级占坑竞速不参与**（SLA=当日内+决策质量；唯一例外=深水区+独家证据域）。而该仓库有成熟的三代收敛文化（erosika #83500 → kshitij #85452 → teknium #99375/#100916，模式=从 PR 池 cherry-pick 保署名收编）；我方 #86622 即被动验证：Teknium 亲手 salvage 我方 3 个可剥离 commit 合入 main。
 
 **主轴**：**高质量 review 是渠道，可 pick 的 commit 库存是资产，被 pick（graph 亮灯）是终极产出。**
 
-**⭐ commit 进仓优先原则（2026-09-05 用户拍板，优先级高于两腿分工的任何单腿惯性）**：一切贡献动作的**第一 KPI = 我方 authored commit 进入上游 main**（直接 merge 或被 pick，署名保留）。执行含义：
+**⭐ commit 进仓优先原则（2026-09-05 用户拍板，服务于 Review → Offer → Pick 单主线）**：一切贡献动作的**第一 KPI = 我方 authored commit 进入上游 main**（直接 merge 或被 pick，署名保留）。执行含义：
 - 每个贡献动作立项时先回答「这次动作产出/推进哪个可进仓的 commit」；答不出就调整形态，直到答得出
 - evidence review **有货必带 offer；没货默认造货**（forge 立项 ≤20min 基准）——第一 KPI=commit 进仓，review 里提供我方 commit 是高姿态的合理做法，因没货错失合并窗=颗粒无收（#106199 教训）。**质量靠建设能力，不靠硬凑**（反 slop：#103650 教训）——造不出合格件就发纯 review 并记欠账，不塞劣质 offer；`none` 仅限真不可造（需维护者拍板/schema 级/域外），note 写硬理由（09-11 用户二次拍板定稿）
 - 本地库存持续按「单关注点 + 可剥离 + mutation 自证 + 基于 current main」标准锻造，保持随时可 offer 状态
 - 纯观察/纯评论且不推进任何 commit 的动作要占少数；连续多个无 commit 产出的动作 = 形态报警（goods-drought 置顶复检：none 硬理由可翻案的补造）
 
-两腿分工：
-1. **evidence authority** —— 生产取证型 review/评论，只在域内+有独家证据时出手（weixin TTL/取证、state.db/FTS、cron 投递）
-2. **cherry-pick invitation** —— review 真发现缺口 && 库存有货时，按 #86062 模式 offer 单关注点 commit（fork sha + authorship 保留；措辞**排序推荐不并列**：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底；禁「随你方便」式对称句式——09-07 #103650 对称措辞致 substance 被采纳但署名归零），**没货就纯 review，不硬带**
+**Review → Offer → Pick 单主线（2026-10-27 用户拍板）**：不再抢新 issue，也不为抢坑独立开 PR；只做高质量 review，review 真发现缺口再准备代码，我方 PR 只作为可 cherry-pick 的代码载体。两个连续动作：
+1. **evidence authority** —— 生产取证型 review/评论，主载荷是执行级实测、mutation 自证和 file:line receipts
+2. **cherry-pick invitation** —— review 真发现缺口时，按 #86062 模式 offer 单关注点 commit（fork sha + authorship 保留；措辞**排序推荐不并列**：lift 保署名=显式首选 → absorb 须点名 Co-authored-by → follow-up 兜底；禁对称句式）；造不出合格件就纯 review，不硬带
 
 **review 红线（COI 防御）**：主载荷必须是对维护者的验证价值（file:line receipts + mutation 自证）；自己的 PR/commit 只在缺口驱动场合出现；**每周深检预算 20 个**（09-19 拍板，账本 budget.json 为准；量放宽但单条标准不降——COI 防线在 rubric 门槛 + premise 复验），其余新 PR/issue 只内部研判不发帖——不做全仓免费 QA。筛选 rubric：域契合 × 合入临近度 × 独家弹药 × 可收敛性 × 作者质量史。**漏斗度量：review → adoption → pick → 关系信号（@提及/直接 ping）。**
 

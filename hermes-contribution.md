@@ -180,13 +180,13 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 ### 证据链（09-02 侦察 + 我方历史四实证）
 
 - **上游已是 AI farm 生态，三种架构并存**：① 自锚打包（@leomcamilo：#101093 issue 08:22 发 → #101095 PR 08:23 开，**1 分钟间隔**，长文 issue+PR 预打包背靠背提交）② 消防 hose 竞速（@fangliquanflq：单日 7 PR、30 分钟 turnaround 认领他人 issue；#101064 被 @rainbowgore/@JoaoMarcos44 30/36 分钟双抢）③ issue 农场（@dionysoslin615：只发 issue + 58 次 DeleteEvent=agent 临时分支清理指纹；@foma-agent 简介自白 "An AI agent with human oversight"）。commit trailer 全部干净（同样遵守上游无 trailer 惯例）
-- **当时事实（09-02 侦察）**：**当日 8 个抢坑 PR 零合入**（7 OPEN + 1 CLOSED）→ **anchor ≠ merge**；瓶颈=维护者注意力+质量+证据。**当时判断**：被生态证伪的是 slop 质量的抢法（分钟级占坑竞速被证伪，不是我们不敢抢）。**现行目的**：我方质量高，抢法=首车即终态——issue 出来后第一个 PR 就带复现+修+mutation 自证+测试，让后到者无从差异；每班感知到新 issue 时自判能否在质量轴上做到首车即终态：能则抢（forge+coder lane 快速路，own-PR 属 §12 已批类，零审批延迟），不能则 pass，不发垃圾车。**复检活问题**：抢 3 单后复盘首车质量是否形成「strzhao 车不可超越」的品牌信号
+- **当时事实（09-02 侦察）**：**当日 8 个抢坑 PR 零合入**（7 OPEN + 1 CLOSED）→ **anchor ≠ merge**；瓶颈=维护者注意力+质量+证据。**现行策略（2026-10-27 用户再次拍板）**：不再抢新 issue，也不为抢坑独立开 PR；只做高质量 review，review 中发现真实缺口再准备代码，以我方 PR/commit 作为 cherry-pick offer，让作者或维护者 pick。复盘只看 review → adoption → pick，不看抢坑数量。
 - **三代收敛文化**：erosika #83500 → kshitij #85452 → teknium #99375/#100916，皆从 PR 池 cherry-pick 保署名收编
 - **我方四实证**：#86622 被 #100916 salvage（3 commits 署名保留，09-02）/ 1d0e71e822 被 #86062 cherry-pick（"Adopted your idea @strzhao"）/ #96437 review 33 分钟被全盘接受 / #94862 收敛覆盖我方 review 指出的两残余缺口（无 credit 但实际塑形了收敛内容）
 
-### 两腿分工
+### 一条主线，两个连续动作
 
-| 腿 | 动作 | 触发条件 |
+| 步骤 | 动作 | 触发条件 |
 |---|---|---|
 | **evidence authority** | 生产取证型 review/评论 | 域内 PR/issue + 能产出真验证价值（独家证据如 weixin TTL/取证包、state.db/FTS、cron 投递可观测性是典型弹药，不是门槛）|
 | **cherry-pick invitation** | review 指出缺口 → forge 造货 → 立即开我方 PR（关联对方车/issue）→ review 评论里邀对方 cherry-pick（#86062 模式）| review 真发现缺口（有货直接带，没货立即造——「库存有货才出手」的等待语义废除）|

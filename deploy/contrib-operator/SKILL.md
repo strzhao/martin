@@ -75,7 +75,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 **为什么这样设计**：空间状态必须实查（`gh pr list --search "<N> in:body"` + **机制关键词再搜一轮**——in-body 抓不到机制占坑，#103315 教训：PR 不引用 issue 号也占坑）；出手位只来自「车未覆盖的分支」或空槽，不来自题目难度。判例（09-13）：farm 生态 12 分钟接车、一批 11 条里 8 条在 3 秒–34 分钟内被占 ⇒ 当时判断「分数高但空间当班读数为 0 的题不出手」——空间是当班测量值不是恒久判决，本班复检活问题 = 这题的空间实查新鲜值是多少（取数口径见 §3.4 空间轮条）、既有车是否仍未覆盖我方分支；占坑车被关/合入则槽重开，出手判断随之重开。**契合三问**（领域契合维度的活问题化，desktop 案）：这个面我们在生产跑吗？能产独家证据吗？空间呢？——三问逐条答实证，不按域名查表。
 
-**两路出手**（出手形态词典，不是查表闸）：own-PR / review-evidence（活车且我方能产出真验证价值——执行级实测、mutation 自证、file:line receipts 有一样真货就出手；独家证据是弹药不是门槛——main `2ecc55d` 并入）。出手判决 = 每班重答三个活问题：①15 分实测分布落在哪一档（分数是度量衡读数——历史判例曾把「11 分线 + 空间档 3」当恒久闸值，它当时的依据是「分数域顶档 + 空槽实查」的测量结论；数字保留为校准参考，不继承为判决）；②空间实查本班新鲜值 + 既有车覆盖面（space=3 是当班测量结论，每班重测）；③我方真验证价值与独家证据此刻是否仍在（证据会过期：gap 被上游修掉、槽被收编——§3.2 gap 过期条）。三问答满按车态选路出手；答不满：watch（有复检价值→[watch] 卡）或放行（一句我方角度的理由）。
+**唯一出手主线（2026-10-27 用户拍板）**：review-evidence → code offer → 被 pick。不再从新 issue 市场抢首车、不为抢坑独立开 PR；活车且我方能产出真验证价值时先做 review（执行级实测、mutation 自证、file:line receipts），review 真发现缺口再 forge，并把我方 PR 作为可 cherry-pick 的代码载体关联到该 review。自发现真实上游缺陷仍按 §3.8 处理，不属于抢 issue。每班重答：①哪些活跃 PR 值得 review；②我方真验证价值与独家证据此刻是否仍在；③能否交出值得被 pick 的单关注点 commit。答不满：watch 或放行，不为维持出手量抢 issue/开平行车。
 
 - **造货时间不入出手判定（09-19 用户拍板，废除 #115607 班次判例）**：当时事实 = s157 深判 #115894（cron Windows cp1252 丢回复），A1 双锚 main 实核成立、空间实测槽空 ~15h，仍按「farm 接车史 9-12min ≪ 我方造货时间」pass，当晚该槽被 #115910 兑现。当时判断（用户拍板）= 这个比较的两个输入都不可靠：**槽寿命实测是双峰的**（浅题分钟级被接、深题能空 8-15h，9-12min 是浅题中位数，拿它预言深题 = 系统性误杀）；**我方工时的 AI 估算系统性悲观**（09-10 已拍板 ≤20min 实测基准）。两个不可靠的数比较不出可靠结论 ⇒ **出手判定只量当下，不预测未来**：A1 成立 + 当班空间实查空（有车在飞不造——这是测量，保留）+ 契合/自利答得上 ⇒ 造；「车什么时候来」永不在判据里。造完槽被占 = 件入库存或转 review 弹药（库存常备是既有 doctrine），不算损失、不回溯改判。**不变的红线**：诚实边界照旧——无真机/无账号的域交不出 RED/GREEN 仍不造（#115894 即使走新口径也会撞这条，pass 结论不变、变的是理由）；反 slop 照旧（造不出合格件不发）。
 
@@ -103,7 +103,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 ### 3.4 生态情报（判断的底色，随班次沉淀更新）
 
-- **farm 生态**：自锚打包/消防竞速/issue 农场三种架构；issue→PR 以小时计（实测 12-21 分钟），单账号日发 7 PR。**anchor ≠ merge**：8 个当日抢坑 PR 零合入实证。**当时判断**：被证伪的是 slop 抢法，不是「抢」本身——现行抢法=首车即终态（第一个 PR 就带复现+修+mutation 自证+测试，后到者无从差异），每班自判能否在质量轴上做到：能则抢（forge+coder lane 快速路），不能则 pass 不发垃圾车；复检活问题=抢 3 单后复盘首车质量是否形成品牌信号。09-13 实测：单账号 @KoNit-K 27 分钟内跨 5 个互不相关域开出 5 辆；一批 11 条里 8 条在 3 秒–34 分钟内被占 ⇒ 空间轮必须先于评分跑，高分题照样抢不到
+- **farm 生态**：自锚打包/消防竞速/issue 农场三种架构；issue→PR 以小时计，单账号日发 7 PR。**anchor ≠ merge**：8 个当日抢坑 PR 零合入实证。**现行策略（2026-10-27 用户拍板）**：不抢新 issue、不拼首车，只从活跃 PR 中选择能产生真验证价值的对象做 review；发现缺口再交代码 offer。空间轮用于判断既有 PR 是否值得介入，不再用于抢坑。
 - **收编文化**：三代收敛（erosika→kshitij→teknium），模式 = 从 PR 池 cherry-pick 保署名收编；我方 #86622 被 teknium 亲自 salvage 是被动验证。看 labels 勿看 reviews（8 月 review 模式静默，合入纯靠 teknium 注意力）
 - **维护者本人的批量收编波（09-13 夜实证，外部出手位被进一步压缩）**：`is:pr is:open created:>2026-09-13T19:20:00Z` 的 **39 辆新车里 26 辆作者 = teknium1**（余 bwrin 2 / Rook-CodeVolt 2 / Raleighite 2 / 单发 4），标题一律 `(#NNNNN, salvage #NNNNN)` 形（例：#110205 = #109954 面的 salvage 收编、#110219 = A2A 族、#110226 = cron/kanban notifier gate）⇒ 维护者在 ~40 分钟内把一批开放 issue 成批 salvage 成自家 PR。三条含义：①「等维护者注意力」不再是可用策略——他本人就是最大产能；②我方件的 fate 更易被自家收编波稀释；③空间轮必须把他新开的车计入占坑（同样占精确槽，且自带保署名收编路径）。**中代批量收编波（09-15 凌晨实证，生态新常态）**：kshitijk4poor（三代收敛 erosika→kshitij→teknium 的中代）在 **60 秒内连开 13 辆** salvage PR（#111175–#111187 连号，横跨 cron/state/kanban/auth/vault/desktop/matrix/install 等互不相关域，标题同 `salvage` 形），与 teknium1 的 26 辆/40 分钟同构 ⇒ 批量 salvage 已是**生态级常态**而非维护者个人行为，任何「家族某缺口早晚有人收」的等待假设都应按「分钟级就被收编」校准；我方 forge 件的出手窗口（开窗期变现）随之进一步收窄。
 - **维护者成本门槛（判例，09-11 实证）**：teknium1 关 #86062 的原文「a +453 LOC on-open integrity probe is disproportionate」，理由=「main already fails open … rebuilds on the next open (`hermes sessions repair` heals it)」⇒ 两条稳定偏好：①**任何往 open 路径加成本的补丁必须自带测量对账**（已是生效的拒稿理由，不是礼貌要求）；②**偏好 fail-open + 下次 open 自愈**，不要新增 fail-closed 拒绝路径。#109641 系 darwin 腿属已有 Linux 腿的对偶，PR 叙事要防被按「新探针」读
@@ -323,7 +323,7 @@ triage 列 = 你的收件箱，最老优先。收工时 triage 不求清空，�
 
 | 场景 | 读 |
 |---|---|
-| 策略主轴 2.0 全文 / 现行两腿分工 / sweeper 红线 §7 / 存量台账 §11 | `~/workspace/martin/hermes-contribution.md` |
+| 策略主轴 2.0 全文 / 现行 Review → Offer → Pick 单主线 / sweeper 红线 §7 / 存量台账 §11 | `~/workspace/martin/hermes-contribution.md` |
 | 对外草稿形态选择/锚定铁律/验证纪律 | `~/workspace/martin/.claude/agents/hermes-contrib-strategist.md` |
 | own-PR coder 卡/forge 卡执行配方 | 卡面自带（own-PR = `execute.sh` 卡模板；forge = 本文件 §4.3）；coder worker 宪法 = `~/.hermes/profiles/coder/SOUL.md` |
 | 卡/lane 纪律、profile 边界 | `~/workspace/martin/hermes-lane-protocol.md` |
