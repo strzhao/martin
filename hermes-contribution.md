@@ -46,7 +46,7 @@ fork：`strzhao/hermes-agent` → `NousResearch/hermes-agent`。gh token 已加 
 
 ## 4. 共建三路径（按推荐度）
 
-> **⚠️ 09-02 更新**：本节写于 07-31 快照。anchor 占位路径已被 AI farm 生态卷死（issue→PR 以小时计），三路径的现行收窄版见 **§11 策略主轴 2.0**——salvage 流程（§5）仍有效，成为第三腿。
+> **⚠️ 历史归档**：本节写于 07-31 快照。anchor 占位路径已被 AI farm 生态卷死（issue→PR 以小时计）；2026-10-27 起停滞 Issue/PR 接手线也已整体退役。§4–§6 只作历史记录，不再作为执行依据；现行策略见 **§11 策略主轴 2.0**。
 
 ### 🌟 路径 A：salvage 停滞 PR（最优，kshitijk4poor 核心打法）
 找"sweeper review 过 + salvageability=high/medium + 作者停滞 >15 天 + mergeable=dirty"的 PR，接手推进。维护者优先合"推进停滞工作"的人。
@@ -173,7 +173,7 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 
 ## 11. 策略主轴 2.0：review-first，让维护者做 pick（2026-09-02 拍板）
 
-> 取代 §4 的路径推荐（§5 salvage 流程仍有效，成为第三腿）。用户拍板：专注高质量 review，review 中搭车我方 commit，让收敛者 pick。
+> 取代 §4 的路径推荐。用户拍板：专注高质量 review，review 中搭车我方 commit，让收敛者 pick。2026-10-27 起停滞 Issue/PR 接手线整体退役，不再扫描、评估或介入。
 
 > **目的（链2，2026-09-17 用户拍板）**：在上游，高质量 review（执行级实测+mutation 自证+file:line receipts）是稀缺品，这是 strzhao 品牌的差异化根基；每班感知到的活车里，凡能产出真验证价值的就做 review——频率由 AI 判断，质量红线由 AI 自己守（发出的每条都要经得起作者和维护者复核），无数字指标。
 
@@ -184,13 +184,12 @@ review 通知邮件是 sweeper 发 review 那刻的快照，**不会因后续修
 - **三代收敛文化**：erosika #83500 → kshitij #85452 → teknium #99375/#100916，皆从 PR 池 cherry-pick 保署名收编
 - **我方四实证**：#86622 被 #100916 salvage（3 commits 署名保留，09-02）/ 1d0e71e822 被 #86062 cherry-pick（"Adopted your idea @strzhao"）/ #96437 review 33 分钟被全盘接受 / #94862 收敛覆盖我方 review 指出的两残余缺口（无 credit 但实际塑形了收敛内容）
 
-### 三腿分工
+### 两腿分工
 
 | 腿 | 动作 | 触发条件 |
 |---|---|---|
 | **evidence authority** | 生产取证型 review/评论 | 域内 PR/issue + 能产出真验证价值（独家证据如 weixin TTL/取证包、state.db/FTS、cron 投递可观测性是典型弹药，不是门槛）|
 | **cherry-pick invitation** | review 指出缺口 → forge 造货 → 立即开我方 PR（关联对方车/issue）→ review 评论里邀对方 cherry-pick（#86062 模式）| review 真发现缺口（有货直接带，没货立即造——「库存有货才出手」的等待语义废除）|
-| **salvage** | 停滞 PR 雷达 → probe → 接手（§5 流程）| farm 洪水 → 批量停滞的工业化供给 |
 
 ### review 红线（COI 防御）
 
