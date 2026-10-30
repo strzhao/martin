@@ -31,6 +31,7 @@ strip_leading_comments() {
       scanning = 0
     }
     /^## 内部备注/ { exit }
+    /^<!-- 内部备注/ { exit }
     { print }
   ' "$1"
 }
