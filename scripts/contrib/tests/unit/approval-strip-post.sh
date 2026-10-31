@@ -171,6 +171,20 @@ printf '<!-- c -->\n\n## 内部备注：x\n尾巴\n' > "$SANDBOX/g6.md"
 : > "$SANDBOX/g6.expected"
 golden g6
 
+t_case "G7 尾部 Approval-page 注释块截断（2026-10-31 #147085 事故形）"
+cat > "$SANDBOX/g7.md" <<'EOF'
+# 判定：review 投递
+
+正文第一段，投递时须逐字保留。
+
+<!-- Approval-page Chinese summary (L1, not posted with the comment):
+L0 一句话
+3-5 要点
+-->
+EOF
+printf '# 判定：review 投递\n\n正文第一段，投递时须逐字保留。\n\n' > "$SANDBOX/g7.expected"
+golden g7
+
 # ================= S 组：单源守卫 =================
 t_case "S 单源守卫"
 assert_eq "$(grep -c 'inblock = 1' "$STRIP_LIB")" "1" "S1 awk inblock 置位恰 1 处（单源锚）"
@@ -257,8 +271,8 @@ env PATH="$JQ_DIR:/usr/bin:/bin" bash "$POST_COMMENT" "r/o" 42 "$SANDBOX/不存�
 
 # ================= M 组：mutation RED 电池 =================
 MUT="$SANDBOX/mut"
-mkdir -p "$MUT/m1" "$MUT/m2" "$MUT/m3"
-cp "$POST_COMMENT" "$MUT/m1/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m2/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m3/post-comment.sh"
+mkdir -p "$MUT/m1" "$MUT/m2" "$MUT/m3" "$MUT/m4"
+cp "$POST_COMMENT" "$MUT/m1/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m2/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m3/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m4/post-comment.sh"
 # M1: 摘 awk inblock 置位 → 多行内部块外泄
 sed '/inblock = 1; next/d' "$STRIP_LIB" > "$MUT/m1/strip-comment.sh"
 # M2: 摘「## 内部备注」exit 行 → 尾段外泄（awk 行有缩进，锚取含 ^ 锚的完整字面）
@@ -266,6 +280,8 @@ grep -vF '/^## 内部备注/ { exit }' "$STRIP_LIB" > "$MUT/m2/strip-comment.sh"
 # M3: 摘空正文拒发的 exit 1（块内替换为空命令，保语法）→ 空评论上线
 sed '/剥离后正文为空/,/^fi/s/^  exit 1$/  :/' "$POST_COMMENT" > "$MUT/m3/post-comment.sh"
 cp "$STRIP_LIB" "$MUT/m3/strip-comment.sh"
+# M4: 摘「<!-- Approval-page」exit 行 → 尾块外泄（2026-10-31 #147085 事故形的 RED 守卫）
+grep -vF '/^<!-- Approval-page/ { exit }' "$STRIP_LIB" > "$MUT/m4/strip-comment.sh"
 
 t_case "M1 摘 inblock 置位 → 多行内部块外泄（须 RED）"
 post_run "$MUT/m1/post-comment.sh" "r/o" 42 "$D"
@@ -288,6 +304,15 @@ fi
 t_case "M3 摘空正文拒发 → 空评论上线（须 RED）"
 post_run "$MUT/m3/post-comment.sh" "r/o" 42 "$SANDBOX/only-internal.md"
 assert_eq "$(gh_calls)" "1" "M3 变异体空正文仍投递（RED 自证）"
+
+t_case "M4 摘 Approval-page exit → 尾块外泄（须 RED）"
+post_run "$MUT/m4/post-comment.sh" "r/o" 42 "$SANDBOX/g7.md"
+payload_extract
+if grep -q 'Approval-page' "$SANDBOX/payload"; then
+  _pass "M4 变异体尾块外泄被抓（RED 自证）"
+else
+  _fail "M4 变异体尾块外泄被抓（RED 自证）" "变异未产生可分输出，探针失真"
+fi
 
 t_case "M-CTRL 对照组真实件同电池零命中"
 post_run "$POST_COMMENT" "r/o" 42 "$D"
