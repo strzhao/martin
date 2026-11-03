@@ -213,7 +213,7 @@ EOF
 bash "$STRIP_LIB" "$D" > "$SANDBOX/p-expected"   # 期望载荷 = 单源剥离结果
 
 t_case "P1 dry-run 只打印零投递"
-post_run "$POST_COMMENT" "r/o" 42 "$D" POST_COMMENT_DRY_RUN=true
+post_run "$POST_COMMENT" "r/o" 42 "$D" POST_COMMENT_DRY_RUN=true POST_COMMENT_MAX_CJK=999999
 assert_exit 0 "$PRC" "dry-run rc=0"
 if [[ "$PDRAFT_OUT" == *'-X POST repos/r/o/issues/42/comments'* ]]; then
   _pass "dry-run 打印投递命令形态"
@@ -223,7 +223,7 @@ fi
 assert_eq "$(gh_calls)" "0" "dry-run 零 gh 调用"
 
 t_case "P2 真投递：命令形态与 rc"
-post_run "$POST_COMMENT" "r/o" 42 "$D"
+post_run "$POST_COMMENT" "r/o" 42 "$D" POST_COMMENT_MAX_CJK=999999
 assert_exit 0 "$PRC" "投递 rc=0"
 assert_contains "$(cat "$GH_LOG")" "gh api -X POST repos/r/o/issues/42/comments" "投递端点与 -X POST 在位"
 assert_contains "$(cat "$GH_LOG")" "-F body=@" "载荷走 body=@ 通道（-f stdin 陷阱不复发）"
@@ -259,7 +259,7 @@ assert_exit 1 "$PRC" "全剥空 rc=1"
 assert_eq "$(gh_calls)" "0" "全剥空零投递"
 
 t_case "P7 gh 失败透传 rc=1"
-post_run "$POST_COMMENT" "r/o" 42 "$D" POST_BODY_FAIL=1
+post_run "$POST_COMMENT" "r/o" 42 "$D" POST_BODY_FAIL=1 POST_COMMENT_MAX_CJK=999999
 assert_exit 1 "$PRC" "gh 失败 rc=1"
 assert_contains "$(cat "$SANDBOX/post.err")" "投递失败" "失败原因落 stderr"
 
@@ -269,10 +269,48 @@ env PATH="$JQ_DIR:/usr/bin:/bin" bash "$POST_COMMENT" noslash 42 "$D" >/dev/null
 env PATH="$JQ_DIR:/usr/bin:/bin" bash "$POST_COMMENT" "r/o" 42abc "$D" >/dev/null 2>&1; assert_exit 2 "$?" "num 非数字 rc=2"
 env PATH="$JQ_DIR:/usr/bin:/bin" bash "$POST_COMMENT" "r/o" 42 "$SANDBOX/不存在.md" >/dev/null 2>&1; assert_exit 2 "$?" "稿件不存在 rc=2"
 
+t_case "P9 剥后载荷 CJK>阈值 拒发（2026-11-03 #148351 事故形：中段中文分析非头部块非尾段，剥层剥不到）"
+cat > "$SANDBOX/p9-cjk.md" <<'EOF'
+<!--
+审批页中文摘要（L1，不随评论发出）：头部块会被剥掉。
+-->
+
+# PR 评审稿 — 中文内部分析
+
+这是一段位于载荷中段的中文内部分析（既非头部注释块也非内部备注段形），
+2026-11-03 #148351 首评 6598554886 即此形：2900 字节原样上线。
+
+## 评审稿正文（可投递，英文）
+
+Thanks for the care in here — the transactional fencing is genuinely solid.
+EOF
+post_run "$POST_COMMENT" "r/o" 42 "$SANDBOX/p9-cjk.md"
+assert_exit 1 "$PRC" "中段中文分析拒发 rc=1"
+assert_eq "$(gh_calls)" "0" "CJK 超阈零投递"
+assert_contains "$(cat "$SANDBOX/post.err")" "CJK 字符" "拒发原因落 stderr 可诊断"
+
+t_case "P10 英文正文+个别汉字引语 直通（阈值内不误伤）"
+cat > "$SANDBOX/p10-ok.md" <<'EOF'
+<!--
+审批页中文摘要（L1，不随评论发出）：头部块会被剥掉。
+-->
+
+The docs use the term 温故卡 once and kanban elsewhere; a couple of CJK glyphs like 复利 are fine.
+This is an otherwise-English payload that must pass the gate untouched.
+EOF
+post_run "$POST_COMMENT" "r/o" 42 "$SANDBOX/p10-ok.md"
+assert_exit 0 "$PRC" "个别汉字直通 rc=0"
+assert_eq "$(gh_calls)" "1" "阈值内正常投递"
+
+t_case "P11 中文载荷仓显式 POST_COMMENT_MAX_CJK 放行"
+post_run "$POST_COMMENT" "r/o" 42 "$SANDBOX/p9-cjk.md" POST_COMMENT_MAX_CJK=999999
+assert_exit 0 "$PRC" "显式放行 rc=0"
+assert_eq "$(gh_calls)" "1" "seam 放行正常投递"
+
 # ================= M 组：mutation RED 电池 =================
 MUT="$SANDBOX/mut"
-mkdir -p "$MUT/m1" "$MUT/m2" "$MUT/m3" "$MUT/m4"
-cp "$POST_COMMENT" "$MUT/m1/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m2/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m3/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m4/post-comment.sh"
+mkdir -p "$MUT/m1" "$MUT/m2" "$MUT/m3" "$MUT/m4" "$MUT/m5"
+cp "$POST_COMMENT" "$MUT/m1/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m2/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m3/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m4/post-comment.sh"; cp "$POST_COMMENT" "$MUT/m5/post-comment.sh"
 # M1: 摘 awk inblock 置位 → 多行内部块外泄
 sed '/inblock = 1; next/d' "$STRIP_LIB" > "$MUT/m1/strip-comment.sh"
 # M2: 摘「## 内部备注」exit 行 → 尾段外泄（awk 行有缩进，锚取含 ^ 锚的完整字面）
@@ -282,9 +320,12 @@ sed '/剥离后正文为空/,/^fi/s/^  exit 1$/  :/' "$POST_COMMENT" > "$MUT/m3/
 cp "$STRIP_LIB" "$MUT/m3/strip-comment.sh"
 # M4: 摘「<!-- Approval-page」exit 行 → 尾块外泄（2026-10-31 #147085 事故形的 RED 守卫）
 grep -vF '/^<!-- Approval-page/ { exit }' "$STRIP_LIB" > "$MUT/m4/strip-comment.sh"
+# M5: 摘 CJK 探针拒发的 exit 1（块内替换为空命令，保语法）→ 中段中文分析外泄（2026-11-03 #148351 形）
+sed '/疑似内部中文分析段未剥离/,/^fi$/s/^  exit 1$/  :/' "$POST_COMMENT" > "$MUT/m5/post-comment.sh"
+cp "$STRIP_LIB" "$MUT/m5/strip-comment.sh"
 
 t_case "M1 摘 inblock 置位 → 多行内部块外泄（须 RED）"
-post_run "$MUT/m1/post-comment.sh" "r/o" 42 "$D"
+post_run "$MUT/m1/post-comment.sh" "r/o" 42 "$D" POST_COMMENT_MAX_CJK=999999
 payload_extract
 if grep -q 'rq-20261024-140178' "$SANDBOX/payload"; then
   _pass "M1 变异体内部块外泄被抓（RED 自证）"
@@ -293,7 +334,7 @@ else
 fi
 
 t_case "M2 摘内部备注 exit → 尾段外泄（须 RED）"
-post_run "$MUT/m2/post-comment.sh" "r/o" 42 "$D"
+post_run "$MUT/m2/post-comment.sh" "r/o" 42 "$D" POST_COMMENT_MAX_CJK=999999
 payload_extract
 if grep -q '内部备注' "$SANDBOX/payload"; then
   _pass "M2 变异体尾段外泄被抓（RED 自证）"
@@ -306,7 +347,7 @@ post_run "$MUT/m3/post-comment.sh" "r/o" 42 "$SANDBOX/only-internal.md"
 assert_eq "$(gh_calls)" "1" "M3 变异体空正文仍投递（RED 自证）"
 
 t_case "M4 摘 Approval-page exit → 尾块外泄（须 RED）"
-post_run "$MUT/m4/post-comment.sh" "r/o" 42 "$SANDBOX/g7.md"
+post_run "$MUT/m4/post-comment.sh" "r/o" 42 "$SANDBOX/g7.md" POST_COMMENT_MAX_CJK=999999
 payload_extract
 if grep -q 'Approval-page' "$SANDBOX/payload"; then
   _pass "M4 变异体尾块外泄被抓（RED 自证）"
@@ -314,8 +355,13 @@ else
   _fail "M4 变异体尾块外泄被抓（RED 自证）" "变异未产生可分输出，探针失真"
 fi
 
+t_case "M5 摘 CJK 探针拒发 → 中段中文分析外泄（须 RED）"
+post_run "$MUT/m5/post-comment.sh" "r/o" 42 "$SANDBOX/p9-cjk.md" POST_COMMENT_MAX_CJK=999999
+assert_exit 0 "$PRC" "M5 变异体中文稿仍投递（RED 自证）"
+assert_eq "$(gh_calls)" "1" "M5 变异体零拦截（RED 自证）"
+
 t_case "M-CTRL 对照组真实件同电池零命中"
-post_run "$POST_COMMENT" "r/o" 42 "$D"
+post_run "$POST_COMMENT" "r/o" 42 "$D" POST_COMMENT_MAX_CJK=999999
 payload_extract
 if grep -q 'rq-20261024-140178\|内部备注' "$SANDBOX/payload"; then
   _fail "对照组 P 稿零外泄" "真实件漏内部内容——机制或探针失真"
