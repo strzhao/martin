@@ -2,7 +2,9 @@
 # contrib-operator 班次空班守卫（monitor_script，2026-11-06 上线）
 # 语义：输出恒定 "none" → 框架 hash 抑制不唤 agent（cron/monitor.py）；输出变化 → 唤醒并注入 diff 上下文。
 # 检查（全零 LLM，按优先级短路）：
-#   ① ops-journal 末行 <60min = 上一班未收口 → 续命班
+#   ① ops-journal 末行 <60min = 上一班未收口 → 续命班（尾行 python3 utf-8 容错读取 + "| panel-truth */5"
+#      岗哨行排除；s0525 班实证：非法 UTF-8 行致 BSD grep 假阴/cut 炸管道，真根因=bash3.2 heredoc
+#      变量展开紧邻全角标点吞多字节字节，append 脚本一律花括号展开）
 #   ② rq.sh list 活跃项（awaiting-approval/approved/pending）
 #   ③ contrib 板 triage/ready 列非空（operator 收件箱；patrol unblock 后的到期 watch 也落 ready，同被此条覆盖）
 #   ④ [watch] 卡到期（list 行内 due YYYY-MM-DD ≤ 今天；patrol 之外的冗余第三道）
@@ -23,7 +25,13 @@ run_reason=""
 # ① journal 末行时刻（四栏契约：| 时刻 | 决策 | 对象 | 理由 |）
 JOURNAL="$CONTRIB/ops-journal.md"
 if [[ -f "$JOURNAL" ]]; then
-  LAST_TS=$(grep -E '^\| 20[0-9]{2}-[0-9]{2}-[0-9]{2} ' "$JOURNAL" | tail -1 | cut -d'|' -f2 | xargs)
+  # 长中文行上 BSD grep/cut 双缺陷（s0525 班实证：grep 部分行假阴 + cut Illegal byte sequence
+  # → LAST_TS 恒空 → 守卫①聋）。尾行时刻读取走 python3（utf-8 replace，行首模式在安全区）。
+  # panel-truth */5 岗哨班每 5 分钟自记一行——续命语义只认 operator 班活动，岗哨行排除（s0525 班实证）。
+  LAST_TS=$(python3 -c 'import re,sys
+rows=[l for l in open(sys.argv[1],encoding="utf-8",errors="replace") if re.match(r"^\| 20\d{2}-\d{2}-\d{2} ",l) and "| panel-truth */5" not in l]
+m=re.match(r"^\| (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) \|",rows[-1]) if rows else None
+print(m.group(1) if m else "")' "$JOURNAL" 2>/dev/null)
   if [[ -n "$LAST_TS" ]]; then
     TS_EPOCH=$(date -j -f "%Y-%m-%d %H:%M" "$LAST_TS" +%s 2>/dev/null || echo 0)
     AGE=$(( $(date +%s) - TS_EPOCH ))
@@ -35,13 +43,15 @@ fi
 
 # ② rq 队列活跃项
 if [[ -z "$run_reason" ]]; then
+  # rq 活跃计数排除 release-gate 项（s0630 班实证：flashcards 发版项 approved 态挂 7 天恒触发
+  # 假唤醒——该项归 flashcards 域、批准后业务已链式提审，rq 行态推进也不归 contrib 域管）。
   RQ_N=$(bash "$MARTIN/scripts/contrib/rq.sh" list 2>/dev/null | python3 -c "
 import json,sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     print(0); sys.exit()
-print(sum(1 for r in d if r.get('state') in ('awaiting-approval','approved','pending')))" 2>/dev/null || echo 0)
+print(sum(1 for r in d if r.get('state') in ('awaiting-approval','approved','pending') and r.get('disposition') != 'release-gate'))" 2>/dev/null || echo 0)
   if (( RQ_N > 0 )); then run_reason="run: rq_active=${RQ_N}"; fi
 fi
 
@@ -53,7 +63,8 @@ if [[ -z "$run_reason" ]]; then
     run_reason="run: board_triage_ready=${TRI}"
   else
     TODAY=$(date +%Y-%m-%d)
-    DUE=$(printf '%s\n' "$KB" | grep -oE 'due 20[0-9]{2}-[0-9]{2}-[0-9]{2}' | cut -d' ' -f2 | sort | while read -r d; do d_n=${d//-/}; t_n=${TODAY//-/}; (( d_n <= t_n )) && { echo "$d"; break; }; done)
+    # LC_ALL=C：看板列表行含中文标题时 BSD cut 会 Illegal byte sequence 弃行（s0525 班实证）
+    DUE=$(printf '%s\n' "$KB" | LC_ALL=C grep -oE 'due 20[0-9]{2}-[0-9]{2}-[0-9]{2}' | LC_ALL=C cut -d' ' -f2 | sort | while read -r d; do d_n=${d//-/}; t_n=${TODAY//-/}; (( d_n <= t_n )) && { echo "$d"; break; }; done)
     if [[ -n "$DUE" ]]; then run_reason="run: watch_due=${DUE}"; fi
   fi
 fi
