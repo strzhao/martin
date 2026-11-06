@@ -121,6 +121,18 @@ KB=$'t_22222222  blocked  [watch] 中文标题卡二 due 2026-11-08 08:00'
 OUT=$(sb_run -e "STUB_KANBAN_LIST_RAW=$KB" -e "STUB_DATE_TODAY=2026-11-07" "$GATE")
 assert_eq "$OUT" "none" "future due → none"
 
+t_case "gate④: done card's historical due does NOT fire (s0630 stale-due fix)"
+sb_new >/dev/null 2>&1
+KB=$'✓ t_fe25a004  done      [watch] 已收口卡 due 2026-09-26\n✓ t_9ab4b52a  done      [watch] 岗哨载体 due 2026-09-23'
+OUT=$(sb_run -e "STUB_KANBAN_LIST_RAW=$KB" -e "STUB_DATE_TODAY=2026-11-07" "$GATE")
+assert_eq "$OUT" "none" "done-card due → none"
+
+t_case "gate④: live scheduled card with overdue due still fires"
+sb_new >/dev/null 2>&1
+KB=$'✓ t_oldddddd  done      [watch] 已收口 due 2026-09-26\n⏱ t_44444444  scheduled  [watch] 活跃守候 due 2026-11-06'
+OUT=$(sb_run -e "STUB_KANBAN_LIST_RAW=$KB" -e "STUB_DATE_TODAY=2026-11-07" "$GATE")
+assert_contains "$OUT" "watch_due=2026-11-06" "live overdue fires while done ignored"
+
 # ---------- ④ gate② rq 活跃项 ----------
 t_case "gate②: seeded awaiting-approval rq item fires rq_active"
 sb_new >/dev/null 2>&1

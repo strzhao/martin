@@ -64,7 +64,9 @@ if [[ -z "$run_reason" ]]; then
   else
     TODAY=$(date +%Y-%m-%d)
     # LC_ALL=C：看板列表行含中文标题时 BSD cut 会 Illegal byte sequence 弃行（s0525 班实证）
-    DUE=$(printf '%s\n' "$KB" | LC_ALL=C grep -oE 'due 20[0-9]{2}-[0-9]{2}-[0-9]{2}' | LC_ALL=C cut -d' ' -f2 | sort | while read -r d; do d_n=${d//-/}; t_n=${TODAY//-/}; (( d_n <= t_n )) && { echo "$d"; break; }; done)
+    # due 提取限定活跃态行（s0630 班实证：done 卡历史 due 标记——t_fe25a004 due 2026-09-26——
+    # 恒触发 watch_due 假唤醒；live = scheduled/blocked/ready/running）
+    DUE=$(printf '%s\n' "$KB" | LC_ALL=C grep -E 't_[0-9a-f]+  (scheduled|blocked|ready|running) ' | LC_ALL=C grep -oE 'due 20[0-9]{2}-[0-9]{2}-[0-9]{2}' | LC_ALL=C cut -d' ' -f2 | sort | while read -r d; do d_n=${d//-/}; t_n=${TODAY//-/}; (( d_n <= t_n )) && { echo "$d"; break; }; done)
     if [[ -n "$DUE" ]]; then run_reason="run: watch_due=${DUE}"; fi
   fi
 fi
