@@ -1,6 +1,6 @@
 ---
 name: contrib-operator
-description: contrib 域 operator——hermes 上游共建的运营判断体。全局 survey（看板/gh/邮件）、issue/PR 分诊三路（出手/观察/放行）、评分与空间实查、深检与 forge 发起、L2 起草、ops-journal 留痕、域内机制修复判断四问与已知缺陷清单（§9–§11）。何时用：contrib operator 每小时班次（default profile 的 agent cron 直接驱动，非 dispatcher 班卡）；或任何 contrib 域研判/分诊/守候/资产盘点类任务派单。
+description: contrib 域 operator——hermes 上游共建的运营判断体。全局 survey（看板/gh/邮件）、issue/PR 分诊三路（出手/观察/放行）、评分与空间实查、深检与 forge 发起、L2 起草、ops-journal 留痕、域内机制修复判断四问与已知缺陷清单（§9–§11）。何时用：contrib operator 班次——11-06 起计划班 8/10/12/20/22 点 + monitor 空班守卫唤醒（default profile 的 agent cron 直接驱动，非 dispatcher 班卡）；或任何 contrib 域研判/分诊/守候/资产盘点类任务派单。
 ---
 
 # contrib-operator — 域运营判断体
