@@ -1,5 +1,8 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # contrib 岗哨 monitor v2（2026-11-06 批量化改造）——只报事实 + 批量阈值 + 最长延迟保证。
+# 解释器注（2026-11-06 21:1x 班实证）：cron 框架对 .sh 硬编码 bash（cron/scheduler_script.py
+# `_script_argv`：.sh/.bash → bash，shebang 刻意不认），本脚本必须保持 bash 兼容——
+# 禁 zsh-only 语法（print builtin 等），行尾续行只允许单反斜杠。
 # 背景：farm 生态新 issue 接近恒在（实测 ~29 条/天），v1 每有新 issue 即唤醒一次 agent（每次 ~152K input）。
 # v2 语义：新 issue 数 < BATCH 且最老一条等待 < MAX_AGE_MIN 分钟 → 输出恒定 "none"
 #         （框架 cron/monitor.py 对 monitor 输出做 hash，不变 → 静默抑制 agent，零 LLM 成本）；
@@ -32,7 +35,7 @@ for p in 1 2 3 4 5; do
   sleep 2  # search API 限速温和间隔
   PAGE=$(gh api -X GET search/issues -f "q=repo:NousResearch/hermes-agent is:issue is:open" \
     -f sort=created -f order=desc -f per_page=100 -f page=$p \
-    --jq '[.items[] | {n:.number, c:.created_at}]' 2>/dev/null) || { rm -f "$PAIRS_FILE"; exit 1 }
+    --jq '[.items[] | {n:.number, c:.created_at}]' 2>/dev/null) || { rm -f "$PAIRS_FILE"; exit 1; }
   COUNT=$(python3 -c "import json;print(len(json.loads('''$PAGE''')))")
   if [[ "$COUNT" -eq 0 ]]; then REACHED=1; break; fi
   python3 -c "import json;[print(json.dumps(x)) for x in json.loads('''$PAGE''')]" >> "$PAIRS_FILE"
@@ -82,4 +85,4 @@ PYEOF
 PYEXIT=$?
 rm -f "$PAIRS_FILE"
 [[ $PYEXIT -ne 0 ]] && exit 1
-print "$FINAL"
+printf '%s\n' "$FINAL"
