@@ -58,6 +58,7 @@
 
 - **逐号探针谓词的 404 体假阳性（2026-11-07 07:3x 班实证，判零家族镜像形态——s0425 是假阴向，本条是假阳向）**：`gh api` 的 404 错误响应体走 stdout（本文件在案判例），且**绕过 jq 过滤的形态随 jq 表达式变异**：`.number` 表达式对 404 体输出字面 `null`，`[ -n "$(…)" ]` 谓词把 "null" 误判 EXISTS（第一轮假阳）；`.number // empty` 对错误响应体整体原样落 stdout，同样假阳（第二轮仍假阳）。本班两轮自伤全靠「同号 404/EXISTS 两读矛盾」纪律抓回。**可靠谓词唯一形 = HTTP 状态行**：`gh api <url> -i 2>/dev/null | head -1` 对 404/200 判据稳定——jq 对错误响应体的行为不可依赖，逐号探针禁用 jq 输出做存在性谓词。
 - **journal heredoc 载荷的 EOF 独占行纪律（2026-11-07 07:4x 班实证）**：`cat > payload <<EOF` 的终止符若拼在载荷末行尾而非独占一行，heredoc 会把**后续全部脚本行**（append/断言/查重链）吞进 payload——payload 含残件脚本、append 根本不执行（本班实证：payload 5493 字节含 if/grep 残件，journal grep 锚=0、尾行仍是上班行=零污染未落账，quoted heredoc 重跑成功）。两条铁律：①journal append 脚本的 heredoc 终止符必须独占一行；②payload 内 jq 表达式禁用反引号包裹——unquoted EOF 下反引号被 shell 当命令替换执行（`.number: command not found` 即此伤），要么 quoted heredoc 要么去反引号。
+- **python 源码编码三形态与 PEP 263 显式声明（2026-11-07 07:5x 班实证，shift-24 判例的根因层补全）**：本机 python3（3.14 PM 工具链）对**含 CJK 的源文件**报 `SyntaxError: Non-UTF-8 code starting with '\xe6' … no encoding declared` 的入口有三，形态各异但同根=**源文件字节流没有被按 UTF-8 解码就进了编译器**：①`python3 -c '<CJK>'`（stdin/stdout 检查形态）；②`python3 - <<EOF` heredoc（同 stdin 形）；③**`python3 <含CJK的.py文件>`（本班新实证——文件形态也撞，shift-24「文件形态 md5 双路径一致但报错」之谜的真答案）**。正解两层：a) 脚本首行加 `# -*- coding: utf-8 -*-`（PEP 263，对三种入口恒生效，本班实证修复文件形态）+ 跑时 `python3 -X utf8` 双保险；b) shift-24 的「脚本主体 ASCII、中文载荷走数据文件」范式仍是重载荷首选（编码层错误面归零），但已不必把它当成文件形态的唯一活路——**CJK 重脚本 + coding 声明 + `-X utf8` 是第二活路**，本班 journal append（6006 字节 CJK 载荷内联）即此形一次成功。判据：SyntaxError 行号落在首个 CJK 字节 = 编码声明缺失，不是语法错误；先补声明再查语法。
 
 ### 4.2 L2 提交流（现用钳夹，勿绕行）
 
