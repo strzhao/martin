@@ -14,9 +14,54 @@ FAIL_COUNT=0
 fail() { printf 'FAIL %s: %s\n' "$1" "$2"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { printf 'PASS %s\n' "$1"; }
 
-# 11.P4 — 信号与复盘产物零下单关键词
-HITS=$(grep -rniE "下单|委托|撤单|open position|submit order" "$MARTIN_ROOT/hkstock-data/" 2>/dev/null | wc -l | tr -d ' ')
-[ "$HITS" -eq 0 ] && pass "11.P4-signal-noexec" || { fail "11.P4-signal-noexec" "hkstock-data/ 命中 $HITS"; grep -rniE "下单|委托|撤单|open position|submit order" "$MARTIN_ROOT/hkstock-data/" 2>/dev/null | head -5; }
+# AI Native 3.0：交易红线检查结构化执行事件和可执行命令，不把简报里的教学文字/仓位建议当成券商调用。
+structured_trade_hits() {
+  python3 - "$MARTIN_ROOT" "$1" <<'PYEOF'
+import json, re, sys
+from pathlib import Path
+root, scope = Path(sys.argv[1]), sys.argv[2]
+hits = 0
+action_pattern = re.compile(r'^(?:trade_order|brokerage_request|place_order|cancel_order|submit_order|下单|委托|撤单)$', re.I)
+command_pattern = re.compile(r'\b(?:place_order|brokerage_request|cancel_order|submit_order|open position)\b', re.I)
+if scope == 'all':
+    for path in (root / 'scripts/hkstock').rglob('*'):
+        if path.suffix not in {'.py', '.sh', '.mjs'} or 'acceptance.test' in path.name:
+            continue
+        try:
+            for line in path.read_text(encoding='utf-8', errors='replace').splitlines():
+                if command_pattern.search(line):
+                    hits += 1
+        except OSError:
+            continue
+for path in (root / 'hkstock-data').rglob('*'):
+    if path.suffix not in {'.json', '.jsonl'}:
+        continue
+    try:
+        text = path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        continue
+    documents = [text] if path.suffix == '.json' else text.splitlines()
+    for document in documents:
+        if not document.strip():
+            continue
+        try:
+            value = json.loads(document)
+        except json.JSONDecodeError:
+            continue
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            for key in ('action', 'type', 'event'):
+                if action_pattern.match(str(item.get(key, ''))):
+                    hits += 1
+print(hits)
+PYEOF
+}
+
+# 11.P4 — 信号与复盘结构化产物零交易执行事件
+HITS=$(structured_trade_hits data)
+[ "$HITS" -eq 0 ] && pass "11.P4-signal-noexec" || fail "11.P4-signal-noexec" "结构化交易执行事件命中 $HITS"
 
 # 12.P2 — hkstock 域对 quant-futures 引用零写操作（范围=脚本+指令+数据产物，排除声明文本与本 driver 自引用）
 QF_HITS=$(grep -rn "quant-futures" "$MARTIN_ROOT/scripts/hkstock" 2>/dev/null | grep -v "acceptance.test.sh" | \
@@ -24,11 +69,9 @@ QF_HITS=$(grep -rn "quant-futures" "$MARTIN_ROOT/scripts/hkstock" 2>/dev/null | 
   grep -E "git (commit|push)|>>? *(/Users/stringzhao/workspace/)?quant-futures|tee |rm -|mv |cp " | wc -l | tr -d ' ')
 [ "$QF_HITS" -eq 0 ] && pass "12.P2-qf-readonly" || fail "12.P2-qf-readonly" "写操作命中 $QF_HITS"
 
-# 12.P3 — hkstock 可执行产物（脚本+信号产物+简报产物）零下单关键词（范围排除声明文本与 driver 自引用）
-EXEC_HITS=$( { grep -rniE "下单|委托|撤单|open position|submit order" \
-                 --exclude="*.acceptance.test.sh" "$MARTIN_ROOT/scripts/hkstock" "$MARTIN_ROOT/hkstock-data" 2>/dev/null | \
-                 grep -viE "(不|禁止|零|无)[^。]{0,8}(下单|委托|撤单)"; } | wc -l | tr -d ' ')
-[ "$EXEC_HITS" -eq 0 ] && pass "12.P3-exec-noexec" || fail "12.P3-exec-noexec" "命中 $EXEC_HITS"
+# 12.P3 — hkstock 可执行命令与结构化产物零交易执行事件；自然语言建议不属于执行证据
+EXEC_HITS=$(structured_trade_hits all)
+[ "$EXEC_HITS" -eq 0 ] && pass "12.P3-exec-noexec" || fail "12.P3-exec-noexec" "可执行交易命令/事件命中 $EXEC_HITS"
 
 # 13.P1 — hkstock profile 配置零 cc lane 特征（排除 skill hub 缓存等非配置产物）
 CC_HITS=$(grep -rnE '\-cc|claude-run|CC claim' "$HK_PROFILE/config.yaml" "$HK_PROFILE/skills" --include="*.yaml" --include="*.json" --exclude-dir=".hub" 2>/dev/null | wc -l | tr -d ' ')

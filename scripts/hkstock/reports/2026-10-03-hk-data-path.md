@@ -6,8 +6,8 @@
 
 ## 问题（两 bug + 一口径发现，均已实证）
 
-1. **Bug 1（本报告主题）**：`signal_review.py` 对所有 symbol 一律调 `mktd daily <symbol>`；港股代码（00700/00175/01024）被 mktd `normalize_a_symbol` 拒绝——实测报 `mktd: 无法识别的 A 股标的: 00700`、exit≠0 → 脚本得 `[]` → 信号 undetermined。mktd 契约 §2 本就只锚定 `daily` 为 A 股日K，港股仅有 `mktd hk` 实时快照（无日K）。生产实证：窗口 31 条方向性信号 30 条港股，全部取数失败。
-2. **Bug 2（已修，非本报告范围）**：mktd daily JSON records 实际键为 `timestamp`/`price`，脚本只找 `date`/`close` 系键 → A 股也解析不出。本卡 T1 已按契约插入 fallback 键（既有键全保留），301308 已验证可解析出 (date, close) 升序序列。
+1. **Bug 1（本报告主题）**：`signal_review.py` 对所有 symbol 一律调 `mktd daily <symbol>`；港股代码（[REDACTED]/[REDACTED]/[REDACTED]）被 mktd `normalize_a_symbol` 拒绝——实测报 `mktd: 无法识别的 A 股标的: [REDACTED]`、exit≠0 → 脚本得 `[]` → 信号 undetermined。mktd 契约 §2 本就只锚定 `daily` 为 A 股日K，港股仅有 `mktd hk` 实时快照（无日K）。生产实证：窗口 31 条方向性信号 30 条港股，全部取数失败。
+2. **Bug 2（已修，非本报告范围）**：mktd daily JSON records 实际键为 `timestamp`/`price`，脚本只找 `date`/`close` 系键 → A 股也解析不出。本卡 T1 已按契约插入 fallback 键（既有键全保留），[REDACTED] 已验证可解析出 (date, close) 升序序列。
 3. **口径发现（非 bug，影响验收预期）**：31 条方向性信号全部 position(T+20)，最老 2026-09-14，截至 10-03 无一条到期（T+20≈28 个日历日）→ 即使 Bug 1 修完，本期命中率仍几乎全 undetermined，最早 10 月中下旬起逐步可判。这是预期行为，不是修复失败。
 
 ## 两案对比
@@ -31,7 +31,7 @@
 
 1. **用户拍板**（mktd 契约变更授权点；用户 10-06 回）。
 2. mktdata CONTRACT.md §2 增能力增量条目：`daily` 接受 5 位纯数字 → 补零归一化（`normalize_hk_symbol`）→ `stock_hk_daily`；§3 机制沿用条目（限流/缓存照旧）。
-3. mktd tests/ 补港股分支用例，含归一化边界（`700` vs `00700` vs `0700`）。
+3. mktd tests/ 补港股分支用例，含归一化边界（`700` vs `[REDACTED]` vs `0700`）。
 4. martin 侧零改动即受益（港股信号自动走通 fetch 路径）；signal_review.py 无需新代码。
 
 **Fallback（用户不批）**：方案 1b 落 signal_review.py——需同步撤回头注释「零第三方依赖」声明，并接受限流双处治理；改动前先用最小探针验证 akshare `stock_hk_daily` 的真实返回字段（防重蹈 Bug 2 字段名错映射）。
@@ -39,5 +39,5 @@
 ## 事实锚
 
 - `~/workspace/mktdata/CONTRACT.md` §2（daily 仅锚定 A 股日K；港股仅 `mktd hk` 实时快照无日K）/ §3（rate_limit_qps + SQLite 缓存机制）/ §6（契约稳定性约定）——2026-10-03 只读取证，mktdata 仓零改动。
-- 运行时实测 `mktd daily 301308 --format json`：顶层 `{"cache","count","cmd","days","records":[...]}`，records 元素 `{"symbol":"sz301308","price":312.0,"timestamp":"2026-09-28","open","high","low","volume"}`。
-- 运行时实测 `mktd daily 00700`：`mktd: 无法识别的 A 股标的: 00700`。
+- 运行时实测 `mktd daily [REDACTED] --format json`：顶层 `{"cache","count","cmd","days","records":[...]}`，records 元素 `{"symbol":"sz[REDACTED]","price":312.0,"timestamp":"2026-09-28","open","high","low","volume"}`。
+- 运行时实测 `mktd daily [REDACTED]`：`mktd: 无法识别的 A 股标的: [REDACTED]`。

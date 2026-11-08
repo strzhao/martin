@@ -25,6 +25,9 @@ contrib-data/
 # hkstock 理财域数据层（持仓为隐私数据，不入库）
 hkstock-data/
 
+# 旧 A 股组合/执行账本（只读归档与一次性迁移事实源，绝不入库）
+out/a-share-*
+
 # 温故卡 AGC 运营班次运行时产物（日报存档/VOC 累积/静默账；本地运行时数据不入库）
 flashcards-data/
 

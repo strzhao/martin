@@ -23,10 +23,11 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOLDINGS_DEFAULT="$REPO_ROOT/hkstock-data/holdings.yaml"
+DATA_DIR="${HKSTOCK_DATA_DIR:-$REPO_ROOT/hkstock-data}"
+HOLDINGS_DEFAULT="$DATA_DIR/holdings.yaml"
 VENV_PY="/Users/stringzhao/workspace/quant-futures/.venv/bin/python"
 PROBE_TIMEOUT=45
-FAIL_LOG_DIR="$REPO_ROOT/hkstock-data/logs"
+FAIL_LOG_DIR="$DATA_DIR/logs"
 FAIL_LOG="$FAIL_LOG_DIR/guard-fail.log"
 
 TARGET_DATE="$(date +%F)"
@@ -122,7 +123,7 @@ PY
 )" || fail "数据源探活失败（akshare sina ${PROBE_TIMEOUT}s 内无有效 A 股快照）"
 
 # --- 全部通过 → 派单载荷（末行 BRIEF_PAYLOAD: 开头；概要零金额零成本） ---
-summary="$(python3 - "$TARGET_DATE" "$HOLDINGS" <<'PY'
+summary="$(python3 - "$TARGET_DATE" "$HOLDINGS" "$DATA_DIR" <<'PY'
 import json, sys, yaml
 with open(sys.argv[2], encoding="utf-8") as fh:
     data = yaml.safe_load(fh)
@@ -137,10 +138,9 @@ payload = {
     },
     "probe": "ok",
     "skill": "/Users/stringzhao/.hermes/profiles/hkstock/skills/morning-brief/SKILL.md",
-    "brief_path": "/Users/stringzhao/workspace/martin/hkstock-data/briefs/"
-    + sys.argv[1] + "-brief.md",
-    "instruction": "按 SKILL.md 产出 C4 四段盘前简报并落盘 brief_path；期货日报摘要段按 SKILL.md "
-                   "执行 daily_report.py 摘要+固定小节「风险预警」，全段失败则 kanban_block 不产空简报",
+    "brief_path": sys.argv[3] + "/briefs/" + sys.argv[1] + "-brief.md",
+    "workflow_id": "hkstock-ai-native-v1",
+    "instruction": "按 SKILL.md 以单 AI 研究员工作流产出轻晨报并落盘 brief_path；保存证据、校验 research_guard，事件深研最多建一张幂等后续卡，不执行交易",
 }
 print(json.dumps(payload, ensure_ascii=False))
 PY

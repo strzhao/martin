@@ -5,8 +5,8 @@
 #   - 14.P1 简报 cron（hkstock-morning-brief）∧ 复盘 cron（hkstock-signal-review）并存
 #   - 14.P2 default SOUL 路由表 hkstock 行 ∧ life 行并存
 #   - 14.P3 持仓文件（hkstock-data/holdings.yaml）不入 git（negate）
-#   - EXTRA-review-detail（D4 字面量）：schedule 43 9 * * 6 / pin 非空 / prompt 含绝对路径
-#     signal_review.py + --input signals.jsonl + [SILENT] / deliver weixin:
+#   - EXTRA-review-detail（AI Native 3.0）：schedule 43 9 * * 6 / pin 非空 / prompt 含
+#     thesis + review_after + research_guard.py + reviews/<today>-review.md + [SILENT] / deliver weixin:
 # 用法：bash t3_crons.acceptance.test.sh
 # 退出码：0 = 全绿；1 = 有 FAIL
 set -u
@@ -78,12 +78,17 @@ model = str(review.get("model") or "").strip()
 provider = str(review.get("provider") or "").strip()
 if not model or not provider:
     errors.append("pin 不完整: model=%r provider=%r" % (model, provider))
-if "scripts/hkstock/signal_review.py" not in prompt:
-    errors.append("prompt 缺绝对路径 signal_review.py")
-if "--input" not in prompt:
-    errors.append("prompt 缺 --input（契约字面量，非 --file）")
-if "signals.jsonl" not in prompt:
-    errors.append("prompt 缺 signals.jsonl")
+if "thesis" not in prompt:
+    errors.append("prompt 缺 thesis 复盘")
+if "review_after" not in prompt:
+    errors.append("prompt 缺 review_after 到期扫描")
+if "research_guard.py" not in prompt:
+    errors.append("prompt 缺 research_guard.py 契约验收")
+if "reviews/<today>-review.md" not in prompt:
+    errors.append("prompt 缺 reviews/<today>-review.md 产物")
+import re
+if re.search(r"python3\s+\S*signal_review\.py", prompt):
+    errors.append("prompt 不应回退执行旧价格命中率 signal_review.py")
 if "[SILENT]" not in prompt:
     errors.append("prompt 缺 [SILENT] 哨兵")
 deliver = str(review.get("deliver") or "")
