@@ -74,4 +74,3 @@ db.close()
   assert.equal(unreadable.ok, false, 'missing exact session DB must fail closed');
   assert.ok(unreadable.errors.some(error => /state audit failed/.test(error)));
 });
-
