@@ -8,7 +8,8 @@ stdout: JSON {"total", "valid", "invalid_lines":[{line,reason}], "hit_rate": {bu
 exit 闭集: 一切可判定情形（文件缺失/空/全无效行）exit 0；仅意外异常（未捕获/IO 错误）exit 1。
 
 命中口径（确定性）：信号日收盘 vs T+N 收盘（N 按 horizon 映射 intraday=1/swing=5/position=20，
-行情经 mktd daily 获取；行情缺失的信号计入 undetermined，不进命中率）。
+行情获取按 asset 分流：a-stock 走 mktd daily；hk 走 ak.stock_hk_daily（新浪源，经 quant-futures
+venv 的 python 子进程取数，主脚本自身保持零第三方依赖）；行情缺失的信号计入 undetermined，不进命中率）。
 bullish 命中 = T+N > 信号日收盘；bearish 命中 = T+N < 信号日收盘；neutral 不计。
 """
 
@@ -25,6 +26,7 @@ ENUM_DIRECTION = {"bullish", "bearish", "neutral"}
 ENUM_HORIZON = {"intraday", "swing", "position"}
 HORIZON_MAP = {"intraday": 1, "swing": 5, "position": 20}
 MKTD = "/Users/stringzhao/.local/bin/mktd"
+HK_PYTHON = "/Users/stringzhao/workspace/quant-futures/.venv/bin/python3"  # akshare 唯一放行处
 DEFAULT_LOG = "/Users/stringzhao/workspace/martin/hkstock-data/logs/signal-review-invalid.log"
 WHITELIST_SYMBOL = None  # mktd 取数仅按信号内 symbol 调用 daily
 
@@ -112,7 +114,10 @@ def parse_signals(path, log_path=DEFAULT_LOG):
 
 
 def _mktd_daily_close(symbol, days):
-    """mktd daily 取最近 days 个交易日 [{date, close}]；任何失败返回 []（→ undetermined）。"""
+    """mktd daily 取最近 days 个交易日 [{date, close}]；任何失败返回 []（→ undetermined）。
+
+    仅 A 股解析器：港股代码会 exit 1（"无法识别的 A 股标的"），由调用方按 asset 分流。
+    """
     if not os.path.exists(MKTD):
         return []
     try:
@@ -138,6 +143,50 @@ def _mktd_daily_close(symbol, days):
         return result
     except (OSError, ValueError, subprocess.SubprocessError):
         return []
+
+
+def _hk_daily_close(symbol, days):
+    """ak.stock_hk_daily（新浪源）取最近 days 个交易日 [(date_iso, close)]；任何失败返回 []。
+
+    akshare 只存在于 quant-futures venv，经 HK_PYTHON 子进程取数，主脚本保持零第三方依赖。
+    走东财源（stock_hk_hist）会被本机系统代理 127.0.0.1:7890 掐断（RemoteDisconnected），
+    新浪源不受影响——不得改用 stock_hk_hist。
+    返回按日期升序排好的 (date, close) 列表。
+    """
+    if not os.path.exists(HK_PYTHON):
+        return []
+    snippet = (
+        "import json, akshare as ak\n"
+        "df = ak.stock_hk_daily(symbol=%r)\n"
+        "rows = [[str(d)[:10], float(c)] for d, c in zip(df['date'], df['close'])]\n"
+        "print(json.dumps(rows[-%d:]))\n" % (symbol, days)
+    )
+    try:
+        out = subprocess.run(
+            [HK_PYTHON, "-c", snippet],
+            capture_output=True, text=True, timeout=120,
+        )
+        if out.returncode != 0:
+            return []
+        text = out.stdout
+        start = text.find("[")
+        end = text.rfind("]")
+        if start < 0 or end <= start:
+            return []
+        result = [(str(d), float(c)) for d, c in json.loads(text[start:end + 1])]
+        result.sort(key=lambda x: x[0])
+        return result
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+
+
+def _daily_close(asset, symbol, days):
+    """按 asset 分流取日线收盘：a-stock → mktd，hk → akshare 新浪源；其余 asset 无日线源。"""
+    if asset == "hk":
+        return _hk_daily_close(symbol, days)
+    if asset == "a-stock":
+        return _mktd_daily_close(symbol, days)
+    return []
 
 
 def _close_on_or_before(rows, date_iso):
@@ -187,7 +236,7 @@ def review(valid, window_days):
         n = HORIZON_MAP[s["horizon"]]
         symbol = str(s["symbol"])
         if symbol not in close_cache:
-            close_cache[symbol] = _mktd_daily_close(symbol, n + 40)
+            close_cache[symbol] = _daily_close(s["asset"], symbol, n + 40)
         rows = close_cache[symbol]
         base = _close_on_or_before(rows, str(s["date"]))
         later = _close_after(rows, str(s["date"]), n)

@@ -12,8 +12,8 @@
 set -u
 
 MARTIN_ROOT="${MARTIN_ROOT:-/Users/stringzhao/workspace/martin}"
-HOLDINGS="$MARTIN_ROOT/hkstock-data/holdings.yaml"
-VALIDATOR="$MARTIN_ROOT/scripts/hkstock/validate_holdings.py"
+HOLDINGS="${HOLDINGS:-$MARTIN_ROOT/hkstock-data/holdings.yaml}"
+VALIDATOR="${VALIDATOR:-$MARTIN_ROOT/scripts/hkstock/validate_holdings.py}"
 TMPDIR_T1="$(mktemp -d /tmp/t1-hkstock-accept.XXXXXX)"
 trap 'rm -rf "$TMPDIR_T1"' EXIT
 
@@ -135,7 +135,7 @@ for path in tracked:
     fp = os.path.join(sys.argv[2], path)
     if os.path.realpath(fp) == self_real:
         continue
-    if path.startswith("scripts/hkstock/tests/"):
+    if path.startswith(("scripts/hkstock/tests/", "scripts/finance/tests/")):
         continue
     if not os.path.isfile(fp) or os.path.getsize(fp) > 5_000_000:
         continue
@@ -145,7 +145,7 @@ for path in tracked:
         continue
     for v in values:
         if hit(v, text):
-            print(f"HIT {v} in {path}")
+            print(f"HIT [REDACTED] in {path}")
             sys.exit(1)
 print("CLEAN")
 sys.exit(0)

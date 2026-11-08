@@ -836,6 +836,16 @@ if [[ -z "$BODY_FILE" || ! -f "$BODY_FILE" ]]; then
 fi
 strip_leading_comments "$DRAFT" > "$BODY_FILE"
 
+# fail-closed：剥后载荷残留 `<!--` ⇒ 终止（2026-11-08 #150939 评 6714906366 事故形，家族第 4 例：
+# 中段裸 HTML 注释块——strip 只剥头部块与行首段形，中段裸注释不在剥域（G3 黄金向量：文中注释块
+# 保留=设计行为），英文明文又是 CJK 探针盲区；L2-A 隧道路必须与 post-comment.sh L2-auto 路
+# 同闸对称（卡 t_d8ad84cc）。剥后仍存活的 `<!--` 只可能是中段裸注释（引用上游文本自带 <!-- 的
+# 场景显式 POST_COMMENT_ALLOW_MID_COMMENT=1 放行，与 post-comment.sh 同名 seam，改写优先）。
+if [[ "${POST_COMMENT_ALLOW_MID_COMMENT:-false}" != "1" ]] && LC_ALL=C grep -q -- '<!--' "$BODY_FILE"; then
+  fail "剥离后正文残留 HTML 注释块（<!--），疑似中段内部注释未剥离: ${DRAFT}（内部备注一律写行首段形或删掉）"
+  exit 1
+fi
+
 case "$VERDICT" in
   approved) do_approved ;;
   rejected) do_rejected ;;

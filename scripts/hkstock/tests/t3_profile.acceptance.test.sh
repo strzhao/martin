@@ -3,7 +3,7 @@
 # 覆盖谓词：10.P1 / 10.P2
 # 依据：设计契约 D：
 #   - 10.P1 ~/.hermes/profiles/hkstock/ 指令（SOUL.md / skills/**.md）含 mktd 用法标识
-#   - 10.P2 取数切换后的简报产物含 mktd 来源标识（real-process，BRIEF_ARTIFACT 注入）
+#   - 10.P2 AI Native 3.0 简报含统一 workflow_id、证据锚、缺口区和实际 provider；Wind/Hexin 主路由，mktd 仅降级
 # 门控：10.P2 无 BRIEF_ARTIFACT 注入且 briefs/ 无可发现产物 → SKIP_REAL_PROCESS，该谓词跳过
 # 说明：10.P1 是正向存在性断言（grep profile 指令文本），不属于红线 negate 扫描，不受 *.md 排除口径约束
 # 用法：bash t3_profile.acceptance.test.sh
@@ -40,7 +40,8 @@ else
   fi
 fi
 
-# ============ 10.P2: 简报产物含 mktd 来源标识（real-process 门控）============
+# ============ 10.P2: AI Native 3.0 简报含统一工作流、证据闭链和实际 provider ============
+# Wind/Hexin 是主路由，mktd 仅为降级源；不得再强制每份简报出现 mktd。
 if [[ -n "${BRIEF_ARTIFACT:-}" ]]; then
   ARTIFACT="$BRIEF_ARTIFACT"
 else
@@ -53,10 +54,13 @@ if [[ -z "$ARTIFACT" || ! -f "$ARTIFACT" ]]; then
 else
   printf 'INFO 产物: %s\n' "$ARTIFACT"
   [[ -n "${KANBAN_TASK_ID:-}" ]] && printf 'INFO 关联卡: %s\n' "$KANBAN_TASK_ID"
-  if grep -qi 'mktd' "$ARTIFACT"; then
+  if grep -q 'workflow_id: hkstock-ai-native-v1' "$ARTIFACT" \
+    && grep -q '证据与数据缺口' "$ARTIFACT" \
+    && grep -qE '\[E[A-Za-z0-9_-]+\]' "$ARTIFACT" \
+    && grep -qiE 'Wind|同花顺 iFinD|Hexin|mktd|Sina|Eastmoney|AkShare|CNINFO|HKEXnews|Media' "$ARTIFACT"; then
     pass "10.P2"
   else
-    fail "10.P2" "简报产物不含 mktd 来源标识（取数切换未生效或简报未走 mktd）"
+    fail "10.P2" "AI Native 简报须含统一 workflow_id、证据锚、缺口区和实际 provider（Wind/Hexin 主路由，mktd 仅降级）"
   fi
 fi
 

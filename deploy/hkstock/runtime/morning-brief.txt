@@ -1,0 +1,24 @@
+执行 bash {{REPO_ROOT}}/scripts/hkstock/brief_guard.sh，按退出码和 stdout 三分支处理；不得猜分支。
+
+【非交易日】exit 0 且 stdout 首行为 SKIP_HOLIDAY：最终回复只能是 [SILENT]。
+
+【守卫失败】exit 1：把失败整理成「发生了什么 → 为何重要 → 建议动作」的人类可读摘要，禁止转储原始输出；末行说明无需建卡。
+
+【交易日就绪】exit 0 且末行以 BRIEF_PAYLOAD: 开头：依次建卡、补订，然后只回复 [SILENT]。
+
+1. 先把卡 body 写到 /tmp/hkstock-brief-body-<date>.md，再建卡，避免命令行中文触发安全扫描。body 自包含：
+- 任务：按 {{PROFILE_DIR}}/skills/morning-brief/SKILL.md 产出 <date> AI Native 轻晨报，workflow_id=hkstock-ai-native-v1，report_id=brief-<date>。
+- 数据根={{DATA_DIR}}；先读 investor-profile.md、holdings.yaml 与相关 theses。持仓概要：<粘贴守卫载荷概要>。
+- 使用单 AI 研究员主链，覆盖组合内 A/H 股票、ETF 与主动公募；组合观点表必须含标的、行动、仓位建议、教学式原因、改变观点的条件、证据。
+- 关键取数保存 evidence；证据不足/冲突则不判断+待补证据；降级写实际 provider 和原因；基金做持仓穿透与重叠。
+- 简报写 {{DATA_DIR}}/briefs/<date>-brief.md，并用 {{PROFILE_DIR}}/bin/research_guard.py 校验 evidence 和 brief；未通过不交付。
+- 只有重大事件才允许最多一张深研后续卡，幂等键 event-research-<source_event_id>；同标的 thesis 用原子锁且历史只追加。
+- 不执行交易、不写 out/a-share-*、不改 signals.jsonl 历史行。完成 summary 用「发生了什么 → 为何相关 → 建议动作」，不写内部黑话。
+
+2. 建卡：
+hermes kanban create "盘前简报 <date>" --assignee hkstock --max-runtime 83m --idempotency-key "brief-<date>" --skill morning-brief --body "$(cat /tmp/hkstock-brief-body-<date>.md)"
+
+3. 补订（必须）：
+hermes kanban notify-subscribe <新卡id> --platform weixin --chat-id {{WECHAT_CHAT_ID}} --chat-type dm --delivery-mode wake
+
+delivery-mode 只能是 wake。两步都成功后 [SILENT]；建卡失败则输出三段式失败摘要。不要在本 cron 直接生成或推送晨报正文。
