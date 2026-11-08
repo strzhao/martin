@@ -643,7 +643,8 @@ fi
 #   allow_own_pr_push=false（急停总开关）→ approved 保留 + approval-manual-required 事件（人工路，不建卡）
 #   =true → 探测 runs/*-issue<ISSUE>/BRANCH.md 分流建 coder 卡（dispatcher spawn worker 驱动 claude -p 执行）：
 #     mode=push-only      BRANCH.md 存在且 worktree 校验通过 → --workspace dir:<worktree> --max-runtime 45m
-#     mode=build-and-push 无 build 产物/校验失败回退    → --workspace worktree:<hermes-agent 仓> --branch fix/... --max-runtime 4h
+#     mode=build-and-push 无档案/未命中（真需构建）→ --workspace scratch（s288 修：worktree 型 = 死形禁发，
+#                         卡体自带 clone 构建指令）--max-runtime 4h
 #   rq 状态推进（set executed）由 worker 收尾执行，claude 不碰 martin 仓。建卡失败只记日志、不阻断事件链。
 if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "0" ]]; then
   log "own-PR ${ID}: 确定性执行器不投递，交 coder lane（allow_own_pr_push 闸门）"
@@ -661,13 +662,69 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
   # 闸开：探测 build 产物定模式（dir: 对缺失路径会 mkdir 空目录——kanban_db.py 空目录陷阱，
   # 故必须 -d + git rev-parse 双校验，不满足回退 build-and-push）
   BRANCH_MD="$(ls -t "$CONTRIB"/runs/*-issue"${ISSUE}"/BRANCH.md 2>/dev/null | head -1 || true)"
+  ALLOW_REFRESH="$(cfg '.allow_own_pr_refresh' 'false')"
   # refresh-branch 闸门（09-14 用户授权）：config 缺键/false 或分支档案未声明 refresh: yes
   # ⇒ 走原路（对既有 push-only/build-and-push 路径逐字节等价）
-  ALLOW_REFRESH="$(cfg '.allow_own_pr_refresh' 'false')"
   # 声明形态宽容：行首（可带列表符 `- `）`refresh: yes` 独立一行即认；其它值/缺失 ⇒ 不启用
   REFRESH_DECL=""
   if [[ -n "$BRANCH_MD" ]] && grep -qE '^[[:space:]]*-?[[:space:]]*refresh:[[:space:]]*yes[[:space:]]*$' "$BRANCH_MD" 2>/dev/null; then
     REFRESH_DECL="yes"
+  fi
+  # s288 修（t_2b4d9afc，2026-10-26）：worktree 型 workspace = 死形（git worktree cwd 无 committed
+  # install → "no dependency environment is committed"，s288 A/B 探针 + t_40c2d544 双 crash 定谳）。
+  # build-and-push 不再产 worktree 卡，改两级：① inventory 探测——命中（ready 件 + fork 分支可解析到
+  # 主仓 fork remote 的 sha）⇒ 合成 BRANCH.md 档案，下方既有探测自然落 push-only（dir: 主仓 cwd =
+  # committed install 本尊，s288 C 腿实证健康）；② 未命中 ⇒ scratch 卡（卡体带 clone 指令）。
+  # 仅自然 BRANCH.md 缺席时执行——合成件永不覆盖既有档案，也就永不触碰 refresh 声明。
+  # F1（t_3b52d6b8 红队必修）：合成命中 ⇒ push-only 卡体追加 worktree 守卫行——合成件 cwd=主仓
+  # 共享树（committed install 本尊）而分支仅以 refs/remotes/fork/<b> 存在（未检出），与 25 件
+  # 自然档案「分支在所指目录已检出」形态全异；不守卫则 worker 可能 checkout 弄脏 live install
+  # 或就地构建提交。自然档案卡体不加（逐字节等价）。
+  SYNTH_HIT=0
+  if [[ -z "$BRANCH_MD" ]]; then
+    REPO_DIR="${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}"
+    INV_HIT="$(python3 - "$CONTRIB/inventory.json" "$ISSUE" "$REPO_DIR" "${GIT_BIN:-git}" 2>/dev/null <<'PYEOF' || true
+import json, re, subprocess, sys
+inv, issue, repo, git_bin = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    items = json.load(open(inv))
+except Exception:
+    sys.exit(0)
+items = items.get("items", items.get("inventory", items)) if isinstance(items, dict) else items
+pat = re.compile(r"^(?:forge-)?%s-" % re.escape(issue))
+for it in items if isinstance(items, list) else []:
+    if not isinstance(it, dict) or it.get("status") != "ready":
+        continue
+    if not pat.match(str(it.get("id", ""))):
+        continue
+    branch = str(it.get("branch") or "")
+    sha = str(it.get("fork_sha") or "")
+    if not branch or not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        continue
+    try:
+        r = subprocess.run([git_bin, "-C", repo, "rev-parse", "-q", "--verify",
+                            "refs/remotes/fork/%s^{commit}" % branch],
+                           capture_output=True, text=True, timeout=30)
+    except Exception:
+        continue
+    if r.returncode == 0 and r.stdout.strip().startswith(sha):
+        print(branch + "\t" + r.stdout.strip())
+        break
+PYEOF
+)"
+    if [[ -n "$INV_HIT" ]]; then
+      INV_BRANCH="${INV_HIT%%$'\t'*}"
+      INV_SHA="${INV_HIT#*$'\t'}"
+      RUNS_DIR="$CONTRIB/runs/$(date +%F)-issue${ISSUE}"
+      mkdir -p "$RUNS_DIR"
+      printf '# BRANCH — %s\n\n- worktree：`%s`\n- fork_sha：`%s`\n- 来源：inventory 命中合成（s288 修，t_2b4d9afc）\n' \
+        "$INV_BRANCH" "$REPO_DIR" "$INV_SHA" > "$RUNS_DIR/BRANCH.md"
+      BRANCH_MD="$RUNS_DIR/BRANCH.md"
+      SYNTH_HIT=1
+      log "own-PR ${ID}: 无 BRANCH.md 档案，inventory 命中 issue#${ISSUE}（fork 分支 ${INV_BRANCH}）→ 合成 push-only 档案 ${BRANCH_MD}"
+    else
+      log "own-PR ${ID}: 无 BRANCH.md 且 inventory 未命中，build-and-push 改发 scratch 卡（worktree 型 = s288 死形，禁发）"
+    fi
   fi
   MODE="build-and-push"; WT_DIR=""; BRANCH_NAME=""
   if [[ -n "$BRANCH_MD" ]]; then
@@ -695,7 +752,7 @@ if [[ "$DISPOSITION" == "own-PR" && "$VERDICT" == "approved" && "$IS_DRILL" == "
     if [[ "$MODE" == "push-only" ]]; then
       echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 45m --workspace dir:${WT_DIR}（own-PR ${ID} push-only 卡，分支 ${BRANCH_NAME}）"
     else
-      echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 4h --workspace worktree:${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent} --branch fix/issue${ISSUE}（own-PR ${ID} build-and-push 卡）"
+      echo "[dry-run] hermes kanban create --assignee coder --idempotency-key ${ID} --max-runtime 4h --workspace scratch（own-PR ${ID} build-and-push 卡；worktree 型 = s288 死形禁发，卡体自带 clone 构建指令）"
     fi
     exit 0
   fi
@@ -725,12 +782,18 @@ worktree: ${WT_DIR} | 分支: ${BRANCH_NAME} | push remote: fork（strzhao/herme
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:${BRANCH_NAME}
 配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
 timeout_budget: 1200"
+    if [[ "$SYNTH_HIT" == "1" ]]; then
+      # F1 守卫行（t_3b52d6b8）：仅合成档案的 push-only 卡追加——worktree=主仓共享树是
+      # 合成件独有形态，自然档案（分支已检出）不得改动卡体（逐字节等价）。
+      BODY_LINES+="
+worktree 守卫: 本卡 worktree=主仓共享树（committed install 本尊）：禁止 checkout、禁止在本地构建/提交；分支仅以 refs/remotes/fork/${BRANCH_NAME} 存在，幂等预检用 git ls-remote fork / gh pr list --state all --json headRefName 本地过滤，本卡动作仅建 PR"
+    fi
   else
     BODY_LINES+="
-worktree: 由 kanban 物化（\${HERMES_KANBAN_WORKSPACE}）| 分支: fix/issue${ISSUE} | push remote: fork（strzhao/hermes-agent；origin 是上游，push 必 403）
+构建基线: git clone https://github.com/strzhao/hermes-agent.git 并 checkout 分支 fix/issue${ISSUE}（fork 已有该分支则直接 checkout；fork 无此分支则从 upstream/main 起构建新提交——worktree 型 workspace 已禁发：s288 判例，git worktree cwd 无 committed install 必死）
 PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strzhao:fix/issue${ISSUE}
 配额事实: 上游限 5 个 open PR/账号（draft 也计数）；create 被拒报 limit 错误 = 配额用尽非故障——gh pr list --author strzhao --state open 现查槽位，自行权衡腾位或 kanban_block 上浮（关 PR 不销毁库存，分支留 fork 可重挂）
-构建基线: 先 git fetch origin && git log 确认 origin/main 未触碰本次改动域（过老则 rebase 到最新 main 再构建）"
+上游锚: clone 后 origin=fork（strzhao/hermes-agent，push 用它）；构建/过老 rebase 一律锚上游——git remote add upstream https://github.com/NousResearch/hermes-agent.git && git fetch upstream，rebase 到 upstream/main 再构建（origin/main 口径不作为基线）"
   fi
   BODY_LINES+="
 执行: ① claude 裸跑（不带权限 flags、不传 --model），完整指令写 workspace 内 BRIEFING.md，启动命令落 run-ownpr.sh 再 bash（hermes 终端过滤器拦内嵌 git push/gh pr 字面量与 perl -e alarm）② 成稿先拷入 workspace 并裁注释头成 PR-BODY.md（取首个 '# ' 标题行到文件尾，--body-file 用它；建 PR 后 gh pr view 逐字 diff 复核）③ 幂等预检：分支已有 commit 跳过构建；上游已有该 head 的 PR 只收尾（gh pr list --head 对 fork head 静默返空，用 --state all --json headRefName 本地过滤）④ 收尾由 worker 执行：l2_ledger.sh record --kind own-PR --rq ${ID} --branch <分支> --url <pr_url>（账本，漏记会被 hourly 差集告警）→ rq.sh set ${ID} executed --note <pr_url>（revise/failed 同口径）→ notify.sh receipt（仅 executed 发；失败态发 own-pr-failed 事件）→ kanban_complete(metadata 带 rq_id/mode/branch/pr_url)
@@ -740,7 +803,7 @@ PR 锚点: gh pr create --repo NousResearch/hermes-agent --base main --head strz
   if [[ "$MODE" == "push-only" ]]; then
     KANBAN_ARGS+=(--max-runtime 45m --workspace "dir:${WT_DIR}")
   else
-    KANBAN_ARGS+=(--max-runtime 4h --workspace "worktree:${HERMES_REPO_DIR:-$HOME/workspace/hermes-agent}" --branch "fix/issue${ISSUE}")
+    KANBAN_ARGS+=(--max-runtime 4h --workspace scratch)
   fi
   CARD_ID="$("$HERMES_BIN" "${KANBAN_ARGS[@]}" 2>>"$LOG" | grep -oE 't_[0-9a-f]+' | head -1 || true)"
   if [[ -n "${CARD_ID:-}" ]]; then
@@ -772,6 +835,16 @@ if [[ -z "$BODY_FILE" || ! -f "$BODY_FILE" ]]; then
   exit 1
 fi
 strip_leading_comments "$DRAFT" > "$BODY_FILE"
+
+# fail-closed：剥后载荷残留 `<!--` ⇒ 终止（2026-11-08 #150939 评 6714906366 事故形，家族第 4 例：
+# 中段裸 HTML 注释块——strip 只剥头部块与行首段形，中段裸注释不在剥域（G3 黄金向量：文中注释块
+# 保留=设计行为），英文明文又是 CJK 探针盲区；L2-A 隧道路必须与 post-comment.sh L2-auto 路
+# 同闸对称（卡 t_d8ad84cc）。剥后仍存活的 `<!--` 只可能是中段裸注释（引用上游文本自带 <!-- 的
+# 场景显式 POST_COMMENT_ALLOW_MID_COMMENT=1 放行，与 post-comment.sh 同名 seam，改写优先）。
+if [[ "${POST_COMMENT_ALLOW_MID_COMMENT:-false}" != "1" ]] && LC_ALL=C grep -q -- '<!--' "$BODY_FILE"; then
+  fail "剥离后正文残留 HTML 注释块（<!--），疑似中段内部注释未剥离: ${DRAFT}（内部备注一律写行首段形或删掉）"
+  exit 1
+fi
 
 case "$VERDICT" in
   approved) do_approved ;;

@@ -1,6 +1,6 @@
 ---
 name: hermes-contrib-strategist
-description: hermes-agent 上游贡献 pre-flight 审视官。任何要在 NousResearch/hermes-agent 落地的贡献动作（开 issue / 提 PR / salvage 停滞 PR / 接手 rebase / 发重要技术评论）之前，先用这个 agent 审视：贡献形态选择、issue 锚定、scope 切分、查重结论、合入风险、验证标准。只输出最佳实践方案与红旗警告，不落地代码、不发评论。
+description: hermes-agent 上游贡献 pre-flight 审视官。任何要在 NousResearch/hermes-agent 落地的贡献动作（开 issue / 提 PR / 发重要技术评论）之前，先用这个 agent 审视：贡献形态选择、issue 锚定、scope 切分、查重结论、合入风险、验证标准。只输出最佳实践方案与红旗警告，不落地代码、不发评论。
 tools: Read, Grep, Glob, Bash
 ---
 

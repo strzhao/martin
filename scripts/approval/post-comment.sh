@@ -47,6 +47,31 @@ if [[ ! -s "$BODY_FILE" ]]; then
   exit 1
 fi
 
+# fail-closed：剥后载荷含 CJK ⇒ 拒发（2026-11-03 #148351 首评 6598554886 事故形：
+# 中文内部分析段位于载荷中段，既非头部注释块也非「## 内部备注」段形，剥层三段式剥不到，
+# 2900 字节我方评分视角/竞品对比原样上线，投递后回读抓到、PATCH 同 id 净化）。
+# 默认阈值 6：英文仓（NousResearch/hermes-agent）正文引用个别汉字（书名/引语）容忍，
+# 中文成段分析（含标题）必拦；中文载荷仓（zai-org/feedback 等）投递时显式
+# POST_COMMENT_MAX_CJK=999999 放行。LC_ALL=C 逐字节扫 U+4E00..U+9FFF（UTF-8 首字节
+# E4..E9），拉丁扩展（é/ï 等首字节 C3）不误伤。
+MAX_CJK="${POST_COMMENT_MAX_CJK:-6}"
+cjk_n="$(LC_ALL=C awk '
+  BEGIN { lo=sprintf("%c",228); hi=sprintf("%c",234); re="[" lo "-" hi "]" }
+  { n += gsub(re, "x") } END { print n+0 }' "$BODY_FILE")"
+if (( cjk_n > MAX_CJK )); then
+  echo "post-comment: 剥离后正文含 $cjk_n 个 CJK 字符（>${MAX_CJK}），疑似内部中文分析段未剥离，拒发: ${DRAFT}（中文载荷仓请显式 POST_COMMENT_MAX_CJK）" >&2
+  exit 1
+fi
+
+# fail-closed：剥后载荷残留 `<!--` ⇒ 拒发（2026-11-08 #150939 评 6714906366 事故形，家族第 4 例：
+# 中段裸 HTML 注释块——既非头部块（已剥）也非行首段形 opener（已 exit），英文明文 CJK 探针盲区，
+# 内部工具名随评论上线，回读抓到、PATCH 同 id 净化）。剥后仍存活的 `<!--` 只可能是中段裸注释
+# （引用上游文本自带 <!-- 的场景显式 POST_COMMENT_ALLOW_MID_COMMENT=1 放行，改写优先）。
+if [[ "${POST_COMMENT_ALLOW_MID_COMMENT:-false}" != "1" ]] && LC_ALL=C grep -q -- '<!--' "$BODY_FILE"; then
+  echo "post-comment: 剥离后正文残留 HTML 注释块（<!--），疑似中段内部注释未剥离，拒发: ${DRAFT}（内部备注一律写行首段形或删掉）" >&2
+  exit 1
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "[dry-run] $GH_BIN api -X POST repos/$REPO/issues/$NUM/comments -F body=@$BODY_FILE"
   echo "[dry-run] 剥离后正文 $(wc -c < "$BODY_FILE" | tr -d ' ') 字节"

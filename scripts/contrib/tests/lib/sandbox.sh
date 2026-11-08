@@ -250,14 +250,14 @@ sb_seed_event() {
     >>"$SB_ROOT/contrib-data/events.jsonl"
 }
 
-# sb_seed_queue_item <id> <issue> <lane> <state> [priority]
+# sb_seed_queue_item <id> <issue> <lane> <state> [priority] [disposition]
 #   直接注入一个 ready-queue 项（gate/e2e 前置态构造用）
 sb_seed_queue_item() {
-  local id="$1" issue="$2" lane="$3" state="$4" prio="${5:-30}"
+  local id="$1" issue="$2" lane="$3" state="$4" prio="${5:-30}" disp="${6:-review-evidence}"
   local item
-  item="$(jq -cn --arg id "$id" --argjson issue "$issue" --arg lane "$lane" --arg state "$state" --argjson prio "$prio" \
+  item="$(jq -cn --arg id "$id" --argjson issue "$issue" --arg lane "$lane" --arg state "$state" --argjson prio "$prio" --arg disp "$disp" \
     '{id: $id, issue: $issue, pr: null, title: ("issue #" + ($issue | tostring)),
-      disposition: "review-evidence", lane: $lane, score: 12, priority: $prio,
+      disposition: $disp, lane: $lane, score: 12, priority: $prio,
       source: "scan", state: $state, premises: [], ammo: [], draft: null,
       tunnel: {url: null, slug: null, deployed_at: null, removed_at: null},
       budget: {week: "2026-W01", day: "2026-01-01"},

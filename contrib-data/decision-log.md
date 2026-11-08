@@ -297,3 +297,13 @@ escalate: 2026-09-15 当日复核 —— `sqlite3 "file:<contrib board>.db?immut
 **残余窗口**：#113999 CI 等放行未 merge；我方 #114159（`forge/sqlite-sidecar-read-guard`，源于 #114091 的读侧缺口）仍 OPEN = 活 pick 候选。
 
 **关联**：本条所举例的新政（review→发现→造货→立即开 PR）已由卡 t_9396bbf3 落进宪法并与本台账同批入 git：`hermes-contribution.md` §11 目的段 + 三腿分工触发列、`deploy/contrib-operator/SKILL.md` §3.1/§3.2/§3.4 判例式改写 + 新增 §3.7 停滞雷达 AI 判断面。
+
+---
+
+## 2026-10-27 · 策略收敛为 Review → Offer → Pick
+
+**用户两次拍板**：①长期无人跟进的 Issue/PR 接手线彻底去掉；②新 issue 抢首车路线也去掉。后续专注高质量 review，在 review 中发现真实缺口并交出代码，让作者或维护者 pick。
+
+**现行策略**：唯一主线为 `Review → Offer → Pick`。不再扫描、评估或介入停滞对象；不再从新 issue 市场抢首车，也不为抢坑独立开 PR。先对活跃 PR 做有执行证据的 review，真发现缺口再 forge，我方 PR 只作为该 review 的可 cherry-pick 代码载体。自发现真实上游缺陷仍按 operator §3.8 处理，不属于抢 issue。
+
+**落地范围**：operator 改为单主线；共建日报只汇报 review、代码 offer、adoption/pick，不再展示新 issue 抢坑量或停滞接手候选；`hermes-contribution.md`、`CLAUDE.md`、`hermes-contrib-pipeline` 同步为单主线。历史脚本、快照和判例保留作档案，不再作为执行依据。

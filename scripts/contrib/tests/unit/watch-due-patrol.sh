@@ -28,6 +28,16 @@ source "$TESTS_ROOT/lib/sandbox.sh"
 t_init "watch-due-patrol.sh"
 
 patrol_db() { printf '%s/.hermes/kanban/boards/contrib/kanban.db' "$SB_HOME"; }
+# default 板真身 = 沙箱 HOME 根下的 kanban.db（生产对等：root 库，非 boards/default/*.db）
+def_db() { printf '%s/.hermes/kanban.db' "$SB_HOME"; }
+seed_default_db() { # 每个沙箱都补一个空 default 库（表结构在、零行）= 生产「两库都在」的对等态；
+  # 缺了它 multi-board patrol 会把 default 读失败写进 stdout，污染零唤醒日的 stdout 契约
+  local db; db="$(def_db)"
+  mkdir -p "$(dirname "$db")"; rm -f "$db"
+  sqlite3 "$db" "create table tasks (id text, status text);
+create table task_comments (id integer primary key autoincrement, task_id text, body text);"
+}
+sb_new_seed() { sb_new >/dev/null 2>&1 && seed_default_db; }
 patrol_log() { printf '%s/contrib-data/logs/watch-due-patrol.log' "$SB_ROOT"; }
 
 # seed_patrol_db <id> <status> <comment...>  —— 每三元组一卡；comment 为该卡的一条评论
@@ -77,7 +87,7 @@ regrade_woken() { # <行偏移> —— 模拟 kernel unblock 后的状态迁移�
 
 # ================= ① 候选面 + ② max 判据 + ③ 形状守卫 + ⑤ stdout 契约 =================
 
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db \
   t_w1 blocked   'watch-due: 2026-09-15  本卡由 shift-18 物化' \
   t_w2 scheduled 'SCHEDULED: watch-due: 2026-09-15 | object=issue#1' \
@@ -103,7 +113,7 @@ assert_eq "$(wake_ids_since "$OFF")" "t_w1 t_w2" "恰好两张、无重复"
 assert_contains "$out" "t_w1" "stdout 携带本 tick 唤醒对象"
 assert_contains "$out" "t_w2" "stdout 携带本 tick 唤醒对象"
 assert_eq "$(printf '%s' "$out" | wc -l | tr -d ' ')" "0" "stdout 恰 1 行（无换行符 = 单行）"
-assert_file_contains "$(patrol_log)" "woke t_w1 due=2026-09-15 today=2026-09-15" "日志落 woke 行"
+assert_file_contains "$(patrol_log)" "woke board=contrib t_w1 due=2026-09-15 today=2026-09-15" "日志落 woke 行"
 regrade_woken "$OFF"
 
 t_case "D=09-16：t_w3 唤醒；t_w4 因 max(09-16,09-18)=09-18 不得唤醒（防早醒 2 天）"
@@ -132,7 +142,7 @@ assert_not_contains "$(cat "$SB_STUBLOG/calls.log")" "unblock t_w7" "done 卡未
 assert_not_contains "$(cat "$SB_STUBLOG/calls.log")" "unblock t_w8" "无 token 卡未被唤醒"
 
 t_case "形状守卫：非法窗口落 parse SKIP、不判到期（散文命中不得触发唤醒）"
-assert_file_contains "$(patrol_log)" "parse SKIP t_w5 win=[len=" "落 SKIP 漏账行（带形状元信息）"
+assert_file_contains "$(patrol_log)" "parse SKIP board=contrib t_w5 win=[len=" "落 SKIP 漏账行（带形状元信息）"
 assert_not_contains "$(cat "$SB_STUBLOG/calls.log")" "unblock t_w5" "非法窗口未触发唤醒"
 
 t_case "唤醒调用形态：hermes kanban --board contrib unblock <id> --reason …"
@@ -143,12 +153,12 @@ sb_cleanup
 
 # ================= ④ 读库失败态 =================
 
-t_case "板库缺失：rc=0 + stdout 恰 1 行 read FAILED + 日志 patrol read FAILED"
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+t_case "板库缺失（contrib 缺、default 在）：rc=0 + stdout read FAILED + 日志（单板失败不连坐）"
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
 out="$(run_day 2026-09-15)"; rc=$?
 assert_exit 0 "$rc" "永远 exit 0（cron harness 契约）"
-assert_contains "$out" "read FAILED" "stdout 明示读失败（不静默）"
-assert_file_contains "$(patrol_log)" "patrol read FAILED" "日志四态可判"
+assert_eq "$out" "" "单板失败不上 stdout（四态落日志可查，不污染零唤醒日）"
+assert_file_contains "$(patrol_log)" "read FAILED board=contrib" "失败落日志（board 归属可判）"
 assert_stub_not_called "hermes" "读失败时零唤醒调用"
 
 t_case "板库非法（非数据库文件）：rc=0 + 日志 read FAILED + 零唤醒"
@@ -169,7 +179,7 @@ sb_cleanup
 # 判据：每天「非到期被唤醒数=0 ∧ 到期卡漏唤醒数=0」——任一 >0 即 REBUT。
 
 t_case "逐日模拟 09-14 → 09-20：唤醒集合逐日对齐（10 张真实布局）"
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db \
   t_1621971d blocked   'operator shift-14 物化本卡 + 基线落此；watch-due: 2026-09-15' \
   t_db200d54 blocked   'watch-due: 2026-09-16  本卡由 shift-18 scan 物化' \
@@ -210,7 +220,7 @@ sb_cleanup
 #   b) 静止态（sidecar 缺失）：mode=ro rc=14 ⇒ immutable 退路接管，原有判据不回退。
 
 t_case "WAL 活跃窗：sidecar 在位时读最新写（新窗口生效，旧窗不复活）"
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db t_wal1 blocked 'watch-due: 2026-09-18  第一代窗口'
 # 模拟活跃窗：非 WAL 原子的旁路更新（内核路径必然经过 sidecar；这里直接演示「主库旧、真相新」）
 sqlite3 "$(patrol_db)" "insert into task_comments (task_id, body) values ('t_wal1','watch-due: 2026-09-25（续期抬窗）');"
@@ -224,7 +234,7 @@ rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanba
 sb_cleanup
 
 t_case "WAL 静止态：sidecar 缺失时 mode=ro rc=14 → immutable 退路仍唤醒到期卡"
-sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db t_wal2 blocked 'watch-due: 2026-09-16  静止库单窗'
 # 把沙箱库转成 WAL 格式并删 sidecar：WAL 头 + 无 -wal/-shm = mode=ro rc=14 的真实静止态
 sqlite3 "$(patrol_db)" "pragma journal_mode=wal;" >/dev/null
@@ -232,8 +242,53 @@ rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanba
 OFF="$(calls_n)"
 out="$(run_day 2026-09-16)"
 assert_eq "$(wake_ids_since "$OFF")" "t_wal2" "静止态退路仍正常唤醒"
-assert_file_contains "$(patrol_log)" "woke t_wal2 due=2026-09-16" "退路日志在位"
-assert_file_contains "$(patrol_log)" "read fallback mode=ro rc=" "退路触发落 fallback 行（可观测）"
+assert_file_contains "$(patrol_log)" "woke board=contrib t_wal2 due=2026-09-16" "退路日志在位"
+assert_file_contains "$(patrol_log)" "read fallback board=contrib mode=ro rc=" "退路触发落 fallback 行（可观测）"
+sb_cleanup
+
+# ================= ⑧ 跨板（2026-11-01 [fix] t_756e0fc9）=================
+# 缺口：default 板真身 = root kanban.db，单板巡检结构性盲（t_375c3290 逾期 1 天无人扫）。
+# 新判据：WATCH_BOARDS 每板独立读/独立唤醒（--board pin 逐板正确）；单板失败不连坐；
+# 全板失明才上 stdout。
+
+t_case "default 板到期卡唤醒：--board default pin 在位 + 日志 board=default"
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
+sqlite3 "$(def_db)" "insert into tasks values ('t_d1','blocked');
+insert into task_comments (task_id, body) values ('t_d1','watch-due: 2026-09-15 default 板守候卡');"
+OFF="$(calls_n)"
+out="$(run_day 2026-09-15)"
+assert_eq "$(wake_ids_since "$OFF")" "t_d1" "default 板到期卡被唤醒"
+assert_file_contains "$SB_STUBLOG/calls.log" "kanban --board default unblock t_d1 --reason" "board pin = default（不误投 contrib）"
+assert_file_contains "$(patrol_log)" "woke board=default t_d1 due=2026-09-15 today=2026-09-15" "日志带板归属"
+sb_cleanup
+
+t_case "双板同日到期：两卡都唤醒、各走各板"
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
+seed_patrol_db t_c1 blocked 'watch-due: 2026-09-16 contrib 侧'
+sqlite3 "$(def_db)" "insert into tasks values ('t_d2','scheduled');
+insert into task_comments (task_id, body) values ('t_d2','watch-due: 2026-09-16 default 侧');"
+OFF="$(calls_n)"
+run_day 2026-09-16 >/dev/null
+assert_eq "$(wake_ids_since "$OFF")" "t_c1 t_d2" "双板各醒各卡（WATCH_BOARDS 顺序）"
+sb_cleanup
+
+t_case "双板库全缺：stdout read FAILED（全域失明必须可见）+ 双板失败落日志"
+sb_new >/dev/null 2>&1 || { echo "sandbox-fail"; exit 1; }
+out="$(run_day 2026-09-15)"; rc=$?
+assert_exit 0 "$rc" "rc=0"
+assert_contains "$out" "read FAILED" "全域失明 stdout 告警"
+assert_file_contains "$(patrol_log)" "read FAILED board=contrib" "contrib 失败在案"
+assert_file_contains "$(patrol_log)" "read FAILED board=default" "default 失败在案"
+sb_cleanup
+
+t_case "default 板非法窗口：parse SKIP 带板归属（散文 token 不触发）"
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
+sqlite3 "$(def_db)" "insert into tasks values ('t_d3','blocked');
+insert into task_comments (task_id, body) values ('t_d3','watch-due: TBD 待定（形状非法）');"
+OFF="$(calls_n)"
+out="$(run_day 2026-09-15)"
+assert_eq "$(wake_ids_since "$OFF")" "" "零唤醒"
+assert_file_contains "$(patrol_log)" "parse SKIP board=default t_d3" "SKIP 带板归属"
 sb_cleanup
 
 t_finish

@@ -1706,6 +1706,22 @@ cmd_approve() {
     #    release-gate 项跳过：issue 为 appId 合成号，不对应 GitHub issue，gh 查询无意义 ──
     local disp_pre
     disp_pre="$(jq -r --arg id "$id" '.items[] | select(.id == $id) | .disposition // ""' "$QUEUE")"
+    # ── §12 自决路预分拣（2026-11-03 用户质询拍板：常规可逆动作不该推审批卡）────────
+    # config l2_self_decide_dispositions 列出免卡 disposition（如 review-evidence/probe-salvage/own-PR）。
+    # 命中 ⇒ 不推卡：operator 按 §12 直接执行 + l2_ledger --self-decided 落账；发 self-decided-eligible
+    # 事件进当日简报（可见性契约：自决动作全量进简报）。默认 [] = 旧行为逐字节等价（s11 冻结不受影响）。
+    # release-gate 恒不在此列（ALWAYS_L2，l2_ledger 机械拒绝自决——双层兜底）。
+    local sd_list in_sd
+    sd_list="$(cfg '.l2_self_decide_dispositions' '[]')"
+    if [[ "$sd_list" != "[]" && -n "$sd_list" && "$disp_pre" != "release-gate" ]]; then
+      in_sd="$(jq -rn --arg d "$disp_pre" --argjson l "$sd_list" '$l | map(ascii_downcase) | index($d|ascii_downcase) != null' 2>/dev/null || echo false)"
+      if [[ "$in_sd" == "true" ]]; then
+        log "approve $id: disposition=$disp_pre 属 §12 自决路（l2_self_decide_dispositions）——不推审批卡，operator 直接执行+台账记自决"
+        "$SELF_BIN" event self-decided-eligible --key "selfdec-eligible-$id" \
+          --summary "审批项 $id 属 §12 自决路未推卡 disposition 见队列: operator 直接执行, 动作将经 l2_ledger 落账并进简报" >/dev/null 2>&1 || true
+        continue
+      fi
+    fi
     if [[ "$disp_pre" == "release-gate" ]]; then
       log "approve $id: release-gate 项跳过 gh premise 复验（issue 为合成号）"
     elif [[ "$DRY_RUN" != "true" ]] && command -v "$GH_BIN" >/dev/null 2>&1; then

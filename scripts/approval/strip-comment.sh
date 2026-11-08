@@ -18,6 +18,9 @@
 # 剥离头部 `<!-- ... -->` 注释块（可多块，块间空行一并跳过），其余行逐字输出（C8）；
 # 并截掉「## 内部备注」起的尾部段（09-06 投递事故复盘：103568 草稿含内部备注段，
 # 若不截断会随评论外泄——与审批页 payload 口径一致）
+# 尾部「<!-- Approval-page」注释块同样截掉（2026-10-31 #147085 实证：L1 摘要段写在
+# 稿尾时 strip 只剥头部块、尾块原样上线 820 字节，投递后回读抓到、PATCH 同 id 净化；
+# 标记特异 = L1 摘要段专用 token，无正文误剥面）
 strip_leading_comments() {
   awk '
     BEGIN { scanning = 1; inblock = 0 }
@@ -31,6 +34,8 @@ strip_leading_comments() {
       scanning = 0
     }
     /^## 内部备注/ { exit }
+    /^<!-- 内部备注/ { exit }
+    /^<!-- Approval-page/ { exit }
     { print }
   ' "$1"
 }

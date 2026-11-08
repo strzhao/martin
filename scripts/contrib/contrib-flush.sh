@@ -16,9 +16,8 @@
 #   4. 幂等安全网不在本脚本内（notify.sh 自带 /tmp 锁 + min_interval + 当日限额，
 #      多调用者无害、双发已被吸收）——勿在此重复实现；
 #   5. 巡检器自身亦永远 exit 0、stdout ≤1 行、细节落 `contrib-data/logs/watch-due-patrol.log`；
-#   6. stale-pr 停滞雷达（卡 t_9396bbf3 起同面挂载，周级 stamp 门槛）：--tick 恒 stdout 0 行、
-#      恒 exit 0、细节落 `contrib-data/logs/stale-pr-scan.log`。
-# 回退：删本文件末尾四行巡检调用（patrol 与 stale-pr-scan 各两行：赋值行 + `[ -f ]` 行）即回到纯 flush 面；
+#   6. 2026-10-27 起停滞 Issue/PR 接手线退役，本 tick 不再运行 stale-pr-scan。
+# 回退：删本文件末尾 watch-due 两行巡检调用（赋值行 + `[ -f ]` 行）即回到纯 flush 面；
 #      再回退 flush 面 = cron job `3e5c6e23e260` 的 `script` 字段清回空串 + 删本文件。
 # 部署：真源 = scripts/contrib/contrib-flush.sh；部署副本 = ~/.hermes/scripts/contrib-flush.sh
 #      （cp + diff 双向逐字节一致；部署面回退命令见上）。
@@ -75,10 +74,6 @@ PATROL="$MARTIN/scripts/contrib/watch-due-patrol.sh"
 #   修复 = 读取面 mode=ro 主读（WAL-aware）+ rc!=0 时 immutable 退路（静止板态），沙箱 41/41 断言全绿
 #   （含新增 WAL 活跃窗/静止态两臂，tests/unit/watch-due-patrol.sh ⑦）。
 [ -f "$PATROL" ] && bash "$PATROL"
-
-# ── stale-pr 停滞雷达（周级 stamp 门槛，同一确定性 tick 面：--tick 恒静默、恒 exit 0）──
-STALE_SCAN="$MARTIN/scripts/contrib/stale-pr-scan.sh"
-[ -f "$STALE_SCAN" ] && bash "$STALE_SCAN" --tick
 
 # ── pth-shim 自愈巡逻：已于 2026-10-07 21:3x 退役（t_11a4b240 撤离四步收口）——
 #    gateway 20:34 重启后上游修复 _propagate_module_import_root 承重，.pth 垫片撤除，
