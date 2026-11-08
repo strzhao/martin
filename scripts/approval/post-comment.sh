@@ -63,6 +63,15 @@ if (( cjk_n > MAX_CJK )); then
   exit 1
 fi
 
+# fail-closed：剥后载荷残留 `<!--` ⇒ 拒发（2026-11-08 #150939 评 6714906366 事故形，家族第 4 例：
+# 中段裸 HTML 注释块——既非头部块（已剥）也非行首段形 opener（已 exit），英文明文 CJK 探针盲区，
+# 内部工具名随评论上线，回读抓到、PATCH 同 id 净化）。剥后仍存活的 `<!--` 只可能是中段裸注释
+# （引用上游文本自带 <!-- 的场景显式 POST_COMMENT_ALLOW_MID_COMMENT=1 放行，改写优先）。
+if [[ "${POST_COMMENT_ALLOW_MID_COMMENT:-false}" != "1" ]] && LC_ALL=C grep -q -- '<!--' "$BODY_FILE"; then
+  echo "post-comment: 剥离后正文残留 HTML 注释块（<!--），疑似中段内部注释未剥离，拒发: ${DRAFT}（内部备注一律写行首段形或删掉）" >&2
+  exit 1
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "[dry-run] $GH_BIN api -X POST repos/$REPO/issues/$NUM/comments -F body=@$BODY_FILE"
   echo "[dry-run] 剥离后正文 $(wc -c < "$BODY_FILE" | tr -d ' ') 字节"
