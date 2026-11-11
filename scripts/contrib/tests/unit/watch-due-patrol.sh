@@ -34,7 +34,7 @@ seed_default_db() { # 每个沙箱都补一个空 default 库（表结构在、�
   # 缺了它 multi-board patrol 会把 default 读失败写进 stdout，污染零唤醒日的 stdout 契约
   local db; db="$(def_db)"
   mkdir -p "$(dirname "$db")"; rm -f "$db"
-  sqlite3 "$db" "create table tasks (id text, status text);
+  sqlite3 "$db" "create table tasks (id text, status text, body text);
 create table task_comments (id integer primary key autoincrement, task_id text, body text);"
 }
 sb_new_seed() { sb_new >/dev/null 2>&1 && seed_default_db; }
@@ -46,15 +46,19 @@ seed_patrol_db() {
   local db; db="$(patrol_db)"
   mkdir -p "$(dirname "$db")"
   rm -f "$db"
-  sqlite3 "$db" "create table tasks (id text, status text);
+  sqlite3 "$db" "create table tasks (id text, status text, body text);
 create table task_comments (id integer primary key autoincrement, task_id text, body text);" || return 1
   local id status body
   while (( $# >= 3 )); do
     id="$1"; status="$2"; body="$3"; shift 3
-    sqlite3 "$db" "insert into tasks values ('$id','$status');
+    sqlite3 "$db" "insert into tasks (id,status) values ('$id','$status');
 insert into task_comments (task_id, body) values ('$id','$body');" || return 1
   done
   return 0
+}
+
+seed_body() { # <id> <body> —— 写卡体（body 域机器行用例：续期卡 body 落机器行是合法落点）
+  sqlite3 "$(patrol_db)" "update tasks set body='$2' where id='$1';"
 }
 
 add_comment() { # <id> <body> —— 追加一条评论（双窗口/判据修订用例）
@@ -151,6 +155,43 @@ assert_stub_not_called "gh" "巡检器零 gh 调用"
 
 sb_cleanup
 
+# ================= body 域机器行（2026-11-12 [fix] t_d34bee9c：读面双域化）=================
+# 缺口史：续期卡 body 落机器行是合法形态（contrib 板 22 张 parked 盲卡实证，1 张当日逾期），
+# comments-only 读面对其结构性全盲。判据四联：body 域行可唤醒 / body+评论跨域取 max（防早醒
+# 不因换域失效）/ body 散文 token 落 SKIP / 评论域卡不受 body 域化影响（对照）。
+
+t_case "body 域机器行四联：唤醒 / 跨域 max 防早醒 / 散文 SKIP / 评论域对照"
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
+seed_patrol_db \
+  t_w9  blocked   '续期卡：机器行只在卡体，评论域零行' \
+  t_w10 blocked   '跨域 max 用卡：body 窗 + 评论修订窗' \
+  t_w11 blocked   'body 散文 token（形状非法）' \
+  t_w12 blocked   '评论域对照组（机器行在评论）'
+seed_body t_w9  'watch-due: 2026-09-16'
+seed_body t_w10 'watch-due: 2026-09-16'
+seed_body t_w11 '复查面提到 watch-due: TBD 待定（形状非法：散文命中）'
+add_comment t_w10 '**判据修订（跨卡通知）**：watch-due: 2026-09-18（原 body 窗顺延）'
+add_comment t_w12 'watch-due: 2026-09-16'
+
+OFF="$(calls_n)"
+out="$(run_day 2026-09-16)"
+assert_eq "$(wake_ids_since "$OFF" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')" "t_w12 t_w9" "body 窗卡与评论对照卡同日醒；t_w10 跨域 max 不早醒；t_w11 非法窗不醒"
+assert_contains "$out" "t_w9" "stdout 携带 body 域卡"
+regrade_woken "$OFF"
+
+OFF="$(calls_n)"
+run_day 2026-09-17 >/dev/null
+assert_eq "$(wake_ids_since "$OFF")" "" "隔日零唤醒（t_w10 的跨域 max=09-18 未到）"
+
+OFF="$(calls_n)"
+out="$(run_day 2026-09-18)"
+assert_eq "$(wake_ids_since "$OFF")" "t_w10" "跨域 max 到日唤醒（防早醒语义跨域成立）"
+assert_file_contains "$(patrol_log)" "parse SKIP board=contrib t_w11" "body 域非法窗落 SKIP 漏账行"
+assert_not_contains "$(cat "$SB_STUBLOG/calls.log")" "unblock t_w11" "散文/非法窗零唤醒"
+regrade_woken "$OFF"
+
+sb_cleanup
+
 # ================= ④ 读库失败态 =================
 
 t_case "板库缺失（contrib 缺、default 在）：rc=0 + stdout read FAILED + 日志（单板失败不连坐）"
@@ -192,6 +233,8 @@ seed_patrol_db \
   t_26d4c387 scheduled 'watch-due: 2026-09-18 | object=生产契合簇' \
   t_03bc12f0 blocked   'watch-due: 2026-09-16  本卡由 shift-18 scan 物化'
 add_comment t_03bc12f0 '**出手裁定已出（跨卡通知）**：watch-due: 2026-09-18（原判据日 2026-09-16 修订）'
+# body 域形（2026-11-12 双域化）：机器行只在卡体的守候卡（sim 序列下方同日唤醒断言用）
+seed_body t_19c1f214 'watch-due: 2026-09-20  本卡由 [fix] t_d34bee9c 起进入读面（body 域形）'
 
 sim_day() { # <天> <期望唤醒集>（唤醒后模拟 kernel re-gate：unblock ⇒ ready，离开候选面）
   local d="$1" want="$2" off got
@@ -209,7 +252,8 @@ sim_day 2026-09-17 "t_50ff94bb t_eb1bdde3"
 sim_day 2026-09-18 "t_03bc12f0 t_26d4c387"
 sim_day 2026-09-19 ""
 sim_day 2026-09-20 "t_19c1f214"
-assert_eq "$(calls_n)" "10" "全程唤醒调用总数=10（10 张卡各一次，无重复无遗漏）"
+sim_day 2026-09-21 ""
+assert_eq "$(calls_n)" "10" "全程唤醒调用总数=10（10 张卡各一次，无重复无遗漏；t_19c1f214 为 body 域形）"
 
 sb_cleanup
 
@@ -253,7 +297,7 @@ sb_cleanup
 
 t_case "default 板到期卡唤醒：--board default pin 在位 + 日志 board=default"
 sb_new_seed || { echo "sandbox-fail"; exit 1; }
-sqlite3 "$(def_db)" "insert into tasks values ('t_d1','blocked');
+sqlite3 "$(def_db)" "insert into tasks (id,status) values ('t_d1','blocked');
 insert into task_comments (task_id, body) values ('t_d1','watch-due: 2026-09-15 default 板守候卡');"
 OFF="$(calls_n)"
 out="$(run_day 2026-09-15)"
@@ -265,7 +309,7 @@ sb_cleanup
 t_case "双板同日到期：两卡都唤醒、各走各板"
 sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db t_c1 blocked 'watch-due: 2026-09-16 contrib 侧'
-sqlite3 "$(def_db)" "insert into tasks values ('t_d2','scheduled');
+sqlite3 "$(def_db)" "insert into tasks (id,status) values ('t_d2','scheduled');
 insert into task_comments (task_id, body) values ('t_d2','watch-due: 2026-09-16 default 侧');"
 OFF="$(calls_n)"
 run_day 2026-09-16 >/dev/null
@@ -283,7 +327,7 @@ sb_cleanup
 
 t_case "default 板非法窗口：parse SKIP 带板归属（散文 token 不触发）"
 sb_new_seed || { echo "sandbox-fail"; exit 1; }
-sqlite3 "$(def_db)" "insert into tasks values ('t_d3','blocked');
+sqlite3 "$(def_db)" "insert into tasks (id,status) values ('t_d3','blocked');
 insert into task_comments (task_id, body) values ('t_d3','watch-due: TBD 待定（形状非法）');"
 OFF="$(calls_n)"
 out="$(run_day 2026-09-15)"

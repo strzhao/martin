@@ -26,17 +26,22 @@
 #      line on ANY scanned board is the wake contract; boards without watch authority
 #      (life/kanban/scratch-note) are deliberately not scanned. Per-board read failure logs and
 #      continues — one blind board must not blind the others.
-#   3. Scan surface = task_comments only (machine lines are a comment contract). Card bodies are
-#      NOT scanned: they carry the operating rule and prose that mentions the token, which only
-#      adds false windows.
+#   3. Scan surface = body ∪ comments (a machine line in either domain is the contract).
+#      2026-11-12 ([fix] t_d34bee9c): renewal-card bodies may lawfully carry the machine line
+#      (22 parked blind cards — one overdue — sat invisible under the comments-only read), so
+#      the read is dual-domain now. Prose noise stays neutralized by the shape guard + max
+#      window semantics (§5): a prose mention only yields a SKIP row, never a wake.
 #   4. Candidates = status in ('scheduled','blocked'). Cards already re-gated (ready/running/
 #      done/archived) are excluded by the read itself, so a wake can never repeat for one card.
-#   5. Due date per card = MAX over that card's comment windows that pass the YYYY-MM-DD shape
-#      guard. A revision note raises the date (t_03bc12f0 carries 2026-09-16 and 2026-09-18);
-#      min/first-match would wake it two days early and burn a worker run. Window = the 10 chars
-#      after the token's single trailing space, first occurrence per comment - the same parse the
-#      retired clamp used. A window failing the guard is logged as SKIP and never judged (naive
-#      widening once woke the non-due card t_8bc51715 on the same day).
+#   5. Due date per card = MAX over that card's body∪comment windows that pass the YYYY-MM-DD
+#      shape guard (domain-agnostic: whichever domain carries the newest lawful window wins —
+#      t_13e68067 carries 2026-11-19 in its body and 2026-11-13 in a comment; max must keep
+#      waking it on the 19th, not two 3s early). A revision note raises the date (t_03bc12f0
+#      carries 2026-09-16 and 2026-09-18); min/first-match would wake it two days early and
+#      burn a worker run. Window = the 10 chars after the token's single trailing space, first
+#      occurrence per body/comment - the same parse the retired clamp used. A window failing
+#      the guard is logged as SKIP and never judged (naive widening once woke the non-due card
+#      t_8bc51715 on the same day).
 #   6. Wake = `hermes kanban --board <board> unblock <id> --reason ...`; never a direct SQLite
 #      write (write-path discipline).
 #   7. Always exit 0. stdout <= 1 line: the harness injects stdout into the shift agent's prompt;
@@ -116,20 +121,31 @@ log_line() { # <detail> — always one physical line (the log has a single-line 
 
 # One row per candidate card: `<id>|<max valid window>` or `<id>|X|len=.. first=0x..` when the
 # card only carries windows that fail the shape guard (no verdict for those: SKIP + log).
+# w = raw windows from BOTH domains (body arm + comments arm, 2026-11-12 t_d34bee9c); the
+# comments arm joins parked tasks so parked-state exclusion stays a read-time fact, and a
+# task parked after its comments were written cannot leak a stale window back in.
 READ_SQL="
 with w as (
   select t.id as id,
+         substr(trim(replace(t.body,char(13),'')), instr(trim(replace(t.body,char(13),'')),'watch-due:')+11, 10) as due
+  from tasks t
+  where t.status in ('scheduled','blocked') and t.body like '%watch-due:%'
+  union all
+  select c.task_id as id,
          substr(trim(replace(c.body,char(13),'')), instr(trim(replace(c.body,char(13),'')),'watch-due:')+11, 10) as due
-  from tasks t join task_comments c on c.task_id = t.id
+  from task_comments c join tasks t on t.id = c.task_id
   where t.status in ('scheduled','blocked') and c.body like '%watch-due:%'
 ),
 v as (
   select id, due from w where due glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+),
+x as (
+  select id, due from w where due not glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
 )
 select id || '|' || max(due) from v group by id
 union all
 select r.id || '|X|len=' || length(min(r.due)) || ' first=0x' || hex(substr(min(r.due),1,1))
-  from w r where not exists (select 1 from v where v.id = r.id)
+  from x r where not exists (select 1 from v where v.id = r.id)
  group by r.id"
 
 # Per-board row format: `<board>|<id>|<max valid window>` (or `...|X|len=.. first=0x..` when the
