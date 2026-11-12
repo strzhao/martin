@@ -268,7 +268,7 @@ sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db t_wal1 blocked 'watch-due: 2026-09-18  第一代窗口'
 # 模拟活跃窗：非 WAL 原子的旁路更新（内核路径必然经过 sidecar；这里直接演示「主库旧、真相新」）
 sqlite3 "$(patrol_db)" "insert into task_comments (task_id, body) values ('t_wal1','watch-due: 2026-09-25（续期抬窗）');"
-# sidecar 在位（哪怕主库未 checkpoint）：mode=ro 必须读到两窗的最大值 09-25
+# sidecar 在位（哪怕主库未 checkpoint）：主读必须读到两窗的最大值 09-25
 : >"$(dirname "$(patrol_db)")/kanban.db-wal"; : >"$(dirname "$(patrol_db)")/kanban.db-shm"
 OFF="$(calls_n)"
 out="$(run_day 2026-09-18)"
@@ -277,17 +277,38 @@ assert_eq "$out" "" "stdout 零输出"
 rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanban.db-shm"
 sb_cleanup
 
-t_case "WAL 静止态：sidecar 缺失时 mode=ro rc=14 → immutable 退路仍唤醒到期卡"
+# 2026-11-12 [fix] t_1a0e1e40 判据（生产 600 行 fallback 实证后的读取面重钉）：
+#   b1) 静止态（WAL 头 + sidecar 缺失 = 板库 idle 的常态）⇒ 主读（rw+query_only）直接成功并唤醒，
+#       退路不得触发、sidecar 由本次读重建（生产 11-01..11-12 每 tick fallback = 旧 mode=ro 主读
+#       在此态 rc=1，idle 板被恒推入 immutable 快照读 = 10-24 同型风险面）；
+#   b2) 真只读板（目录 555：rw 句柄连 -shm 都建不了，SQLITE_READONLY）⇒ 退路接管仍唤醒 ——
+#       immutable 退路的收窄后职责 = 真只读载体，不是静止态。
+t_case "WAL 静止态：sidecar 缺失 ⇒ 主读 rw+query_only 直接成功唤醒，退路不得触发"
 sb_new_seed || { echo "sandbox-fail"; exit 1; }
 seed_patrol_db t_wal2 blocked 'watch-due: 2026-09-16  静止库单窗'
-# 把沙箱库转成 WAL 格式并删 sidecar：WAL 头 + 无 -wal/-shm = mode=ro rc=14 的真实静止态
+# 把沙箱库转成 WAL 格式并删 sidecar：WAL 头 + 无 -wal/-shm = 生产板库 idle 态的真实复刻
 sqlite3 "$(patrol_db)" "pragma journal_mode=wal;" >/dev/null
 rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanban.db-shm"
 OFF="$(calls_n)"
 out="$(run_day 2026-09-16)"
-assert_eq "$(wake_ids_since "$OFF")" "t_wal2" "静止态退路仍正常唤醒"
-assert_file_contains "$(patrol_log)" "woke board=contrib t_wal2 due=2026-09-16" "退路日志在位"
-assert_file_contains "$(patrol_log)" "read fallback board=contrib mode=ro rc=" "退路触发落 fallback 行（可观测）"
+assert_eq "$(wake_ids_since "$OFF")" "t_wal2" "静止态由主读（rw+query_only）正常唤醒"
+assert_contains "$out" "t_wal2" "stdout 携带本 tick 唤醒对象（主读成功路径）"
+assert_not_contains "$(cat "$(patrol_log)")" "read fallback" "退路在健康可写板不得触发（600 行 fallback 的回归闸）"
+[ -f "$(dirname "$(patrol_db)")/kanban.db-shm" ] && shm_ok=1 || shm_ok=0
+assert_eq "$shm_ok" "1" "主读顺带重建 sidecar（下一次 mode=ro 读者也不再 CANTOPEN）"
+sb_cleanup
+
+t_case "真只读板（目录 555）：rw 句柄打开失败 ⇒ immutable 退路仍唤醒到期卡"
+sb_new_seed || { echo "sandbox-fail"; exit 1; }
+seed_patrol_db t_wal3 blocked 'watch-due: 2026-09-16  真只读板单窗'
+sqlite3 "$(patrol_db)" "pragma journal_mode=wal;" >/dev/null
+rm -f "$(dirname "$(patrol_db)")/kanban.db-wal" "$(dirname "$(patrol_db)")/kanban.db-shm"
+chmod 555 "$(dirname "$(patrol_db)")"
+OFF="$(calls_n)"
+out="$(run_day 2026-09-16)"
+chmod -R u+w "$(dirname "$(patrol_db)")" 2>/dev/null || true
+assert_eq "$(wake_ids_since "$OFF")" "t_wal3" "真只读板退路仍正常唤醒（收窄后的退路职责）"
+assert_file_contains "$(patrol_log)" "read fallback board=contrib mode=rw+query_only rc=" "退路触发落 fallback 行（可观测）"
 sb_cleanup
 
 # ================= ⑧ 跨板（2026-11-01 [fix] t_756e0fc9）=================

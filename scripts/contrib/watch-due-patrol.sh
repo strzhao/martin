@@ -13,13 +13,19 @@
 #   (cron job 3e5c6e23e260) calls this script, so no new job, no new plist, no new job field.
 #
 # CONTRACT (keep in sync with card t_cc4c9fcd + deploy/contrib-operator/SKILL.md 4.1)
-#   1. Board DBs are read-only. Read path per board = `?mode=ro` FIRST (WAL-aware = current state
-#      while the dispatcher keeps -wal/-shm sidecars alive), `?immutable=1` ONLY as fallback for
-#      the parked state (sidecars absent -> mode=ro fails rc=14; main db is then current, no
-#      pending WAL).
-#      2026-10-24 incident: the old unconditional immutable=1 read took a stale main-db snapshot
-#      during an active window and mass-woke 94 not-yet-due watch cards off pre-revision windows
-#      (the 00:4x-02:2x revision wave's new windows all lived only in the -wal sidecar).
+#   1. Board DBs are read-only. Read path per board = `file:...?mode=rw` + `PRAGMA query_only=ON`
+#      as the FIRST read (2026-11-12, [fix] t_1a0e1e40): a rw handle can create the -shm sidecar
+#      (and recover WAL) so the open succeeds on an idle board whose sidecars were cleaned up by
+#      the previous connection's close, and query_only keeps the SQL layer strictly read-only
+#      (write attempts fail SQLITE_READONLY at the SQL boundary). Pending WAL frames stay visible
+#      (WAL-aware), which is what the 2026-10-24 incident demanded: the old unconditional
+#      immutable=1 read took a stale main-db snapshot during an active window and mass-woke 94
+#      not-yet-due watch cards off pre-revision windows (the new windows all lived only in the
+#      -wal sidecar).
+#      `?immutable=1` stays as the fallback ONLY for the genuinely read-locked board (board file
+#      chmod'd read-only / read-only directory / no-permission media): there the rw open fails
+#      SQLITE_READONLY (rc=8) and immutable is the only working carrier. On a healthy writable
+#      board the fallback must never fire — it fires now = the read path is broken again.
 #   2. Scan domain = WATCH_BOARDS (default "contrib default"). 2026-11-01 ([fix] t_756e0fc9):
 #      due-wake went cross-board. `default` resolves to the repo-root $HOME/.hermes/kanban.db
 #      (boards/default/*.db are 0-byte stubs — never point a reader there). A watch-due machine
@@ -158,11 +164,21 @@ scan_board() { # <board>
   local board="$1" db raw rc
   SCAN_ROWS=""
   db="$(board_db "$board")"
-  raw="$(sqlite3 "file:$db?mode=ro" "$READ_SQL" 2>&1)"; rc=$?
+  # Primary read = rw handle + query_only (2026-11-12, [fix] t_1a0e1e40). The WAL-mode board
+  # idles sidecar-less (the last connection's close deletes -wal/-shm); there a ?mode=ro open
+  # cannot create the -shm it needs and fails CANTOPEN (cli rc=1, "unable to open database
+  # file (14)") — that was 600 log lines of fallback-per-tick since 11-01. A rw handle creates
+  # the sidecar it needs; PRAGMA query_only=ON keeps every SQL statement read-only (writes die
+  # SQLITE_READONLY at the SQL boundary) and pending WAL frames stay visible, so the read is
+  # still WAL-aware (the 2026-10-24 stale-snapshot requirement).
+  raw="$(sqlite3 "file:$db?mode=rw" "PRAGMA query_only=ON;
+$READ_SQL" 2>&1)"; rc=$?
   if [ "$rc" -ne 0 ]; then
-    # Parked board (no -wal/-shm sidecars): mode=ro fails rc=14, but then the main db IS current
-    # (nothing pending in WAL) -> fall back to the immutable snapshot. Anything else stays FAILED.
-    log_line "read fallback board=$board mode=ro rc=$rc -> immutable (board parked or transient)"
+    # Genuinely read-locked board only (file chmod'd read-only / read-only directory /
+    # no-permission media): the rw OPEN itself fails SQLITE_READONLY (cli rc=1) and immutable=1
+    # is the only working carrier. On a healthy writable board this must never fire —
+    # it firing again = the read path is broken again (it fired every tick 11-01..11-12).
+    log_line "read fallback board=$board mode=rw+query_only rc=$rc -> immutable (board read-locked or transient)"
     raw="$(sqlite3 "file:$db?immutable=1" "$READ_SQL" 2>&1)"; rc=$?
   fi
   if [ "$rc" -ne 0 ]; then

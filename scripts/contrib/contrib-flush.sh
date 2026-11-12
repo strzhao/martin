@@ -71,8 +71,10 @@ fi
 PATROL="$MARTIN/scripts/contrib/watch-due-patrol.sh"
 # 2026-10-24 02:3x 紧急停用 → 03:1x 修复恢复（同一事故收口）：patrol 曾以 immutable=1 读板库，
 #   WAL 活跃窗取到 stale 主库快照 → 01:08 tick 按「上一代旧窗口」假唤醒 94 张已续期未到期 watch 卡。
-#   修复 = 读取面 mode=ro 主读（WAL-aware）+ rc!=0 时 immutable 退路（静止板态），沙箱 41/41 断言全绿
-#   （含新增 WAL 活跃窗/静止态两臂，tests/unit/watch-due-patrol.sh ⑦）。
+#   修复 = WAL-aware 主读 + immutable 退路（沙箱 41/41 断言全绿，tests/unit/watch-due-patrol.sh ⑦）。
+#   2026-11-12 主读再修（t_1a0e1e40）：mode=ro 在侧车缺失的 idle 板恒 CANTOPEN（11-01..11-12 每
+#   tick 两板 600 行 fallback 实证），主读改为 mode=rw+PRAGMA query_only（SQL 层只读、可自建侧车、
+#   pending WAL 仍可见），immutable 退路收窄为真只读板（文件/目录 555）专用。
 [ -f "$PATROL" ] && bash "$PATROL"
 
 # ── pth-shim 自愈巡逻：已于 2026-10-07 21:3x 退役（t_11a4b240 撤离四步收口）——
