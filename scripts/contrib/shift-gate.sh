@@ -62,7 +62,7 @@ if [[ -z "$run_reason" ]]; then
   if (( TRI > 0 )); then
     run_reason="run: board_triage_ready=${TRI}"
   else
-    TODAY=$(date +%Y-%m-%d)
+    TODAY="${STUB_DATE_TODAY:-$(date +%Y-%m-%d)}"  # 单测时钟 seam（shift-gate.sh unit 传 STUB_DATE_TODAY；11-08 班实证活钟耦合致 gate④ 夹具日期炸弹恒红）
     # LC_ALL=C：看板列表行含中文标题时 BSD cut 会 Illegal byte sequence 弃行（s0525 班实证）
     # due 提取限定活跃态行（s0630 班实证：done 卡历史 due 标记——t_fe25a004 due 2026-09-26——
     # 恒触发 watch_due 假唤醒；live = scheduled/blocked/ready/running）
