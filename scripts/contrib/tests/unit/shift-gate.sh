@@ -14,6 +14,8 @@
 #      理由栏提到 panel-truth 的 operator 行不被误排除
 #   ③ gate③④：CJK 看板行 triage/ready 计数 + due 到期唤醒 + due 未到期零唤醒
 #   ④ gate②：rq 活跃项（seeded ready-queue）→ rq_active 触发
+#   ⑤ x 形时刻容错（HH:Mx 上界归一，t_a49fa51e 班实证）：09:0x/23:5x 尾行必须被听到
+#      （上界归一 0x→09/5x→59；[0-5]x 之外的 6x-9x 垃圾仍拒）；well-formed 行为零回归
 # 沙箱：每用例 sb_new 全新沙箱；journal/gate_state/rq 全在沙箱内；date stub 透传 date -j -f；
 #   hermes stub 经 STUB_KANBAN_LIST_RAW 注入中文看板文本。生产零触达。
 set -uo pipefail
@@ -152,6 +154,46 @@ sb_seed_queue_item "rq-sb-3" 812574 "deep" "approved" 90 "release-gate"
 sb_seed_queue_item "rq-sb-4" 12346 "deep" "awaiting-approval" 50
 OUT=$(sb_run "$GATE")
 assert_contains "$OUT" "rq_active=1" "release-gate filtered, awaiting-approval still counts"
+
+# ---------- ⑤ x 形时刻容错（HH:Mx 上界归一，t_a49fa51e） ----------
+# xrow_at <T> <hour-shift> —— 产 x 形时刻串 "YYYY-MM-DD HH:MTx"（末位分钟数字被 x 掩蔽）。
+#   墙钟无关确定性：归一上报 R=HH:MT9，AGE=now-R；
+#   shift=0 时若本小时 T9 已成未来（mm < 10T+9）自动退一小时 ⇒ AGE 恒 ∈ [0,59min]（必触发）；
+#   shift≥1 时退两小时 ⇒ AGE 恒 ≥ 60min（恒不触发；退 1 小时 AGE=mm+1 可低至 1min 会误触发）。
+xrow_at() {
+  local T="$1" S="$2" mm off
+  mm=$(( 10#$(date '+%M') ))
+  if (( S == 0 )); then
+    off=$(( (10#$T * 10 + 9 > mm) ? 1 : 0 ))
+  else
+    off=2
+  fi
+  printf '%s:%sx' "$(date -v-"$off"H '+%Y-%m-%d %H')" "$T"
+}
+
+t_case "x-form 0x: fresh 0x row is heard via upper-bound normalization"
+sb_new >/dev/null 2>&1
+add_row "| $(xrow_at 0 0) | operator 班（0x 形遗留行） | 对象 | 理由 | 高 | <!-- s0400-shift --> |"
+OUT=$(sb_run "$GATE")
+assert_contains "$OUT" "journal_tail_recent" "0x-style fresh row fires"
+
+t_case "x-form 5x: fresh 5x row is heard (5x→59 normalization)"
+sb_new >/dev/null 2>&1
+add_row "| $(xrow_at 5 0) | operator 班（5x 形遗留行） | 对象 | 理由 | 高 | <!-- s0400-shift --> |"
+OUT=$(sb_run "$GATE")
+assert_contains "$OUT" "journal_tail_recent" "5x-style fresh row fires"
+
+t_case "x-form stale: normalized age ≥60min stays silent (window not loosened)"
+sb_new >/dev/null 2>&1
+add_row "| $(xrow_at 5 1) | operator 班（x 形陈旧行） | 对象 | 理由 | 高 | <!-- s0400-shift --> |"
+OUT=$(sb_run "$GATE")
+assert_eq "$OUT" "none" "stale x row does not fire"
+
+t_case "x-form garbage: 6x outside [0-5]x remains rejected → none"
+sb_new >/dev/null 2>&1
+add_row "| $(xrow_at 6 0) | operator 班（6x 垃圾形） | 对象 | 理由 | 高 | <!-- s0400-shift --> |"
+OUT=$(sb_run "$GATE")
+assert_eq "$OUT" "none" "6x garbage stays rejected"
 
 # stderr 卫生：末个用例 stderr 不允许出现 Illegal byte sequence（locale 炸管道的 smoke 探针）
 t_case "stderr hygiene: no Illegal byte sequence in last run's stderr"

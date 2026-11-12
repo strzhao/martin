@@ -27,11 +27,15 @@ JOURNAL="$CONTRIB/ops-journal.md"
 if [[ -f "$JOURNAL" ]]; then
   # 长中文行上 BSD grep/cut 双缺陷（s0525 班实证：grep 部分行假阴 + cut Illegal byte sequence
   # → LAST_TS 恒空 → 守卫①聋）。尾行时刻读取走 python3（utf-8 replace，行首模式在安全区）。
+  # x 形时刻（HH:Mx，历史遗留 2387 行）上界归一 [0-5]x→…x9（t_a49fa51e 班实证：裸 \d{2}:\d{2}
+  # 对 09:0x 假阴 → 续命信号丢失；上界归一零漏报、至多 9min 假阳续命，无害方向）。
   # panel-truth */5 岗哨班每 5 分钟自记一行——续命语义只认 operator 班活动，岗哨行排除（s0525 班实证）。
   LAST_TS=$(python3 -c 'import re,sys
 rows=[l for l in open(sys.argv[1],encoding="utf-8",errors="replace") if re.match(r"^\| 20\d{2}-\d{2}-\d{2} ",l) and "| panel-truth */5" not in l]
-m=re.match(r"^\| (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) \|",rows[-1]) if rows else None
-print(m.group(1) if m else "")' "$JOURNAL" 2>/dev/null)
+m=re.match(r"^\| (\d{4}-\d{2}-\d{2} \d{2}:(\d{2}|[0-5]x)) \|",rows[-1]) if rows else None
+ts=m.group(1) if m else ""
+if ts.endswith("x"): ts=ts[:-1]+"9"
+print(ts)' "$JOURNAL" 2>/dev/null)
   if [[ -n "$LAST_TS" ]]; then
     TS_EPOCH=$(date -j -f "%Y-%m-%d %H:%M" "$LAST_TS" +%s 2>/dev/null || echo 0)
     AGE=$(( $(date +%s) - TS_EPOCH ))
