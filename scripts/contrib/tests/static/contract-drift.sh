@@ -41,11 +41,11 @@ else
 fi
 
 # --- 从 SKILL.md 提取引用的子命令 ---
-refs_of() { # <file> → 引用的 "rq.sh X" / "notify.sh X" 子命令（去重）
-  grep -oE '(rq|notify)\.sh [a-z-]+' "$1" 2>/dev/null | awk '{print $2}' | sort -u
+refs_of() { # <file> → 引用的 "rq.sh X" / "notify.sh X" 子命令（去重；下划线 token = 函数引用如 cmd_approve，非 CLI 子命令，剔除防截断假阳性）
+  grep -oE '(rq|notify)\.sh [a-zA-Z_-]+' "$1" 2>/dev/null | awk '$2 !~ /_/ {print $2}' | sort -u
 }
-budget_refs_of() { # <file> → budget 子命令引用
-  grep -oE 'rq\.sh budget [a-z-]+' "$1" 2>/dev/null | awk '{print $3}' | sort -u
+budget_refs_of() { # <file> → budget 子命令引用（下划线剔除口径同 refs_of）
+  grep -oE 'rq\.sh budget [a-zA-Z_-]+' "$1" 2>/dev/null | awk '$3 !~ /_/ {print $3}' | sort -u
 }
 
 check_refs() { # <skill 文件> — 引用子命令必须 ⊆ 实现 case 分支集合
