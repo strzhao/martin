@@ -330,9 +330,12 @@ python scripts/transcribe.py audio.m4a --language en
 
 点评等真机自动化遇到验证码、要让 AI 自己过码时，**先读 [`scripts/captcha-ab/REPORT.md`](scripts/captcha-ab/REPORT.md)**——真机 A/B 实测结论：分型路由（滑块→本地 CV 白描边检测 13ms/1px；图形文字与点选→VLM 且定位必须用 bbox_2d 0-1000 原生 grounding 格式，绝对像素坐标有系统性偏移；ddddocr 经典模型对现代彩字验证码失效但 det 检测框可用）；含可复跑 harness（鸿蒙原生出题 app `harmony-space/apps/captchaab/` + 种子镜像 oracle + `scripts/captcha-ab/ab_eval.py` 五子命令）。已知上限：鸿蒙 swipe 只有人手直线（轨迹仿真无通道）。
 
-## Soma 健康数据管道（Apple Watch → 本机 receiver → 恢复教练，2026-11-16 立项）
+## Soma 健康数据管道（Apple Watch → 本机 receiver → 恢复教练，2026-11-16 立项；2026-11-24 教练改自动班次）
 
-动 Soma 任何一侧（RN 发送端 / Mac receiver / 恢复教练账本消费）前 → 看 harmony-space `services/soma-receiver/README.md`（vendor 来源/剪枝/部署真源）与其 `deploy/README.md`（账本导出 + 新鲜度监控 + .local 寻址）。要点：SQLite 是数据真源，`~/workspace/recovery-coach/ledger/*.json` 由 `deploy/export_ledger.py` 派生（merge-never-wipe，人工 energy/note 永不覆写，**别绕过导出器直接写账本**）；新鲜度告警已走 AI 摘要层（本文件「hermes 外发消息规范」同款纪律）；旧 Shortcuts receiver（:8787）在新管道装机联调稳定后退役。
+- **改教练行为**（判读方式、说话口径、班次步骤）→ 改 `skills/recovery-coach/SKILL.md`（真源），部署副本在 `~/.hermes/skills/domain/recovery-coach/`——改完 `cp -R` 过去再用 `/usr/bin/diff -r` 自证。**改恢复计划**（阶段/红线/就寝目标）只改 `~/workspace/recovery-coach/PLAN.md`。
+- **形态**：1 个 hermes cron「恢复教练班次」（每日 10:07 / 21:07，周日晨拍带周报）+ 1 skill + 数据目录 `~/workspace/recovery-coach/`。判断全部由 LLM 做；绿灯 `[SILENT]`，异常才推微信（本文件「hermes 外发消息规范」同款纪律）。
+- **数据**：真源 = receiver SQLite，教练经 MCP 服务器 `health-bridge` 只读直查，**不走账本**。`~/workspace/recovery-coach/ledger/YYYY-MM-DD.json` 只存用户主观项（`energy` / `note`），除这两个键外不要写账本；`coach-memory.md` 是教练跨次记忆；判读产物经 `POST /v1/insights` 落到 `insights/latest.json` 给 Soma App 回显。`deploy/export_ledger.py` 日键导出已退役。
+- **动发送端 / 接收端**（RN 发送端、HealthKit、batch.v1 协议、部署监控）→ 看 harmony-space `services/soma-receiver/README.md`（vendor 来源/剪枝/部署真源）与其 `deploy/README.md`（新鲜度监控 + .local 寻址）。
 
 ## 色彩体系（stringzhao-life）
 
