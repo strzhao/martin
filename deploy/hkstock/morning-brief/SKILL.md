@@ -21,7 +21,7 @@ description: 为用户执行个性化的 A 股、港股、ETF 与场外公募研
 
 ## 数据与研究
 
-金融工具的使用和原始证据保存见 [references/data-and-evidence.md](references/data-and-evidence.md)。
+金融工具的使用和原始证据保存见 [references/data-and-evidence.md](references/data-and-evidence.md)。公司披露与产业原文仍有明确缺口、且需要外部研报或产业视频定位线索时，按需见 [references/external-analysis.md](references/external-analysis.md)；不要为每日摘要或市场评论召回，未经原始资料复核的作者数字和观点不进入事实层。
 
 - 根据问题选择数据，不遵循固定 provider 顺序或研究问卷。优先使用能回答当前问题的可靠来源；官方公告、基金法律文件和原始账户回报与数据商、媒体、AI 推导分开。
 - 保留关键数值的来源、时点、报告期、币种和单位。价格、官方净值、实时估值、指数权重、基金实际披露持仓不是同一类事实。
