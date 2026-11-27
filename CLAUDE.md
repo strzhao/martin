@@ -94,6 +94,8 @@ contrib 域共建由 **operator** 运营（09-13 晚换座）：operator = **def
 
 **hkstock v2 数据优先私人研究员（2026-11-14）**：晨报、周六复盘、持仓问答、基金/股票比较、建仓调仓分析、新机会探索 → 看 [`deploy/hkstock/morning-brief/SKILL.md`](deploy/hkstock/morning-brief/SKILL.md)；默认只读真实画像与 `hkstock-data/holdings.yaml`，公开数据按需取，历史 thesis/context/plans 只作研究资料。旧 output-contracts、research_guard、brief_guard、固定 thesis 工作流和指数档位信号已退役；周六只运行 `93c0f3842f1c` 一次组合复盘。
 
+**外部作者/视频召回（2026-11-27，仅按需兜底）**：公司披露与产业原文仍有缺口、需要研报或产业视频定位线索时 → 看 [`deploy/hkstock/morning-brief/references/external-analysis.md`](deploy/hkstock/morning-brief/references/external-analysis.md)；未回原始资料复核的作者数字不入事实层，不新增 cron 或默认推送。
+
 ## 开源项目运营（oss-ops）
 
 运营 strzhao 名下开源项目组合（ai-todo 打样 → 组合铺开 → 内容引擎 → 发布脉冲）时，**先读 [`oss-ops.md`](oss-ops.md)** —— 沉淀了审批分层红线（L1 全自动只读；**一切对外动作 = L2，无 L3**，按场景走两路：**L2-A 异步路** Hermes 发起→微信审批、**L2-B 实时路** Claude Code 会话内用户明示即执行、不走微信不等时间窗；两路共用 approved.log 账本，preflight 与反 slop 不豁免）、渠道规则事实核查（Topics 自设 / dev.to API 可全自动 / awesome-claude-code 14 天门槛已满足）、9 仓组合台账与 ai-todo 打样 playbook；**一次性预批动作（投稿/PR）要推迟到未来日期执行时用 §8.1 的 cron 三件套配方**（`--repeat 1` 自删 + 成功静默失败才推微信，10-17 沉淀）。双 COO 分工：Hermes Agent 承担异步日常执行（每日巡检 cron + `~/.hermes/skills/github/oss-ops/` skill），martin 侧 Claude Code 承担实时合作运营 + 上下文工程 + 打样质量件 + pre-flight 审视（`/oss-preflight`）。动态进度见记忆 [[oss-ops-progress]]。
